@@ -1,0 +1,50 @@
+[project]
+name = "beamer-gui"
+version = "0.0.1"
+description = "A GUI for creating a Beamer presentation using LaTeX."
+keywords = ["beamer", "latex"]
+license = "MIT"
+repository = "https://github.com/Materials-Data-Science-and-Informatics/beamer-gui"
+
+[[project.people]]
+family-names = "Soylu"
+given-names = "Mustafa"
+email = "m.soylu@fz-juelich.de"
+orcid = "https://orcid.org/0000-0003-2637-0432"
+
+contribution = "Main developer and project manager."
+contribution_types = ["maintenance", "code", "test", "review", "doc"]
+
+author = true
+maintainer = true
+
+[[project.people]]
+family-names = "D'Mello"
+given-names = "Fiona"
+orcid = "https://orcid.org/0000-0002-0465-1009"
+email = "f.dmello@fz-juelich.de"
+
+contribution = "Main developer."
+contribution_types = ["ideas", "code", "test", "review", "doc"]
+
+author = true
+
+
+[[project.people]]
+family-names = "Hofmann"
+given-names = "Volker"
+email = "v.hofmann@fz-juelich.de"
+orcid = "https://orcid.org/0000-0002-5149-603X"
+
+publication_author = true
+
+[[project.people]]
+family-names = "Sandfeld"
+given-names = "Stefan"
+email = "s.sandfeld@fz-juelich.de"
+orcid = "https://orcid.org/0000-0001-9560-4728"
+
+contribution_types = ["ideas", "fundingFinding"]
+
+publication_author = true
+
