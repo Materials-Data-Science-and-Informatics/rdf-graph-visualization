@@ -1,13 +1,11 @@
-import "./App.css";
-import Graph from "./Graph.tsx";
-import { ChakraProvider } from '@chakra-ui/react'
+import Graph from "./components/Graph.tsx";
+import Layout from "./components/Layout.tsx";
 
 function App() {
   return (
-    <ChakraProvider>
-      <h1>RDF Graph Visualization</h1>
+    <Layout>
       <Graph />
-    </ChakraProvider>
+    </Layout>
   );
 }
 

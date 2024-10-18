@@ -1,5 +1,5 @@
 import * as rdflib from "rdflib";
-import { Node, Link, GraphData } from "./graph";
+import { Node, Link, GraphData } from "./components/Graph.tsx";
 
 const createGraph = (rdfData: string, baseUrl: string): rdflib.Store => {
   const store = rdflib.graph();
@@ -15,7 +15,7 @@ const createGraph = (rdfData: string, baseUrl: string): rdflib.Store => {
   return store;
 };
 
-const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
+const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): GraphData => {
   const nodesMap = new Map<string, Node>();
   const edges: Link[] = [];
 
@@ -76,8 +76,8 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
       if (pred.includes("affiliation")) {
         safeUpdateElement(obj, undefined, "organization");
       }
-      if (pred.includes('author') || pred.includes('creator')){
-        safeUpdateElement(obj,undefined, 'person')
+      if (pred.includes("author") || pred.includes("creator")) {
+        safeUpdateElement(obj, undefined, "person");
       }
       if (!nodesMap.has(subj)) {
         nodesMap.set(subj, { id: subj, label: subj, group: "" });
@@ -92,7 +92,8 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
   // return graphData;
   const connectedNodes = removeNonConnectedNodes(graphData);
   console.log("only connected nodes", connectedNodes);
-  return { nodes: connectedNodes, links: edges };
+  if (removeUnconnectedNodes) return { nodes: connectedNodes, links: edges };
+  else return graphData;
 };
 
 const removeNonConnectedNodes = (graphData: GraphData): Node[] => {

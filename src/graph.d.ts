@@ -3,7 +3,6 @@ interface Node {
   id: string;
   label?: string;
   group?: string;
-  // type?: string;
 }
 
 interface Link {

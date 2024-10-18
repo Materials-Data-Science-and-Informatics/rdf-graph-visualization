@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from "react";
 import ForceGraph3D from "react-force-graph-3d";
-import * as THREE from 'three';
-import { GraphData, Node } from "./graph";
-import { createGraph, rdfGraphToNodes } from "./utils.ts";
+import * as THREE from "three";
+import { GraphData, Node } from "./Graph.tsx";
+import { createGraph, rdfGraphToNodes } from "../utils.ts";
 
 const Graph: React.FC = () => {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
@@ -17,29 +17,18 @@ const Graph: React.FC = () => {
   };
 
   const getGroupColor = (group: string) => {
-    // const colors: { [key: string]: number } = {
-    //   person: 0,
-    //   dataset: 1,
-    //   organization: 2,
-    //   software: 3,
-    //   document: 4,
-    //   article: 5,
-    //   creativeWork: 6,
-    //   service: 7,
-    //   "": 8, // Default group
-    // };
     const colors: { [key: string]: string } = {
-      person: 'red',
-      dataset: 'blue',
-      organization: 'green',
-      software: 'yellow',
-      document: 'orange',
-      article: 'indigo',
-      creativeWork: 'violet',
-      service: 'cyan',
-      "": 'gray', // Default group
+      person: "red",
+      dataset: "blue",
+      organization: "green",
+      software: "yellow",
+      document: "orange",
+      article: "indigo",
+      creativeWork: "violet",
+      service: "cyan",
+      "": "gray", // Default group
     };
-    return colors[group] || 'gray'; // Default to 3 if group not found
+    return colors[group] || "gray"; // Default to 3 if group not found
   };
 
   useEffect(() => {
@@ -70,7 +59,7 @@ const Graph: React.FC = () => {
         const geometry =
           group === ""
             ? new THREE.BoxGeometry(8, 8, 8) // Box for nodes with empty group
-            : new THREE.SphereGeometry(5);    // Sphere for other nodes
+            : new THREE.SphereGeometry(5); // Sphere for other nodes
 
         const material = new THREE.MeshStandardMaterial({
           color: getGroupColor(group),
