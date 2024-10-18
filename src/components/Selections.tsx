@@ -41,7 +41,6 @@ const Selections: React.FC<SelectionsProps> = ({ setGraphData }: SelectionsProps
     // Add the load event listener
     reader.onload = () => {
       const fileContent = reader.result;
-      console.log("File Content:", fileContent); // Log the content of the file
       if (typeof fileContent === "string") {
         // Ensure the content is a string
         parseRDF(fileContent, isChecked, setGraphData);

@@ -88,10 +88,7 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
 
   const nodes = Array.from(nodesMap.values());
   const graphData: GraphData = { nodes, links: edges };
-  console.log(graphData);
-  // return graphData;
   const connectedNodes = removeNonConnectedNodes(graphData);
-  console.log("only connected nodes", connectedNodes);
   if (removeUnconnectedNodes) return { nodes: connectedNodes, links: edges };
   else return graphData;
 };
