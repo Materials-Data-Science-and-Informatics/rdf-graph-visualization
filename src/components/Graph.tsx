@@ -1,12 +1,15 @@
+// Graph.tsx
 import React from "react";
 import ForceGraph3D, { GraphData, NodeObject, LinkObject } from "react-force-graph-3d";
 import * as THREE from "three";
 
 interface GraphProps {
   graphData: GraphData;
+  width: number;
+  height: number;
 }
 
-const Graph: React.FC<GraphProps> = ({ graphData }: GraphProps) => {
+const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
   const getGroupColor = (group: string) => {
     const colors: { [key: string]: string } = {
       person: "red",
@@ -19,7 +22,7 @@ const Graph: React.FC<GraphProps> = ({ graphData }: GraphProps) => {
       service: "cyan",
       "": "gray", // Default group
     };
-    return colors[group] || "gray"; // Default to 3 if group not found
+    return colors[group] || "gray"; // Default to gray if group not found
   };
 
   const getNodeById = (id: string) => graphData.nodes.find((node: NodeObject) => node.id === id);
@@ -27,6 +30,8 @@ const Graph: React.FC<GraphProps> = ({ graphData }: GraphProps) => {
   return (
     <ForceGraph3D
       graphData={graphData}
+      width={width}
+      height={height}
       nodeAutoColorBy={(d) => getGroupColor(d.group || "")}
       linkAutoColorBy={(d) => {
         const sourceNode =
@@ -40,11 +45,8 @@ const Graph: React.FC<GraphProps> = ({ graphData }: GraphProps) => {
       linkDirectionalArrowRelPos={1}
       linkCurvature={0.2}
       nodeThreeObject={({ group }) => {
-        // Use box geometry for nodes with empty group, otherwise use spheres
         const geometry =
-          group === ""
-            ? new THREE.BoxGeometry(8, 8, 8) // Box for nodes with empty group
-            : new THREE.SphereGeometry(5); // Sphere for other nodes
+          group === "" ? new THREE.BoxGeometry(8, 8, 8) : new THREE.SphereGeometry(5);
 
         const material = new THREE.MeshStandardMaterial({
           color: getGroupColor(group),
