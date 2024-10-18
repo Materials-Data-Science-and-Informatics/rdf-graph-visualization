@@ -1,10 +1,10 @@
-import Graph from "./components/Graph.tsx";
+import Content from "./components/Content.tsx";
 import Layout from "./components/Layout.tsx";
 
 function App() {
   return (
     <Layout>
-      <Graph />
+      <Content />
     </Layout>
   );
 }

@@ -17,10 +17,7 @@ export default function Layout({ children }: LayoutProps) {
     <Flex minHeight="100vh" display="flex" flexDirection="column" width="100vw">
       <Navbar />
       <Box flex="1" width={contentWidth} mx="auto" justifyContent="center">
-        {/* Ensure the child component takes the full available space */}
-        <Box height="100%" width="100%" display="flex" justifyContent="center" alignItems="center">
-          {children}
-        </Box>
+        {children}
       </Box>
       {/*<Footer />*/}
     </Flex>

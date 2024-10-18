@@ -1,17 +1,12 @@
 // Type definitions for the graph data
-interface Node {
-  id: string;
+type NodeType = {
+    id: string;
   label?: string;
   group?: string;
 }
 
-interface Link {
+type LinkType = {
   source: string;
   target: string;
   label?: string;
-}
-
-interface GraphData {
-  nodes: Node[];
-  links: Link[];
 }

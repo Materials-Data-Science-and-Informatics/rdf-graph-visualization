@@ -1,21 +1,12 @@
-import React, { useState, useEffect } from "react";
-import ForceGraph3D from "react-force-graph-3d";
+import React from "react";
+import ForceGraph3D, { GraphData, NodeObject, LinkObject } from "react-force-graph-3d";
 import * as THREE from "three";
-import { GraphData, Node } from "./Graph.tsx";
-import { createGraph, rdfGraphToNodes } from "../utils.ts";
 
-const Graph: React.FC = () => {
-  const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
+interface GraphProps {
+  graphData: GraphData;
+}
 
-  // Function to load and parse the RDF file
-  const loadAndParseRDF = async (fileUrl: string, callback: (data: GraphData) => void) => {
-    const response = await fetch(fileUrl);
-    const rdfData = await response.text();
-    const store = createGraph(rdfData, "http://schema.org/");
-    const graphData = rdfGraphToNodes(store);
-    callback(graphData);
-  };
-
+const Graph: React.FC<GraphProps> = ({ graphData }: GraphProps) => {
   const getGroupColor = (group: string) => {
     const colors: { [key: string]: string } = {
       person: "red",
@@ -31,13 +22,7 @@ const Graph: React.FC = () => {
     return colors[group] || "gray"; // Default to 3 if group not found
   };
 
-  useEffect(() => {
-    // loadAndParseRDF("/data/dataset_juelichdata.ttl", setGraphData);
-    loadAndParseRDF("/data/Helmholtz_KG-sample.ttl", setGraphData);
-    // loadAndParseRDF("/data/software_rodare.ttl", setGraphData);
-  }, []);
-
-  const getNodeById = (id: string) => graphData.nodes.find((node: Node) => node.id === id);
+  const getNodeById = (id: string) => graphData.nodes.find((node: NodeObject) => node.id === id);
 
   return (
     <ForceGraph3D
@@ -49,8 +34,8 @@ const Graph: React.FC = () => {
         return getGroupColor(sourceNode?.group || "");
       }}
       linkWidth={2}
-      nodeLabel={(d) => `${(d as Node).label || (d as Node).id}`} // Show the label or fallback to id
-      linkLabel={(d) => `${(d as Link).label}`} // Show the label for links
+      nodeLabel={(d) => `${(d as NodeObject).label || (d as NodeObject).id}`} // Show the label or fallback to id
+      linkLabel={(d) => `${(d as LinkObject).label}`} // Show the label for links
       linkDirectionalArrowLength={2.5}
       linkDirectionalArrowRelPos={1}
       linkCurvature={0.2}

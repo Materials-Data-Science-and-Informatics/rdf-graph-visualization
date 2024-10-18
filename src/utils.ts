@@ -1,5 +1,5 @@
 import * as rdflib from "rdflib";
-import { Node, Link, GraphData } from "./components/Graph.tsx";
+import { GraphData, LinkObject, NodeObject } from "react-force-graph-3d";
 
 const createGraph = (rdfData: string, baseUrl: string): rdflib.Store => {
   const store = rdflib.graph();
@@ -16,13 +16,13 @@ const createGraph = (rdfData: string, baseUrl: string): rdflib.Store => {
 };
 
 const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): GraphData => {
-  const nodesMap = new Map<string, Node>();
-  const edges: Link[] = [];
+  const nodesMap = new Map<string, NodeObject<NodeType>>();
+  const edges: LinkObject<NodeType, LinkType>[] = [];
 
   const safeUpdateElement = (id: string, label?: string, group?: string): void => {
     if (!nodesMap.has(id)) {
       // create the node
-      const newNode = { id: id, label: label ?? id, group: group ?? "" };
+      const newNode = { id: id, label: label ?? id, group: group ?? "" } as NodeType;
 
       nodesMap.set(id, newNode);
     } else {
@@ -30,8 +30,8 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
       const node = nodesMap.get(id);
       const updatedNode = {
         id: id,
-        label: label ?? node.label,
-        group: group ?? node.group,
+        label: label ?? node?.label,
+        group: group ?? node?.group,
       };
 
       nodesMap.set(id, updatedNode);
@@ -96,13 +96,13 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
   else return graphData;
 };
 
-const removeNonConnectedNodes = (graphData: GraphData): Node[] => {
+const removeNonConnectedNodes = (graphData: GraphData): NodeObject[] => {
   const connectedNodeIds = new Set(
-    graphData.links.flatMap((edge: Link) => [edge.source, edge.target])
+    graphData.links.flatMap(({ source, target }: NodeObject) => [source, target] as LinkObject)
   );
 
   // Keep only nodes that are connected by edges
-  return graphData.nodes.filter((node: Node) => connectedNodeIds.has(node.id));
+  return graphData.nodes.filter((node: NodeObject) => connectedNodeIds.has(node.id));
 };
 
 const typeToGroup = (type: string): string => {
