@@ -19,6 +19,7 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
   const nodesMap = new Map<string, NodeObject<NodeType>>();
   const edges: LinkObject<NodeType, LinkType>[] = [];
 
+  // create the element if not exists
   const safeUpdateElement = (id: string, label?: string, group?: string): void => {
     if (!nodesMap.has(id)) {
       // create the node
@@ -43,9 +44,35 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
     const pred = statement.predicate.value;
     const obj = statement.object.value;
 
+    // Filter out unwanted annotation properties and irrelevant predicates
+    // List of relevant properties you care about
+    const relevantProperties = new Set([
+      "http://schema.org/name",
+      "http://schema.org/text",
+      "http://schema.org/affiliation",
+      "http://schema.org/author",
+      "http://schema.org/creator",
+      "http://schema.org/license",
+      "http://schema.org/keywords",
+      "http://schema.org/provider",
+      "http://schema.org/publisher",
+      "http://schema.org/dateModified",
+      "http://schema.org/datePublished",
+      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
+    ]);
+
+    // If the predicate is in the ignored list, skip this statement
+    if (!relevantProperties.has(pred)) {
+      return; // Skip this statement
+    }
+
     // set node type
     if (pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") {
       const group = typeToGroup(obj);
+
+      if (group === "") {
+        return;
+      }
 
       safeUpdateElement(subj, undefined, group);
     } else if (pred === "http://schema.org/name" || pred === "http://schema.org/text") {
@@ -53,9 +80,6 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
       const label = statement.object.value;
 
       safeUpdateElement(subj, label);
-    } else {
-      safeUpdateElement(subj);
-      safeUpdateElement(obj);
     }
 
     // Create links for relevant relationships
@@ -63,7 +87,6 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
       "provider",
       "license",
       "keywords",
-      // "identifier",
       "dataPublished",
       "dateModified",
       "creator",
@@ -81,6 +104,9 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
       }
       if (!nodesMap.has(subj)) {
         nodesMap.set(subj, { id: subj, label: subj, group: "" });
+      }
+      if (!nodesMap.has(obj)) {
+        nodesMap.set(obj, { id: obj, label: obj, group: "" });
       }
       edges.push({ source: subj, target: obj, label: pred });
     }
