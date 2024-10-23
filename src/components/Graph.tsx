@@ -12,11 +12,7 @@ interface GraphProps {
   height: number;
 }
 
-
-
 const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
-
-
   const getNodeById = (id: string) => graphData.nodes.find((node: NodeObject) => node.id === id);
 
   return (

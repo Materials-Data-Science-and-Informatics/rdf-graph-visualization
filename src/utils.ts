@@ -15,7 +15,7 @@ const createGraph = (rdfData: string, baseUrl: string): rdflib.Store => {
   return store;
 };
 
-const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): GraphData => {
+const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
   const nodesMap = new Map<string, NodeObject<NodeType>>();
   const edges: LinkObject<NodeType, LinkType>[] = [];
 
@@ -114,18 +114,23 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
 
   const nodes = Array.from(nodesMap.values());
   const graphData: GraphData = { nodes, links: edges };
-  const connectedNodes = removeNonConnectedNodes(graphData);
-  if (removeUnconnectedNodes) return { nodes: connectedNodes, links: edges };
-  else return graphData;
+  return graphData;
 };
 
 const removeNonConnectedNodes = (graphData: GraphData): NodeObject[] => {
+  // Collect all connected node ids from the links
   const connectedNodeIds = new Set(
-    graphData.links.flatMap(({ source, target }: NodeObject) => [source, target] as LinkObject)
+    graphData.links.flatMap(({ source, target }) => {
+      const sourceId = typeof source === "string" ? source : source.id;
+      const targetId = typeof target === "string" ? target : target.id;
+      return [sourceId, targetId];
+    })
   );
 
   // Keep only nodes that are connected by edges
-  return graphData.nodes.filter((node: NodeObject) => connectedNodeIds.has(node.id));
+  return graphData.nodes.filter((node: NodeObject) =>
+    connectedNodeIds.has(node?.id?.toString() ?? "")
+  );
 };
 
 const typeToGroup = (type: string): string => {
@@ -153,4 +158,4 @@ const typeToGroup = (type: string): string => {
 
   return ""; // return a default value if no match is found
 };
-export { createGraph, rdfGraphToNodes };
+export { createGraph, rdfGraphToNodes, removeNonConnectedNodes };

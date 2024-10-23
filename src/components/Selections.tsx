@@ -1,27 +1,36 @@
-import { Box, Checkbox, FormControl, FormLabel, Input, VStack,Heading,HStack } from "@chakra-ui/react";
+import {
+  Box,
+  Checkbox,
+  FormControl,
+  FormLabel,
+  Input,
+  VStack,
+  Heading,
+  HStack,
+} from "@chakra-ui/react";
 import * as React from "react";
-import { useState, Dispatch, SetStateAction,useEffect } from "react";
-import { createGraph, rdfGraphToNodes } from "../utils";
-import { GraphData } from "react-force-graph-3d";
-import {groups} from "./utils.tsx";
+import { useState, Dispatch, SetStateAction, useEffect } from "react";
+import { createGraph, rdfGraphToNodes, removeNonConnectedNodes } from "../utils";
+import { groups } from "./utils.tsx";
 import FilterSwitch from "./FilterSwitch.tsx";
+import { GraphData, LinkObject } from "react-force-graph-3d";
 
-
-const parseRDF = async (
-  rdfData: string,
-  removeUnconnectedNodes: boolean,
-  callback: (data: GraphData) => void
-) => {
+const parseRDF = (rdfData: string): GraphData => {
   const store = createGraph(rdfData, "http://schema.org/");
-  const graphData = rdfGraphToNodes(store, removeUnconnectedNodes);
-  callback(graphData);
+  return rdfGraphToNodes(store);
 };
 
 interface SelectionsProps {
+  graphData: GraphData;
   setGraphData: Dispatch<SetStateAction<GraphData>>;
+  setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
 }
 
-const Selections: React.FC<SelectionsProps> = ({ setGraphData }: SelectionsProps) => {
+const Selections: React.FC<SelectionsProps> = ({
+  graphData,
+  setGraphData,
+  setFilteredGraphData,
+}: SelectionsProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
@@ -48,7 +57,9 @@ const Selections: React.FC<SelectionsProps> = ({ setGraphData }: SelectionsProps
       const fileContent = reader.result;
       if (typeof fileContent === "string") {
         // Ensure the content is a string
-        parseRDF(fileContent, isChecked, setGraphData);
+        const data = parseRDF(fileContent);
+        setGraphData(data);
+        setFilteredGraphData(data);
       } else {
         console.error("File content is not a string.");
       }
@@ -61,15 +72,39 @@ const Selections: React.FC<SelectionsProps> = ({ setGraphData }: SelectionsProps
 
     console.log("Reading file:", file.name);
     reader.readAsText(file); // Read the file as text
-  }, [file, isChecked, setGraphData]);
+  }, [file]);
 
+  useEffect(() => {
+    // first, filter
+    const filteredNodes = graphData.nodes.filter((node) => {
+      // if no filters are selected, show all nodes
+      if (filters.size === 0) {
+        return true;
+      }
+      // otherwise, dont show nodes that match the selected filters
+      return !filters.has(node.group);
+    });
+    const filteredLinks = graphData.links.filter((link: LinkObject) => {
+      // link should be shown if both source or target is in the filtered nodes
+      return (
+        filteredNodes.some((node) => node.id === link.source?.id) &&
+        filteredNodes.some((node) => node.id === link.target?.id)
+      );
+    });
+    const filteredGraph = { nodes: filteredNodes, links: filteredLinks };
 
-
-
+    if (isChecked) {
+      const connectedNodes = removeNonConnectedNodes(filteredGraph);
+      const unconnectedGraph = { nodes: connectedNodes, links: filteredGraph.links };
+      setFilteredGraphData(unconnectedGraph);
+    } else {
+      setFilteredGraphData(filteredGraph);
+    }
+  }, [isChecked, filters]);
 
   return (
     <Box p={4} borderWidth="1px" borderRadius="lg" width="100%" mx="auto">
-      <VStack spacing={4}>
+      <VStack spacing={4} alignItems="flex-start">
         <FormControl>
           <FormLabel htmlFor="file-upload">Upload a file</FormLabel>
           <Input id="file-upload" type="file" accept=".rdf, .ttl" onChange={handleFileChange} />
@@ -81,14 +116,16 @@ const Selections: React.FC<SelectionsProps> = ({ setGraphData }: SelectionsProps
           </Checkbox>
         </FormControl>
 
-        <Heading as='h4' size='md'>Filter by group</Heading>
+        <Heading as="h4" size="md">
+          Filter by group
+        </Heading>
+
         <HStack spacing={2}>
           {groups.map((group) => (
-            <FilterSwitch name={group} filters={filters} setFilters={setFilters} />
+            <FilterSwitch key={group} name={group} filters={filters} setFilters={setFilters} />
           ))}
         </HStack>
-
-        </VStack>
+      </VStack>
     </Box>
   );
 };

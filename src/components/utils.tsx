@@ -16,4 +16,4 @@ const getGroupColor = (group: string) => {
   return groupColors[group] || "gray"; // Default to gray if group not found
 };
 
-export { groups,getGroupColor, groupColors };
+export { groups, getGroupColor, groupColors };
