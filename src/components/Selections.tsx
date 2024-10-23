@@ -1,7 +1,11 @@
-import { Box, Button, Checkbox, FormControl, FormLabel, Input, VStack } from "@chakra-ui/react";
-import React, { useState, Dispatch, SetStateAction } from "react";
+import { Box, Checkbox, FormControl, FormLabel, Input, VStack,Heading,HStack } from "@chakra-ui/react";
+import * as React from "react";
+import { useState, Dispatch, SetStateAction,useEffect } from "react";
 import { createGraph, rdfGraphToNodes } from "../utils";
 import { GraphData } from "react-force-graph-3d";
+import {groups} from "./utils.tsx";
+import FilterSwitch from "./FilterSwitch.tsx";
+
 
 const parseRDF = async (
   rdfData: string,
@@ -19,7 +23,8 @@ interface SelectionsProps {
 
 const Selections: React.FC<SelectionsProps> = ({ setGraphData }: SelectionsProps) => {
   const [file, setFile] = useState<File | null>(null);
-  const [isChecked, setIsChecked] = useState(false);
+  const [isChecked, setIsChecked] = useState<boolean>(false);
+  const [filters, setFilters] = useState<Set<string>>(new Set<string>());
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -30,7 +35,7 @@ const Selections: React.FC<SelectionsProps> = ({ setGraphData }: SelectionsProps
     setIsChecked(event.target.checked);
   };
 
-  const handleSubmit = () => {
+  useEffect(() => {
     if (!file) {
       console.log("No file selected.");
       return;
@@ -56,7 +61,11 @@ const Selections: React.FC<SelectionsProps> = ({ setGraphData }: SelectionsProps
 
     console.log("Reading file:", file.name);
     reader.readAsText(file); // Read the file as text
-  };
+  }, [file, isChecked, setGraphData]);
+
+
+
+
 
   return (
     <Box p={4} borderWidth="1px" borderRadius="lg" width="100%" mx="auto">
@@ -72,10 +81,14 @@ const Selections: React.FC<SelectionsProps> = ({ setGraphData }: SelectionsProps
           </Checkbox>
         </FormControl>
 
-        <Button colorScheme="blue" onClick={handleSubmit}>
-          Submit
-        </Button>
-      </VStack>
+        <Heading as='h4' size='md'>Filter by group</Heading>
+        <HStack spacing={2}>
+          {groups.map((group) => (
+            <FilterSwitch name={group} filters={filters} setFilters={setFilters} />
+          ))}
+        </HStack>
+
+        </VStack>
     </Box>
   );
 };
