@@ -121,9 +121,14 @@ const removeNonConnectedNodes = (graphData: GraphData): NodeObject[] => {
   // Collect all connected node ids from the links
   const connectedNodeIds = new Set(
     graphData.links.flatMap(({ source, target }) => {
-      const sourceId = typeof source === "string" ? source : source.id;
-      const targetId = typeof target === "string" ? target : target.id;
-      return [sourceId, targetId];
+      const sourceId =
+        typeof source === "string" || typeof source === "number" ? source : source?.id; // Handle cases where source could be undefined or an object
+
+      const targetId =
+        typeof target === "string" || typeof target === "number" ? target : target?.id; // Handle cases where target could be undefined or an object
+
+      // Only return IDs if sourceId and targetId are defined
+      return [sourceId, targetId].filter((id) => id !== undefined);
     })
   );
 

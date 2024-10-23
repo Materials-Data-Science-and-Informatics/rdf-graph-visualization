@@ -86,10 +86,15 @@ const Selections: React.FC<SelectionsProps> = ({
     });
     const filteredLinks = graphData.links.filter((link: LinkObject) => {
       // link should be shown if both source or target is in the filtered nodes
-      return (
-        filteredNodes.some((node) => node.id === link.source?.id) &&
-        filteredNodes.some((node) => node.id === link.target?.id)
-      );
+      const linkExists =
+        filteredNodes.some(
+          (node) => node.id === (typeof link.source === "object" ? link.source?.id : link.source)
+        ) &&
+        filteredNodes.some(
+          (node) => node.id === (typeof link.target === "object" ? link.target?.id : link.target)
+        );
+
+      return linkExists;
     });
     const filteredGraph = { nodes: filteredNodes, links: filteredLinks };
 
