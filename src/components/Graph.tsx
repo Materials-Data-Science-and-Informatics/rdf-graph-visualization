@@ -21,11 +21,18 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
   const fgRef = useRef();
 
   const handleClick = useCallback(
-    (node) => {
+    (node: NodeObject) => {
+      // return if node is undefined or node's x,y,z are undefined
+      if (!node || node.x === undefined || node.y === undefined || node.z === undefined) {
+        return;
+      }
+      if (!fgRef.current) return;
+
       // Aim at node from outside it
       const distance = 80;
       const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
 
+      // @ts-ignore
       fgRef.current.cameraPosition(
         { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, // new position
         node, // lookAt ({ x, y, z })

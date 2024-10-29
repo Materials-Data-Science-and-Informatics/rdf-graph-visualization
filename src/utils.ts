@@ -52,6 +52,7 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
         id: id,
         label: label ?? node?.label,
         group: group ?? node?.group,
+        color: node?.color,
       };
       updatedNode.color = updatedNode.group ? getGroupColor(updatedNode.group) : "gray";
 
