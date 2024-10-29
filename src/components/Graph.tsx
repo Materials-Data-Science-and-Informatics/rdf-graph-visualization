@@ -58,7 +58,11 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height, isAnimating }) 
     if (!fgRef.current) return;
 
     angleRef.current += 0.01; // Increment angle for smooth orbit
-    const distance = 300;
+    const baseDistance = 1500;
+    const distanceMultiplier = [1, 0.75, 0.5, 0.33];
+    const currentMultiplier =
+      distanceMultiplier[Math.floor(angleRef.current / (2 * Math.PI)) % distanceMultiplier.length];
+    const distance = baseDistance * currentMultiplier;
 
     // Calculate camera position based on angle
     const x = distance * Math.sin(angleRef.current);

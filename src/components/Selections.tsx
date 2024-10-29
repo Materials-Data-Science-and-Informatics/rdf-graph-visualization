@@ -138,14 +138,19 @@ const Selections: React.FC<SelectionsProps> = ({
           <Input id="file-upload" type="file" accept=".rdf, .ttl" onChange={handleFileChange} />
         </FormControl>
 
-        <FormControl>
-          <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
-            Remove nodes that are not linked
-          </Checkbox>
-          <Checkbox isChecked={isAnimating} onChange={(e) => setIsAnimating(e.target.checked)}>
-            Animate graph
-          </Checkbox>
-        </FormControl>
+        <VStack spacing={1} alignItems="flex-start">
+          <FormControl>
+            <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
+              Remove nodes that are not linked
+            </Checkbox>
+          </FormControl>
+
+          <FormControl>
+            <Checkbox isChecked={isAnimating} onChange={(e) => setIsAnimating(e.target.checked)}>
+              Animate graph
+            </Checkbox>
+          </FormControl>
+        </VStack>
 
         <Heading as="h4" size="md">
           Filter by group
