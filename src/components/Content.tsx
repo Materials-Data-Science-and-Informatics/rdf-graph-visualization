@@ -10,6 +10,7 @@ const Content = () => {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
+  const [isAnimating, setIsAnimating] = useState(false); // For orbit animation
 
   useResizeObserver(boxRef, (entry) => {
     if (entry) {
@@ -25,10 +26,17 @@ const Content = () => {
           setGraphData={setGraphData}
           graphData={graphData}
           setFilteredGraphData={setFilteredGraphData}
+          isAnimating={isAnimating}
+          setIsAnimating={setIsAnimating}
         />
       </Box>
       <Box ref={boxRef} width="100%" height="60vh" overflow="hidden">
-        <Graph graphData={filteredGraphData} width={size.width} height={size.height} />
+        <Graph
+          graphData={filteredGraphData}
+          width={size.width}
+          height={size.height}
+          isAnimating={isAnimating}
+        />
       </Box>
     </Box>
   );

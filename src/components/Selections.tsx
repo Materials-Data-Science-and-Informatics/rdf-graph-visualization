@@ -24,12 +24,16 @@ interface SelectionsProps {
   graphData: GraphData;
   setGraphData: Dispatch<SetStateAction<GraphData>>;
   setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
+  isAnimating: boolean;
+  setIsAnimating: Dispatch<SetStateAction<boolean>>;
 }
 
 const Selections: React.FC<SelectionsProps> = ({
   graphData,
   setGraphData,
   setFilteredGraphData,
+  isAnimating,
+  setIsAnimating,
 }: SelectionsProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [isChecked, setIsChecked] = useState<boolean>(false);
@@ -137,6 +141,9 @@ const Selections: React.FC<SelectionsProps> = ({
         <FormControl>
           <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
             Remove nodes that are not linked
+          </Checkbox>
+          <Checkbox isChecked={isAnimating} onChange={(e) => setIsAnimating(e.target.checked)}>
+            Animate graph
           </Checkbox>
         </FormControl>
 

@@ -5,45 +5,45 @@ import { Box } from "@chakra-ui/react";
 import Legend from "./Legend.tsx";
 import { groupColors, getGroupColor } from "../utils";
 import FullScreenButton from "./FullScreenButton.tsx";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface GraphProps {
   graphData: GraphData;
   width: number;
   height: number;
+  isAnimating: boolean;
 }
 
-const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
+const Graph: React.FC<GraphProps> = ({ graphData, width, height, isAnimating }) => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [graphWidth, setGraphWidth] = useState(width);
   const [graphHeight, setGraphHeight] = useState(height);
+  const fgRef = useRef<any>(null);
 
-  const fgRef = useRef();
+  // For orbit animation
+  const animationId = useRef<number>();
+  const angleRef = useRef(0); // Track the angle for orbiting
 
   const handleClick = useCallback(
     (node: NodeObject) => {
-      // return if node is undefined or node's x,y,z are undefined
       if (!node || node.x === undefined || node.y === undefined || node.z === undefined) {
         return;
       }
       if (!fgRef.current) return;
 
-      // Aim at node from outside it
       const distance = 80;
       const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
 
-      // @ts-ignore
       fgRef.current.cameraPosition(
-        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, // new position
-        node, // lookAt ({ x, y, z })
-        2000 // ms transition duration
+        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+        node,
+        2000
       );
     },
     [fgRef]
   );
 
-  // Update graph dimensions when full screen is toggled
-  React.useEffect(() => {
+  useEffect(() => {
     if (isFullScreen) {
       setGraphWidth(window.innerWidth);
       setGraphHeight(window.innerHeight);
@@ -53,6 +53,40 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
     }
   }, [isFullScreen, width, height]);
 
+  // Orbit animation function
+  const animateOrbit = useCallback(() => {
+    if (!fgRef.current) return;
+
+    angleRef.current += 0.01; // Increment angle for smooth orbit
+    const distance = 300;
+
+    // Calculate camera position based on angle
+    const x = distance * Math.sin(angleRef.current);
+    const z = distance * Math.cos(angleRef.current);
+    const y = 100; // Optional: adjust for a slight elevation
+
+    fgRef.current.cameraPosition(
+      { x, y, z }, // New camera position
+      { x: 0, y: 0, z: 0 }, // Look at center of graph
+      0
+    );
+
+    // Request the next frame for smooth animation
+    animationId.current = requestAnimationFrame(animateOrbit);
+  }, []);
+
+  // Toggle animation on/off
+  useEffect(() => {
+    if (isAnimating) {
+      animateOrbit();
+    } else if (animationId.current) {
+      cancelAnimationFrame(animationId.current);
+    }
+    return () => {
+      if (animationId.current) cancelAnimationFrame(animationId.current);
+    };
+  }, [isAnimating, animateOrbit]);
+
   return (
     <Box
       width={isFullScreen ? "100vw" : width}
@@ -60,7 +94,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
       position={isFullScreen ? "fixed" : "relative"}
       top={isFullScreen ? 0 : "unset"}
       left={isFullScreen ? 0 : "unset"}
-      zIndex={isFullScreen ? 9999 : "auto"} // Ensure it covers everything in full screen
+      zIndex={isFullScreen ? 9999 : "auto"}
     >
       <ForceGraph3D
         ref={fgRef}
