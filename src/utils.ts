@@ -1,6 +1,22 @@
 import * as rdflib from "rdflib";
 import { GraphData, LinkObject, NodeObject } from "react-force-graph-3d";
 
+const groupColors: { [key: string]: string } = {
+  person: "red",
+  dataset: "blue",
+  organization: "green",
+  software: "yellow",
+  document: "orange",
+  article: "indigo",
+  creativeWork: "violet",
+  service: "cyan",
+  "": "gray", // Default group
+};
+
+const getGroupColor = (group: string) => {
+  return groupColors[group] || "gray"; // Default to gray if group not found
+};
+
 const createGraph = (rdfData: string, baseUrl: string): rdflib.Store => {
   const store = rdflib.graph();
   const base = rdflib.sym(baseUrl);
@@ -21,9 +37,12 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
 
   // create the element if not exists
   const safeUpdateElement = (id: string, label?: string, group?: string): void => {
+    const safeGroup = group ?? "";
+    const safeLabel = label ?? id;
+    const color = group ? getGroupColor(safeGroup) : "gray";
     if (!nodesMap.has(id)) {
       // create the node
-      const newNode = { id: id, label: label ?? id, group: group ?? "" } as NodeType;
+      const newNode = { id: id, label: safeLabel, group: safeGroup, color } as NodeType;
 
       nodesMap.set(id, newNode);
     } else {
@@ -34,6 +53,7 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
         label: label ?? node?.label,
         group: group ?? node?.group,
       };
+      updatedNode.color = updatedNode.group ? getGroupColor(updatedNode.group) : "gray";
 
       nodesMap.set(id, updatedNode);
     }
@@ -108,13 +128,14 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
       if (!nodesMap.has(obj)) {
         nodesMap.set(obj, { id: obj, label: obj, group: "" });
       }
-      edges.push({ source: subj, target: obj, label: pred });
+      // set as source color, if not set target color, if not set default color gray
+      const linkColor = nodesMap.get(subj)?.color ?? nodesMap.get(obj)?.color ?? "gray";
+      edges.push({ source: subj, target: obj, label: pred, color: linkColor });
     }
   });
 
   const nodes = Array.from(nodesMap.values());
-  const graphData: GraphData = { nodes, links: edges };
-  return graphData;
+  return { nodes, links: edges } as GraphData;
 };
 
 const removeNonConnectedNodes = (graphData: GraphData): NodeObject[] => {
@@ -163,4 +184,14 @@ const typeToGroup = (type: string): string => {
 
   return ""; // return a default value if no match is found
 };
-export { createGraph, rdfGraphToNodes, removeNonConnectedNodes };
+
+const groups = Object.keys(groupColors).filter((group) => group !== ""); // Remove the default group
+
+export {
+  createGraph,
+  rdfGraphToNodes,
+  removeNonConnectedNodes,
+  groupColors,
+  groups,
+  getGroupColor,
+};

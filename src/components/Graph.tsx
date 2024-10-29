@@ -3,8 +3,9 @@ import ForceGraph3D, { GraphData, NodeObject, LinkObject } from "react-force-gra
 import * as THREE from "three";
 import { Box } from "@chakra-ui/react";
 import Legend from "./Legend.tsx";
-import { groupColors, getGroupColor } from "./utils";
+import { groupColors, getGroupColor } from "../utils";
 import FullScreenButton from "./FullScreenButton.tsx";
+import { useCallback, useRef, useState } from "react";
 
 interface GraphProps {
   graphData: GraphData;
@@ -13,10 +14,26 @@ interface GraphProps {
 }
 
 const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
-  const [isFullScreen, setIsFullScreen] = React.useState(false);
-  const [graphWidth, setGraphWidth] = React.useState(width);
-  const [graphHeight, setGraphHeight] = React.useState(height);
-  const getNodeById = (id: string) => graphData.nodes.find((node: NodeObject) => node.id === id);
+  const [isFullScreen, setIsFullScreen] = useState(false);
+  const [graphWidth, setGraphWidth] = useState(width);
+  const [graphHeight, setGraphHeight] = useState(height);
+
+  const fgRef = useRef();
+
+  const handleClick = useCallback(
+    (node) => {
+      // Aim at node from outside it
+      const distance = 80;
+      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+
+      fgRef.current.cameraPosition(
+        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio }, // new position
+        node, // lookAt ({ x, y, z })
+        2000 // ms transition duration
+      );
+    },
+    [fgRef]
+  );
 
   // Update graph dimensions when full screen is toggled
   React.useEffect(() => {
@@ -39,17 +56,12 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
       zIndex={isFullScreen ? 9999 : "auto"} // Ensure it covers everything in full screen
     >
       <ForceGraph3D
+        ref={fgRef}
         graphData={graphData}
         width={graphWidth}
         height={graphHeight}
-        nodeAutoColorBy={(d) => getGroupColor(d.group || "")}
-        linkAutoColorBy={(d) => {
-          const sourceNode =
-            typeof d.source === "object" ? d.source : getNodeById(d.source?.toString() ?? "");
-          return getGroupColor(sourceNode?.group || "");
-        }}
-        nodeLabel={(d) => `${(d as NodeObject).label || (d as NodeObject).id}`} // Show the label or fallback to id
-        linkLabel={(d) => `${(d as LinkObject).label}`} // Show the label for links
+        nodeLabel={(node: NodeObject) => `${node.label || node.id}`}
+        linkLabel={(d: LinkObject) => `${d.label}`}
         linkDirectionalArrowLength={7}
         linkDirectionalArrowRelPos={1}
         linkCurvature={0.3}
@@ -66,6 +78,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
 
           return new THREE.Mesh(geometry, material);
         }}
+        onNodeClick={handleClick}
       />
       <FullScreenButton isFullScreen={isFullScreen} setIsFullScreen={setIsFullScreen} />
       <Legend groupColors={groupColors} />

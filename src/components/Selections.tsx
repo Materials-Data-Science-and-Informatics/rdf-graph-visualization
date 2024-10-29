@@ -10,10 +10,10 @@ import {
 } from "@chakra-ui/react";
 import * as React from "react";
 import { useState, Dispatch, SetStateAction, useEffect } from "react";
-import { createGraph, rdfGraphToNodes, removeNonConnectedNodes } from "../utils";
-import { groups } from "./utils.tsx";
+import { createGraph, rdfGraphToNodes, removeNonConnectedNodes, groups } from "../utils";
 import FilterSwitch from "./FilterSwitch.tsx";
 import { GraphData, LinkObject } from "react-force-graph-3d";
+import LoadingSpinner from "./LoadingSpinner.tsx";
 
 const parseRDF = (rdfData: string): GraphData => {
   const store = createGraph(rdfData, "http://schema.org/");
@@ -34,6 +34,7 @@ const Selections: React.FC<SelectionsProps> = ({
   const [file, setFile] = useState<File | null>(null);
   const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
+  const [loading, setLoading] = useState<boolean>(false);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -60,9 +61,15 @@ const Selections: React.FC<SelectionsProps> = ({
         const data = parseRDF(fileContent);
         setGraphData(data);
         setFilteredGraphData(data);
+        setIsChecked(false);
+        setFilters(new Set<string>());
+        console.log(
+          `Loaded file: ${file.name} with ${data.nodes.length} nodes and ${data.links.length} links.`
+        );
       } else {
         console.error("File content is not a string.");
       }
+      setLoading(false);
     };
 
     // Add error event listener for debugging
@@ -71,10 +78,12 @@ const Selections: React.FC<SelectionsProps> = ({
     };
 
     console.log("Reading file:", file.name);
+    setLoading(true);
     reader.readAsText(file); // Read the file as text
   }, [file]);
 
   useEffect(() => {
+    setLoading(true);
     // first, filter
     const filteredNodes = graphData.nodes.filter((node) => {
       // if no filters are selected, show all nodes
@@ -86,15 +95,14 @@ const Selections: React.FC<SelectionsProps> = ({
     });
     const filteredLinks = graphData.links.filter((link: LinkObject) => {
       // link should be shown if both source or target is in the filtered nodes
-      const linkExists =
+      return (
         filteredNodes.some(
           (node) => node.id === (typeof link.source === "object" ? link.source?.id : link.source)
         ) &&
         filteredNodes.some(
           (node) => node.id === (typeof link.target === "object" ? link.target?.id : link.target)
-        );
-
-      return linkExists;
+        )
+      );
     });
     const filteredGraph = { nodes: filteredNodes, links: filteredLinks };
 
@@ -102,10 +110,21 @@ const Selections: React.FC<SelectionsProps> = ({
       const connectedNodes = removeNonConnectedNodes(filteredGraph);
       const unconnectedGraph = { nodes: connectedNodes, links: filteredGraph.links };
       setFilteredGraphData(unconnectedGraph);
+      console.log(
+        `Filtered graph with ${connectedNodes.length} nodes and ${filteredGraph.links.length} links.`
+      );
     } else {
       setFilteredGraphData(filteredGraph);
+      console.log(
+        `Filtered graph with ${filteredGraph.nodes.length} nodes and ${filteredGraph.links.length} links.`
+      );
     }
+    setLoading(false);
   }, [isChecked, filters]);
+
+  if (loading) {
+    return <LoadingSpinner />;
+  }
 
   return (
     <Box p={4} borderWidth="1px" borderRadius="lg" width="100%" mx="auto">
