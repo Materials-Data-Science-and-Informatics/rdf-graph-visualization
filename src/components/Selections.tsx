@@ -203,10 +203,10 @@ const Selections: React.FC<SelectionsProps> = ({
                     Animate zoom out and rotation
                   </Radio>
                   <Radio value="personZoomIn" isChecked={isAnimating2}>
-                    Animate license zoom-in and rotation
+                    Animate creative work zoom-in and rotation
                   </Radio>
                   <Radio value="creativeWorkZoomIn" isChecked={isAnimating3}>
-                    Animate creative work zoom-in and rotation
+                    Animate license zoom-in and rotation
                   </Radio>
                 </Stack>
               </RadioGroup>
