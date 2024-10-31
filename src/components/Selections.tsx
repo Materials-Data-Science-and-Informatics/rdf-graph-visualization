@@ -7,6 +7,9 @@ import {
   VStack,
   Heading,
   HStack,
+  Radio,
+  RadioGroup,
+  Stack,
 } from "@chakra-ui/react";
 import * as React from "react";
 import { useState, Dispatch, SetStateAction, useEffect } from "react";
@@ -24,21 +27,30 @@ interface SelectionsProps {
   graphData: GraphData;
   setGraphData: Dispatch<SetStateAction<GraphData>>;
   setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
-  isAnimating: boolean;
-  setIsAnimating: Dispatch<SetStateAction<boolean>>;
+  isAnimating1: boolean;
+  setIsAnimating1: Dispatch<SetStateAction<boolean>>;
+  isAnimating2: boolean;
+  setIsAnimating2: Dispatch<SetStateAction<boolean>>;
+  isAnimating3: boolean;
+  setIsAnimating3: Dispatch<SetStateAction<boolean>>;
 }
 
 const Selections: React.FC<SelectionsProps> = ({
   graphData,
   setGraphData,
   setFilteredGraphData,
-  isAnimating,
-  setIsAnimating,
+  isAnimating1,
+  setIsAnimating1,
+  isAnimating2,
+  setIsAnimating2,
+  isAnimating3,
+  setIsAnimating3,
 }: SelectionsProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
   const [loading, setLoading] = useState<boolean>(false);
+  const [animationOn, setAnimationOn] = useState<boolean>(false);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -60,18 +72,23 @@ const Selections: React.FC<SelectionsProps> = ({
     // Add the load event listener
     reader.onload = () => {
       const fileContent = reader.result;
-      if (typeof fileContent === "string") {
-        // Ensure the content is a string
-        const data = parseRDF(fileContent);
-        setGraphData(data);
-        setFilteredGraphData(data);
-        setIsChecked(false);
-        setFilters(new Set<string>());
-        console.log(
-          `Loaded file: ${file.name} with ${data.nodes.length} nodes and ${data.links.length} links.`
-        );
-      } else {
-        console.error("File content is not a string.");
+      try {
+        if (typeof fileContent === "string") {
+          // Ensure the content is a string
+          const data = parseRDF(fileContent);
+          setGraphData(data);
+          setFilteredGraphData(data);
+          setIsChecked(false);
+          setFilters(new Set<string>());
+          console.log(
+            `Loaded file: ${file.name} with ${data.nodes.length} nodes and ${data.links.length} links.`
+          );
+        } else {
+          console.error("File content is not a string.");
+        }
+      } catch (error) {
+        console.error("Error parsing RDF:", error);
+        window.alert("Error parsing RDF. Please check the file format.");
       }
       setLoading(false);
     };
@@ -130,6 +147,21 @@ const Selections: React.FC<SelectionsProps> = ({
     return <LoadingSpinner />;
   }
 
+  const onRadioChange = (value: string) => {
+    if (value === "zoomOut") {
+      setIsAnimating1(true);
+      setIsAnimating2(false);
+      setIsAnimating3(false);
+    } else if (value === "personZoomIn") {
+      setIsAnimating1(false);
+      setIsAnimating2(true);
+      setIsAnimating3(false);
+    } else if (value === "creativeWorkZoomIn") {
+      setIsAnimating1(false);
+      setIsAnimating2(false);
+      setIsAnimating3(true);
+    }
+  };
   return (
     <Box p={4} borderWidth="1px" borderRadius="lg" width="100%" mx="auto">
       <VStack spacing={4} alignItems="flex-start">
@@ -146,10 +178,39 @@ const Selections: React.FC<SelectionsProps> = ({
           </FormControl>
 
           <FormControl>
-            <Checkbox isChecked={isAnimating} onChange={(e) => setIsAnimating(e.target.checked)}>
-              Animate graph
+            <Checkbox
+              isChecked={animationOn}
+              onChange={(event) => {
+                setAnimationOn(event.target.checked);
+                if (!event.target.checked) {
+                  setIsAnimating1(false);
+                  setIsAnimating2(false);
+                  setIsAnimating3(false);
+                }
+              }}
+            >
+              Animation On
             </Checkbox>
           </FormControl>
+
+          {animationOn && (
+            <FormControl as="fieldset" id="animation-options-control">
+              <FormLabel as="legend">Animation Options</FormLabel>
+              <RadioGroup defaultValue="none" onChange={onRadioChange}>
+                <Stack spacing={4} direction="column">
+                  <Radio value="zoomOut" isChecked={isAnimating1}>
+                    Animate zoom out and rotation
+                  </Radio>
+                  <Radio value="personZoomIn" isChecked={isAnimating2}>
+                    Animate license zoom-in and rotation
+                  </Radio>
+                  <Radio value="creativeWorkZoomIn" isChecked={isAnimating3}>
+                    Animate creative work zoom-in and rotation
+                  </Radio>
+                </Stack>
+              </RadioGroup>
+            </FormControl>
+          )}
         </VStack>
 
         <Heading as="h4" size="md">
