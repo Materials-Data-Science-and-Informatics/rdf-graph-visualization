@@ -88,19 +88,24 @@ const Graph: React.FC<GraphProps> = ({
             targetNode.y !== undefined &&
             targetNode.z !== undefined
           ) {
-            position = { x: targetNode.x , y: targetNode.y  , z: targetNode.z   };
+            position = { x: targetNode.x, y: targetNode.y, z: targetNode.z };
           }
         } else if (stage.position) {
           position = stage.position;
         }
         // set camera like rotate but dont rotate ofc
         const distance = stage.distance || 300;
-        cameraPosition({x:position.x+distance, y:position.y,z:position.z}, position, stage.duration ?? 0);
+        cameraPosition(
+          { x: position.x + distance, y: position.y, z: position.z },
+          position,
+          stage.duration ?? 0
+        );
       } else if (stage.type === "rotate") {
         let rotateAround = { x: 0, y: 0, z: 0 };
         if (stage.nodeId) {
           const targetNode = graphData.nodes.find((node) => node.id === stage.nodeId);
-          if (targetNode) rotateAround = { x: targetNode.x, y: targetNode.y, z: targetNode.z };
+          if (targetNode)
+            rotateAround = { x: targetNode?.x ?? 0, y: targetNode?.y ?? 0, z: targetNode?.z ?? 0 };
         } else if (stage.position) {
           rotateAround = stage.position;
         }
@@ -112,7 +117,7 @@ const Graph: React.FC<GraphProps> = ({
 
         const rotate = () => {
           const elapsedTime = Date.now() - startTime;
-          if (elapsedTime  >= duration) return;
+          if (elapsedTime >= duration) return;
 
           const angle = (rotationAngle * elapsedTime) / duration;
           const x = rotateAround.x + radius * Math.cos(angle);

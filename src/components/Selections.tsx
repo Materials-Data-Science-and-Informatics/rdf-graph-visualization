@@ -162,6 +162,7 @@ const Selections: React.FC<SelectionsProps> = ({
       setIsAnimating3(true);
     }
   };
+
   return (
     <Box p={4} borderWidth="1px" borderRadius="lg" width="100%" mx="auto">
       <VStack spacing={4} alignItems="flex-start">
