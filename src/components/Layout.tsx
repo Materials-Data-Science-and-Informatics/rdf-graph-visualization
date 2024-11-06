@@ -1,6 +1,7 @@
 import { Box, Flex, useBreakpointValue } from "@chakra-ui/react";
 import { ReactNode } from "react";
 import Navbar from "./Navbar";
+import Footer from "./Footer";
 
 interface LayoutProps {
   children: ReactNode;
@@ -14,12 +15,24 @@ export default function Layout({ children }: LayoutProps) {
   });
 
   return (
-    <Flex minHeight="100vh" display="flex" flexDirection="column" width="100vw">
+    <Flex
+      minHeight="100vh"
+      display="flex"
+      flexDirection="column"
+      width="100%"
+      overflowX="hidden" // Prevents horizontal overflow
+    >
       <Navbar />
-      <Box flex="1" width={contentWidth} mx="auto" justifyContent="center">
+      <Box
+        flex="1"
+        width={contentWidth}
+        mx="auto"
+        justifyContent="center"
+        overflowX="hidden" // Prevents content overflow
+      >
         {children}
       </Box>
-      {/*<Footer />*/}
+      <Footer />
     </Flex>
   );
 }
