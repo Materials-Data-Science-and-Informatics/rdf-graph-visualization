@@ -1,5 +1,5 @@
 import { Box, Flex, Text, Image, Link } from "@chakra-ui/react";
-import { ExternalLinkIcon } from '@chakra-ui/icons'
+import { ExternalLinkIcon } from "@chakra-ui/icons";
 
 const Navbar = () => {
   return (
@@ -21,8 +21,8 @@ const Navbar = () => {
           fontSize={"xl"}
           fontWeight={"bold"}
           isExternal
-          >
-          HMC <ExternalLinkIcon mx='2px' />
+        >
+          HMC <ExternalLinkIcon mx="2px" />
         </Link>
       </Flex>
     </Box>
