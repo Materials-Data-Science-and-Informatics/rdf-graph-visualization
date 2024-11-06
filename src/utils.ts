@@ -86,7 +86,7 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
     }
 
     // Create links for relevant relationships
-    const includesElement = CONFIG.relationProperties.some((item:string) => pred.includes(item));
+    const includesElement = CONFIG.relationProperties.some((item: string) => pred.includes(item));
     if (includesElement) {
       const group = predToGroup(pred);
       if (group !== "") {
@@ -148,6 +148,6 @@ const predToGroup = (pred: string): string => {
 };
 
 // config groups keys
-const groups = CONFIG.groups.map((group:GroupType) => group.name);
+const groups = CONFIG.groups.map((group: GroupType) => group.name);
 
 export { createGraph, rdfGraphToNodes, removeNonConnectedNodes, groups, getGroupColor };
