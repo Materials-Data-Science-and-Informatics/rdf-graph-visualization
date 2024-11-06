@@ -142,7 +142,7 @@ const Selections: React.FC<SelectionsProps> = ({
   }
 
   return (
-    <Box p={4} borderWidth="1px" borderRadius="lg" width="100%" mx="auto">
+    <Box p={4} width="100%" mx="auto">
       <VStack spacing={4} alignItems="flex-start">
         <HStack spacing={4} alignItems="flex-start">
           <FormControl>
