@@ -19,7 +19,7 @@ const Content = () => {
   });
 
   return (
-    <Box width="100%" height="100vh">
+    <Box width="100%">
       <Box mb={{ base: 8, md: 2 }}>
         <Selections
           setGraphData={setGraphData}
@@ -27,7 +27,7 @@ const Content = () => {
           setFilteredGraphData={setFilteredGraphData}
         />
       </Box>
-      <Box ref={boxRef} width="100%" height="60vh" overflow="hidden">
+      <Box ref={boxRef} width="100%" height="56vh" overflow="hidden">
         <Graph graphData={filteredGraphData} width={size.width} height={size.height} />
       </Box>
     </Box>

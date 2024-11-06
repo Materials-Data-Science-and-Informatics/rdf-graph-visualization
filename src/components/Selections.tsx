@@ -15,8 +15,8 @@ import FilterSwitch from "./FilterSwitch.tsx";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
 
-const parseRDF = (rdfData: string): GraphData => {
-  const store = createGraph(rdfData, "http://schema.org/");
+const parseRDF = (rdfData: string, baseUrl: string): GraphData => {
+  const store = createGraph(rdfData, baseUrl);
   return rdfGraphToNodes(store);
 };
 
@@ -35,6 +35,7 @@ const Selections: React.FC<SelectionsProps> = ({
   const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
   const [loading, setLoading] = useState<boolean>(false);
+  const [baseUrl, setBaseUrl] = useState<string>("http://schema.org/");
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -59,7 +60,7 @@ const Selections: React.FC<SelectionsProps> = ({
       try {
         if (typeof fileContent === "string") {
           // Ensure the content is a string
-          const data = parseRDF(fileContent);
+          const data = parseRDF(fileContent, baseUrl);
           setGraphData(data);
           setFilteredGraphData(data);
           setIsChecked(false);
@@ -134,10 +135,22 @@ const Selections: React.FC<SelectionsProps> = ({
   return (
     <Box p={4} borderWidth="1px" borderRadius="lg" width="100%" mx="auto">
       <VStack spacing={4} alignItems="flex-start">
-        <FormControl>
-          <FormLabel htmlFor="file-upload">Upload a file</FormLabel>
-          <Input id="file-upload" type="file" accept=".rdf, .ttl" onChange={handleFileChange} />
-        </FormControl>
+        <HStack spacing={4} alignItems="flex-start">
+          <FormControl>
+            <FormLabel htmlFor="base-url">RDF Base URL</FormLabel>
+            <Input
+              id="base-url"
+              type="text"
+              value={baseUrl}
+              onChange={(e) => setBaseUrl(e.target.value)}
+            />
+          </FormControl>
+          <FormControl>
+            <FormLabel htmlFor="file-upload">Upload a turtle file</FormLabel>
+            <Input id="file-upload" type="file" accept=".rdf, .ttl" onChange={handleFileChange} />
+            {file && <Box mt={2}>Selected File: {file.name}</Box>}
+          </FormControl>
+        </HStack>
 
         <VStack spacing={1} alignItems="flex-start">
           <FormControl>

@@ -51,7 +51,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
     <Box
       width={isFullScreen ? "100vw" : width}
       height={isFullScreen ? "100vh" : height}
-      position={isFullScreen ? "fixed" : "relative" }
+      position={isFullScreen ? "fixed" : "relative"}
       top={isFullScreen ? 0 : "unset"}
       left={isFullScreen ? 0 : "unset"}
       zIndex={isFullScreen ? 9999 : "auto"}
