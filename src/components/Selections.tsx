@@ -98,8 +98,15 @@ const Selections: React.FC<SelectionsProps> = ({
       if (filters.size === 0) {
         return true;
       }
+      // replace `Default` with ``
+      const tempFilters = new Set(filters);
+      if (filters.has("Default")) {
+        tempFilters.delete("Default");
+        tempFilters.add("");
+      }
+
       // otherwise, dont show nodes that match the selected filters
-      return !filters.has(node.group);
+      return !tempFilters.has(node.group);
     });
     const filteredLinks = graphData.links.filter((link: LinkObject) => {
       // link should be shown if both source or target is in the filtered nodes
@@ -185,6 +192,9 @@ const Selections: React.FC<SelectionsProps> = ({
           {groups.map((group: string) => (
             <FilterSwitch key={group} name={group} filters={filters} setFilters={setFilters} />
           ))}
+          {groups.length && (
+            <FilterSwitch name={"Default"} filters={filters} setFilters={setFilters} />
+          )}
         </HStack>
       </VStack>
     </Box>
