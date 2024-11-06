@@ -11,7 +11,7 @@ const Content = () => {
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   const boxRef = useRef<HTMLDivElement | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const { isOpen, onToggle } = useDisclosure({defaultIsOpen: true});
+  const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: true });
 
   useResizeObserver(boxRef, (entry) => {
     if (entry) {
