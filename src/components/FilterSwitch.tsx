@@ -8,10 +8,10 @@ interface FilterSwitchProps {
 }
 
 const FilterSwitch = ({ name, filters, setFilters }: FilterSwitchProps) => {
-  const isChecked = filters.has(name);
+  const isChecked = !filters.has(name);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.checked) {
+    if (!event.target.checked) {
       setFilters(new Set(filters).add(name));
     } else {
       filters.delete(name);
