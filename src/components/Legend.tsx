@@ -1,6 +1,7 @@
 import { Flex, Box, Text } from "@chakra-ui/react";
 import * as React from "react";
 import CONFIG from "../config.ts";
+import { GroupType } from "../vite-env";
 
 const Legend: React.FC = () => {
   return (
@@ -14,7 +15,7 @@ const Legend: React.FC = () => {
       boxShadow="md"
       flexDirection="column"
     >
-      {CONFIG.groups.map((group) => (
+      {CONFIG.groups.map((group: GroupType) => (
         <Flex key={group.name} alignItems="center" marginBottom="5px" flexDirection="row">
           <Box width="12px" height="12px" backgroundColor={group.color} marginRight="8px" />
           <Text fontSize="sm" textTransform="capitalize">

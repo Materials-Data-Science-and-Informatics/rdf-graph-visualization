@@ -1,6 +1,7 @@
 import * as rdflib from "rdflib";
 import { GraphData, LinkObject, NodeObject } from "react-force-graph-3d";
 import CONFIG from "./config.ts";
+import { GroupType } from "./vite-env";
 
 const getGroupColor = (group: string) => {
   for (const g of CONFIG.groups) {
@@ -85,7 +86,7 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
     }
 
     // Create links for relevant relationships
-    const includesElement = CONFIG.relationProperties.some((item) => pred.includes(item));
+    const includesElement = CONFIG.relationProperties.some((item:string) => pred.includes(item));
     if (includesElement) {
       const group = predToGroup(pred);
       if (group !== "") {
@@ -147,6 +148,6 @@ const predToGroup = (pred: string): string => {
 };
 
 // config groups keys
-const groups = CONFIG.groups.map((group) => group.name);
+const groups = CONFIG.groups.map((group:GroupType) => group.name);
 
 export { createGraph, rdfGraphToNodes, removeNonConnectedNodes, groups, getGroupColor };

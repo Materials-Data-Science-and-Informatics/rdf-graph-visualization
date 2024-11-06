@@ -6,7 +6,9 @@ import {
   Input,
   VStack,
   Heading,
-  HStack,Button,Text
+  HStack,
+  Button,
+  Text,
 } from "@chakra-ui/react";
 import * as React from "react";
 import { useState, Dispatch, SetStateAction, useEffect } from "react";
@@ -151,12 +153,12 @@ const Selections: React.FC<SelectionsProps> = ({
               id="file-upload"
               type="file"
               accept=".rdf, .ttl"
-              display="none"  // Hide the default file input
+              display="none" // Hide the default file input
               onChange={handleFileChange}
             />
             <label htmlFor="file-upload">
               <Button colorScheme="blue" as="span">
-                {file ? 'Upload new file' : 'Upload file'}
+                {file ? "Upload new file" : "Upload file"}
               </Button>
             </label>
             {file && (
@@ -180,7 +182,7 @@ const Selections: React.FC<SelectionsProps> = ({
         </Heading>
 
         <HStack spacing={2}>
-          {groups.map((group) => (
+          {groups.map((group: string) => (
             <FilterSwitch key={group} name={group} filters={filters} setFilters={setFilters} />
           ))}
         </HStack>
