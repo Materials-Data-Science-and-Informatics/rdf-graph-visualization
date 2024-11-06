@@ -1,17 +1,21 @@
-import React from 'react';
-import { Box, Flex, Link, Text, UnorderedList, ListItem } from '@chakra-ui/react';
-import { FaLinkedin, FaMastodon, FaTwitter, FaEnvelope, FaGithub } from 'react-icons/fa';
+import { Box, Flex, Link, Text, UnorderedList, ListItem } from "@chakra-ui/react";
+import { FaLinkedin, FaMastodon, FaTwitter, FaEnvelope, FaGithub } from "react-icons/fa";
+
+type IconType = "linkedin" | "mastodon" | "x" | "mattermost" | "mail";
 
 const Footer = () => {
-  const contact = [
-    { type: 'linkedin', link: 'https://www.linkedin.com/company/helmholtz-metadata-collaboration-hmc/' },
-    { type: 'mastodon', link: 'https://helmholtz.social/@helmholtz_hmc' },
-    { type: 'x', link: 'https://x.com/helmholtz_hmc' },
-    { type: 'mattermost', link: 'https://mattermost.hzdr.de/hmc-public' },
-    { type: 'mail', link: 'mailto:m.soylu@fz-juelich.de' },
+  const contact: { type: IconType; link: string }[] = [
+    {
+      type: "linkedin",
+      link: "https://www.linkedin.com/company/helmholtz-metadata-collaboration-hmc/",
+    },
+    { type: "mastodon", link: "https://helmholtz.social/@helmholtz_hmc" },
+    { type: "x", link: "https://x.com/helmholtz_hmc" },
+    { type: "mattermost", link: "https://mattermost.hzdr.de/hmc-public" },
+    { type: "mail", link: "mailto:m.soylu@fz-juelich.de" },
   ];
 
-  const iconComponents = {
+  const iconComponents: Record<IconType, JSX.Element> = {
     linkedin: <FaLinkedin />,
     mastodon: <FaMastodon />,
     x: <FaTwitter />,
@@ -31,14 +35,22 @@ const Footer = () => {
               ></path>
             </svg>
           </Link>
-          <Text fontSize="lg" ml={4}>Research for grand challenges.</Text>
+          <Text fontSize="lg" ml={4}>
+            Research for grand challenges.
+          </Text>
         </Flex>
 
         <Flex mb={4}>
           <UnorderedList display="flex" gap={4} listStyleType="none">
             {contact.map((item, index) => (
               <ListItem key={index}>
-                <Link href={item.link} isExternal display="flex" alignItems="center" fontSize="1.5rem">
+                <Link
+                  href={item.link}
+                  isExternal
+                  display="flex"
+                  alignItems="center"
+                  fontSize="1.5rem"
+                >
                   {iconComponents[item.type]}
                 </Link>
               </ListItem>
@@ -54,7 +66,9 @@ const Footer = () => {
               </Link>
             </ListItem>
             <ListItem>
-              <Link href="mailto:m.soylu@fz-juelich.de" isExternal>Contact</Link>
+              <Link href="mailto:m.soylu@fz-juelich.de" isExternal>
+                Contact
+              </Link>
             </ListItem>
           </UnorderedList>
           <Text>&copy; {new Date().getFullYear()} Forschungszentrum Jülich</Text>
