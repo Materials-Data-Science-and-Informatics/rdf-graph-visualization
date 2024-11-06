@@ -36,16 +36,10 @@ npm run build
 ```
 
 ## Configuration
-Configuration file has the necessary information to show nodes and links in the graph. Since a 3D graph on the browser consumes a lot of resources, it is important to filter the data to show only the necessary information.
+Configuration file has the necessary information to show nodes and links in the graph. Since a 3D graph on the browser consumes a lot of resources, it is important to filter the data to show only the necessary information. Properties that are not in the yaml file will be ignored.
 
 The configuration file is a YAML file that has the following properties:
 ```yaml
-# parsing will skip all properties that are not in the list of relevantProperties
-relevantProperties:
-  - "http://schema.org/name"
-  - "http://schema.org/affiliation"
-  - "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
-
 # links will be created from these properties
 relationProperties:
   - "http://schema.org/affiliation"

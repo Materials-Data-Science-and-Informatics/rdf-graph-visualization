@@ -4,7 +4,13 @@ import { ConfigType } from "./vite-env";
 
 const config: ConfigType = yaml.load(configFile) as ConfigType;
 
-// relevant properties should be a Set of strings
-config.relevantProperties = new Set(config.relevantProperties);
+// set relevant properties from relationProperties, labelProperties, and groups' properties
+const relevantProperties = new Set<string>();
+config.relationProperties.forEach((prop) => relevantProperties.add(prop));
+config.labelProperties.forEach((prop) => relevantProperties.add(prop));
+config.groups.forEach((group) => {
+  group.properties?.forEach((prop) => relevantProperties.add(prop));
+});
+config.relevantProperties = relevantProperties;
 
 export default config;

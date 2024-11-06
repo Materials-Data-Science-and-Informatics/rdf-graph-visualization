@@ -7,7 +7,7 @@ export type GroupType = {
 };
 
 export type ConfigType = {
-  relevantProperties: Set<string>;
+  relevantProperties?: Set<string>;
   relationProperties: string[];
   labelProperties: string[];
   groups: GroupType[];
