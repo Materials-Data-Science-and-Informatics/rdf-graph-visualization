@@ -3,7 +3,7 @@ import ForceGraph3D, { GraphData, NodeObject, LinkObject } from "react-force-gra
 import * as THREE from "three";
 import { Box } from "@chakra-ui/react";
 import Legend from "./Legend.tsx";
-import { groupColors, getGroupColor } from "../utils";
+import { getGroupColor } from "../utils";
 import FullScreenButton from "./FullScreenButton.tsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -82,7 +82,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
         onNodeClick={handleClick}
       />
       <FullScreenButton isFullScreen={isFullScreen} setIsFullScreen={setIsFullScreen} />
-      <Legend groupColors={groupColors} />
+      <Legend />
     </Box>
   );
 };

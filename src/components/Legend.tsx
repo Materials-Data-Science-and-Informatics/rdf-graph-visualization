@@ -1,11 +1,8 @@
 import { Flex, Box, Text } from "@chakra-ui/react";
 import * as React from "react";
+import CONFIG from "../config.ts";
 
-interface LegendProps {
-  groupColors: { [key: string]: string };
-}
-
-const Legend: React.FC<LegendProps> = ({ groupColors }) => {
+const Legend: React.FC = () => {
   return (
     <Flex
       position="absolute"
@@ -17,14 +14,20 @@ const Legend: React.FC<LegendProps> = ({ groupColors }) => {
       boxShadow="md"
       flexDirection="column"
     >
-      {Object.keys(groupColors).map((group: string) => (
-        <Flex key={group} alignItems="center" marginBottom="5px" flexDirection="row">
-          <Box width="12px" height="12px" backgroundColor={groupColors[group]} marginRight="8px" />
+      {CONFIG.groups.map((group) => (
+        <Flex key={group.name} alignItems="center" marginBottom="5px" flexDirection="row">
+          <Box width="12px" height="12px" backgroundColor={group.color} marginRight="8px" />
           <Text fontSize="sm" textTransform="capitalize">
-            {group || "Default"}
+            {group.name}
           </Text>
         </Flex>
       ))}
+      <Flex alignItems="center" marginBottom="5px" flexDirection="row">
+        <Box width="12px" height="12px" backgroundColor="gray" marginRight="8px" />
+        <Text fontSize="sm" textTransform="capitalize">
+          Default
+        </Text>
+      </Flex>
     </Flex>
   );
 };

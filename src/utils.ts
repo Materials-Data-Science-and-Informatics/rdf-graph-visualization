@@ -1,20 +1,14 @@
 import * as rdflib from "rdflib";
 import { GraphData, LinkObject, NodeObject } from "react-force-graph-3d";
-
-const groupColors: { [key: string]: string } = {
-  person: "red",
-  dataset: "blue",
-  organization: "green",
-  software: "yellow",
-  document: "orange",
-  article: "indigo",
-  creativeWork: "violet",
-  service: "cyan",
-  "": "gray", // Default group
-};
+import CONFIG from "./config.ts";
 
 const getGroupColor = (group: string) => {
-  return groupColors[group] || "gray"; // Default to gray if group not found
+  for (const g of CONFIG.groups) {
+    if (g.name === group) {
+      return g.color;
+    }
+  }
+  return "gray";
 };
 
 const createGraph = (rdfData: string, baseUrl: string): rdflib.Store => {
@@ -39,7 +33,7 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
   const safeUpdateElement = (id: string, label?: string, group?: string): void => {
     const safeGroup = group ?? "";
     const safeLabel = label ?? id;
-    const color = group ? getGroupColor(safeGroup) : "gray";
+    const color = getGroupColor(safeGroup);
     if (!nodesMap.has(id)) {
       // create the node
       const newNode = { id: id, label: safeLabel, group: safeGroup, color } as NodeType;
@@ -54,7 +48,7 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
         group: group ?? node?.group,
         color: node?.color,
       };
-      updatedNode.color = updatedNode.group ? getGroupColor(updatedNode.group) : "gray";
+      updatedNode.color = getGroupColor(updatedNode.group ?? "");
 
       nodesMap.set(id, updatedNode);
     }
@@ -65,25 +59,13 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
     const pred = statement.predicate.value;
     const obj = statement.object.value;
 
-    // Filter out unwanted annotation properties and irrelevant predicates
-    // List of relevant properties you care about
-    const relevantProperties = new Set([
-      "http://schema.org/name",
-      "http://schema.org/text",
-      "http://schema.org/affiliation",
-      "http://schema.org/author",
-      "http://schema.org/creator",
-      "http://schema.org/license",
-      "http://schema.org/keywords",
-      "http://schema.org/provider",
-      "http://schema.org/publisher",
-      "http://schema.org/dateModified",
-      "http://schema.org/datePublished",
-      "http://www.w3.org/1999/02/22-rdf-syntax-ns#type",
-    ]);
-
     // If the predicate is in the ignored list, skip this statement
-    if (!relevantProperties.has(pred)) {
+    if (
+      !(
+        CONFIG.relevantProperties.has(pred) ||
+        pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+      )
+    ) {
       return; // Skip this statement
     }
 
@@ -96,32 +78,18 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
       }
 
       safeUpdateElement(subj, undefined, group);
-    } else if (pred === "http://schema.org/name" || pred === "http://schema.org/text") {
-      // Check for schema:name, foaf:name, rdfs:label, etc.
+    } else if (pred in CONFIG.labelProperties) {
       const label = statement.object.value;
 
       safeUpdateElement(subj, label);
     }
 
     // Create links for relevant relationships
-    const relationProperties = [
-      "provider",
-      "license",
-      "keywords",
-      "dataPublished",
-      "dateModified",
-      "creator",
-      "author",
-      "publisher",
-      "affiliation",
-    ];
-    const includesElement = relationProperties.some((item) => pred.includes(item));
+    const includesElement = CONFIG.relationProperties.some((item) => pred.includes(item));
     if (includesElement) {
-      if (pred.includes("affiliation")) {
-        safeUpdateElement(obj, undefined, "organization");
-      }
-      if (pred.includes("author") || pred.includes("creator")) {
-        safeUpdateElement(obj, undefined, "person");
+      const group = predToGroup(pred);
+      if (group !== "") {
+        safeUpdateElement(obj, undefined, group);
       }
       if (!nodesMap.has(subj)) {
         nodesMap.set(subj, { id: subj, label: subj, group: "" });
@@ -161,38 +129,24 @@ const removeNonConnectedNodes = (graphData: GraphData): NodeObject[] => {
 };
 
 const typeToGroup = (type: string): string => {
-  const typeMap: Map<string, string> = new Map<string, string>();
-  //schema:Person, schema:Organization, schema:Dataset, schema:SoftwareSourceCode, schema:Document,
-  // schema:Article, schema:creativeWork, schema:Service
-
-  // set types
-  typeMap.set("person", "Person");
-  typeMap.set("dataset", "Dataset");
-  typeMap.set("organization", "Organization");
-  typeMap.set("software", "SoftwareSourceCode");
-  typeMap.set("document", "Document");
-  typeMap.set("article", "Article");
-  typeMap.set("creativeWork", "CreativeWork");
-  typeMap.set("service", "Service");
-
-  // iterate over the entries of the typeMap
-  for (const [key, value] of typeMap.entries()) {
-    // check if type input contains any of the elements in the values array
-    if (type.toLowerCase().includes(value.toLowerCase())) {
-      return key; // return the map key if a match is found
+  for (const group of CONFIG.groups) {
+    if (group.types.includes(type)) {
+      return group.name;
     }
   }
-
-  return ""; // return a default value if no match is found
+  return "";
 };
 
-const groups = Object.keys(groupColors).filter((group) => group !== ""); // Remove the default group
-
-export {
-  createGraph,
-  rdfGraphToNodes,
-  removeNonConnectedNodes,
-  groupColors,
-  groups,
-  getGroupColor,
+const predToGroup = (pred: string): string => {
+  for (const group of CONFIG.groups) {
+    if (group.properties && group.properties.includes(pred)) {
+      return group.name;
+    }
+  }
+  return "";
 };
+
+// config groups keys
+const groups = CONFIG.groups.map((group) => group.name);
+
+export { createGraph, rdfGraphToNodes, removeNonConnectedNodes, groups, getGroupColor };

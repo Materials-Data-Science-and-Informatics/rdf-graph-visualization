@@ -6,7 +6,7 @@ import {
   Input,
   VStack,
   Heading,
-  HStack,
+  HStack,Button,Text
 } from "@chakra-ui/react";
 import * as React from "react";
 import { useState, Dispatch, SetStateAction, useEffect } from "react";
@@ -147,8 +147,23 @@ const Selections: React.FC<SelectionsProps> = ({
           </FormControl>
           <FormControl>
             <FormLabel htmlFor="file-upload">Upload a turtle file</FormLabel>
-            <Input id="file-upload" type="file" accept=".rdf, .ttl" onChange={handleFileChange} />
-            {file && <Box mt={2}>Selected File: {file.name}</Box>}
+            <Input
+              id="file-upload"
+              type="file"
+              accept=".rdf, .ttl"
+              display="none"  // Hide the default file input
+              onChange={handleFileChange}
+            />
+            <label htmlFor="file-upload">
+              <Button colorScheme="blue" as="span">
+                {file ? 'Upload new file' : 'Upload file'}
+              </Button>
+            </label>
+            {file && (
+              <Text mt={2} color="gray.500">
+                {file.name}
+              </Text>
+            )}
           </FormControl>
         </HStack>
 
@@ -166,7 +181,7 @@ const Selections: React.FC<SelectionsProps> = ({
 
         <HStack spacing={2}>
           {groups.map((group) => (
-            <FilterSwitch name={group} filters={filters} setFilters={setFilters} />
+            <FilterSwitch key={group} name={group} filters={filters} setFilters={setFilters} />
           ))}
         </HStack>
       </VStack>
