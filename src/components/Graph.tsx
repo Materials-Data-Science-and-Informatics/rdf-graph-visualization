@@ -6,6 +6,7 @@ import Legend from "./Legend.tsx";
 import { getGroupColor } from "../utils";
 import FullScreenButton from "./FullScreenButton.tsx";
 import { useCallback, useEffect, useRef, useState } from "react";
+import ResetViewButton from "./ResetViewButton.tsx";
 
 interface GraphProps {
   graphData: GraphData;
@@ -47,6 +48,39 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
     }
   }, [isFullScreen, width, height]);
 
+  const handleResetView = () => {
+    if (!fgRef.current || !graphData?.nodes?.length) return;
+
+    // Calculate bounding box of all nodes
+    const nodes = graphData.nodes;
+    const minX = Math.min(...nodes.map((node) => node.x ?? 0));
+    const maxX = Math.max(...nodes.map((node) => node.x ?? 0));
+    const minY = Math.min(...nodes.map((node) => node.y ?? 0));
+    const maxY = Math.max(...nodes.map((node) => node.y ?? 0));
+    const minZ = Math.min(...nodes.map((node) => node.z ?? 0));
+    const maxZ = Math.max(...nodes.map((node) => node.z ?? 0));
+
+    // Calculate the center of the bounding box
+    const centerX = (minX + maxX) / 2;
+    const centerY = (minY + maxY) / 2;
+    const centerZ = (minZ + maxZ) / 2;
+
+    // Calculate the size of the bounding box
+    const sizeX = maxX - minX;
+    const sizeY = maxY - minY;
+    const sizeZ = maxZ - minZ;
+
+    // Set distance based on the largest dimension of the bounding box
+    const distance = Math.max(sizeX, sizeY, sizeZ) * 1.25;
+
+    // Look at the calculated center from the calculated distance
+    fgRef.current.cameraPosition(
+      { x: centerX, y: centerY, z: centerZ + distance }, // position camera at the calculated distance
+      { x: centerX, y: centerY, z: centerZ }, // look at the center of the graph
+      3000 // duration of the transition (in ms)
+    );
+  };
+
   return (
     <Box
       width={isFullScreen ? "100vw" : width}
@@ -82,6 +116,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
         onNodeClick={handleClick}
       />
       <FullScreenButton isFullScreen={isFullScreen} setIsFullScreen={setIsFullScreen} />
+      <ResetViewButton resetView={handleResetView} />
       <Legend />
     </Box>
   );
