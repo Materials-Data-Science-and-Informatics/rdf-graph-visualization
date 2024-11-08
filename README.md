@@ -3,7 +3,7 @@
 ## Description
 This project is a TypeScript/JavaScript application that processes RDF data to create a graph representation. It uses React for the frontend and Chakra UI for styling.
 
-We strongly suggest users to use `turtle for`mat for RDF data and `schema.org` vocabulary for the properties. The application is designed to work with the `schema.org` vocabulary, since we developed it for a specific use case. However, it can be easily modified to work with other vocabularies.
+We strongly suggest users to use `turtle` format for RDF data and `schema.org` vocabulary for the properties. The application is designed to work with the `schema.org` vocabulary, since we developed it for a specific use case. However, it can be easily modified to work with other vocabularies.
 
 ## Features
 - Parses RDF data and filters relevant properties.
@@ -36,7 +36,8 @@ npm run build
 ```
 
 ## Configuration
-Configuration file has the necessary information to show nodes and links in the graph. Since a 3D graph on the browser consumes a lot of resources, it is important to filter the data to show only the necessary information. Properties that are not in the yaml file will be ignored.
+Configuration file has the necessary information to show nodes and links in the graph. Since a 3D graph on the browser consumes a lot of resources, it is important to filter the data to show only the necessary information. Properties that are not in the yaml file will be ignored. You can check [example config file](examples/config.yml) for more information. 
+You can also check example RDF files in the examples folder to see how the data should be formatted.
 
 The configuration file is a YAML file that has the following properties:
 ```yaml
@@ -58,7 +59,6 @@ groups:
     color: '#FF0000'
 ```
 
-- `relevantProperties`: List of properties that will be used to filter the data.
 - `relationProperties`: List of properties that will be used to create links between nodes.
 - `labelProperties`: List of properties that will be used to create labels for nodes.
 - `groups`: List of groups that will be created based on the properties. Each group has the following properties:
@@ -72,9 +72,6 @@ groups:
 If you want to cite this project in your scientific work,
 please use the [citation file](https://citation-file-format.github.io/)
 in the [repository](https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization/blob/main/CITATION.cff).
-
-<!-- --8<-- [end:citation] -->
-<!-- --8<-- [start:acknowledgements] -->
 
 ## Acknowledgements
 
