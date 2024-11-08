@@ -61,10 +61,13 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
     const obj = statement.object.value;
 
     // If the predicate is in the ignored list, skip this statement
+
     if (
       !(
-        CONFIG.relevantProperties.has(pred) ||
-        pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
+        CONFIG.relevantProperties &&
+        CONFIG.relevantProperties.size > 0 &&
+        (CONFIG.relevantProperties.has(pred) ||
+          pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
       )
     ) {
       return; // Skip this statement

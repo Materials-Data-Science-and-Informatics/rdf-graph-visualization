@@ -9,6 +9,7 @@ import {
   HStack,
   Button,
   Text,
+  useDisclosure,
 } from "@chakra-ui/react";
 import * as React from "react";
 import { useState, Dispatch, SetStateAction, useEffect } from "react";
@@ -16,6 +17,10 @@ import { createGraph, rdfGraphToNodes, removeNonConnectedNodes, groups } from ".
 import FilterSwitch from "./FilterSwitch.tsx";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
+import ConfigModal from "./TextModal.tsx";
+
+import yaml from "js-yaml";
+import configFile from "/config.yml?raw";
 
 const parseRDF = (rdfData: string, baseUrl: string): GraphData => {
   const store = createGraph(rdfData, baseUrl);
@@ -39,6 +44,10 @@ const Selections: React.FC<SelectionsProps> = ({
   const [loading, setLoading] = useState<boolean>(false);
   const [baseUrl, setBaseUrl] = useState<string>("http://schema.org/");
   const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
+  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [modalText, setModalText] = useState<string>("");
+
+  const yamlContent = yaml.dump(yaml.load(configFile));
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -138,6 +147,21 @@ const Selections: React.FC<SelectionsProps> = ({
     return <LoadingSpinner />;
   }
 
+  const handleConfigClick = () => {
+    setModalText(yamlContent);
+    onOpen();
+  };
+
+  const handleInfoClick = () => {
+    const info = `This is a simple RDF visualizer that allows you to upload a turtle file and visualize the graph. Check examples in the repository for sample config and turtle files.
+    
+You can filter the nodes by group and remove nodes that are not linked. The config file is loaded from a YAML file and you can check it by clicking 'Show config' button.
+
+If your graph has more than 2000 nodes, it might take a while to load. Please wait until graph elements are rendered (stops spinning) before interacting with the graph.`;
+    setModalText(info);
+    onOpen();
+  };
+
   return (
     <Box p={4} width="100%" mx="auto">
       <VStack spacing={4} alignItems="flex-start">
@@ -171,6 +195,14 @@ const Selections: React.FC<SelectionsProps> = ({
               </Text>
             )}
           </FormControl>
+          <VStack>
+            <FormControl>
+              <Button onClick={handleInfoClick}>Show Info</Button>
+            </FormControl>
+            <FormControl>
+              <Button onClick={handleConfigClick}>Show Config</Button>
+            </FormControl>
+          </VStack>
         </HStack>
 
         <VStack spacing={1} alignItems="flex-start">
@@ -203,6 +235,7 @@ const Selections: React.FC<SelectionsProps> = ({
           />
         </HStack>
       </VStack>
+      <ConfigModal isOpen={isOpen} onClose={onClose} text={modalText} />
     </Box>
   );
 };
