@@ -5,9 +5,10 @@ interface FilterSwitchProps {
   name: string;
   filters: Set<string>;
   setFilters: React.Dispatch<React.SetStateAction<Set<string>>>;
+  count?: number;
 }
 
-const FilterSwitch = ({ name, filters, setFilters }: FilterSwitchProps) => {
+const FilterSwitch = ({ name, filters, setFilters, count }: FilterSwitchProps) => {
   const isChecked = !filters.has(name);
 
   const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -19,9 +20,16 @@ const FilterSwitch = ({ name, filters, setFilters }: FilterSwitchProps) => {
     }
   };
 
+  const title = () => {
+    if (count) {
+      return `${name} (${count})`;
+    }
+    return `${name} (0)`;
+  };
+
   return (
     <FormControl>
-      <FormLabel htmlFor={`filter-${name}`}>{name}</FormLabel>
+      <FormLabel htmlFor={`filter-${name}`}>{title()}</FormLabel>
       <Switch isChecked={isChecked} onChange={handleChange} id={`filter-${name}`} />
     </FormControl>
   );

@@ -38,6 +38,7 @@ const Selections: React.FC<SelectionsProps> = ({
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
   const [loading, setLoading] = useState<boolean>(false);
   const [baseUrl, setBaseUrl] = useState<string>("http://schema.org/");
+  const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -56,12 +57,10 @@ const Selections: React.FC<SelectionsProps> = ({
 
     const reader = new FileReader();
 
-    // Add the load event listener
     reader.onload = () => {
       const fileContent = reader.result;
       try {
         if (typeof fileContent === "string") {
-          // Ensure the content is a string
           const data = parseRDF(fileContent, baseUrl);
           setGraphData(data);
           setFilteredGraphData(data);
@@ -80,36 +79,30 @@ const Selections: React.FC<SelectionsProps> = ({
       setLoading(false);
     };
 
-    // Add error event listener for debugging
     reader.onerror = (error) => {
       console.error("Error reading file:", error);
     };
 
     console.log("Reading file:", file.name);
     setLoading(true);
-    reader.readAsText(file); // Read the file as text
+    reader.readAsText(file);
   }, [file]);
 
   useEffect(() => {
     setLoading(true);
-    // first, filter
     const filteredNodes = graphData.nodes.filter((node) => {
-      // if no filters are selected, show all nodes
       if (filters.size === 0) {
         return true;
       }
-      // replace `Default` with ``
       const tempFilters = new Set(filters);
       if (filters.has("Default")) {
         tempFilters.delete("Default");
         tempFilters.add("");
       }
-
-      // otherwise, dont show nodes that match the selected filters
       return !tempFilters.has(node.group);
     });
+
     const filteredLinks = graphData.links.filter((link: LinkObject) => {
-      // link should be shown if both source or target is in the filtered nodes
       return (
         filteredNodes.some(
           (node) => node.id === (typeof link.source === "object" ? link.source?.id : link.source)
@@ -123,19 +116,23 @@ const Selections: React.FC<SelectionsProps> = ({
 
     if (isChecked) {
       const connectedNodes = removeNonConnectedNodes(filteredGraph);
-      const unconnectedGraph = { nodes: connectedNodes, links: filteredGraph.links };
-      setFilteredGraphData(unconnectedGraph);
-      console.log(
-        `Filtered graph with ${connectedNodes.length} nodes and ${filteredGraph.links.length} links.`
-      );
+      setFilteredGraphData({ nodes: connectedNodes, links: filteredGraph.links });
     } else {
       setFilteredGraphData(filteredGraph);
-      console.log(
-        `Filtered graph with ${filteredGraph.nodes.length} nodes and ${filteredGraph.links.length} links.`
-      );
     }
+
     setLoading(false);
   }, [isChecked, filters]);
+
+  useEffect(() => {
+    const counts: Record<string, number> = {};
+    graphData.nodes.forEach((node) => {
+      let group = node.group || "Default";
+      group = group === "" ? "Default" : group;
+      counts[group] = (counts[group] || 0) + 1;
+    });
+    setGroupCounts(counts);
+  }, [graphData]);
 
   if (loading) {
     return <LoadingSpinner />;
@@ -160,7 +157,7 @@ const Selections: React.FC<SelectionsProps> = ({
               id="file-upload"
               type="file"
               accept=".rdf, .ttl"
-              display="none" // Hide the default file input
+              display="none"
               onChange={handleFileChange}
             />
             <label htmlFor="file-upload">
@@ -190,11 +187,20 @@ const Selections: React.FC<SelectionsProps> = ({
 
         <HStack spacing={2}>
           {groups.map((group: string) => (
-            <FilterSwitch key={group} name={group} filters={filters} setFilters={setFilters} />
+            <FilterSwitch
+              key={group}
+              name={group}
+              filters={filters}
+              setFilters={setFilters}
+              count={groupCounts[group] || 0}
+            />
           ))}
-          {groups.length && (
-            <FilterSwitch name={"Default"} filters={filters} setFilters={setFilters} />
-          )}
+          <FilterSwitch
+            name={"Default"}
+            filters={filters}
+            setFilters={setFilters}
+            count={groupCounts["Default"] || 0}
+          />
         </HStack>
       </VStack>
     </Box>
