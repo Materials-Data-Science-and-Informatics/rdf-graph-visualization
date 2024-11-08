@@ -88,5 +88,15 @@
       "url": "https://orcid.org/0000-0002-2818-5890"
     }
   ],
-  "homepage": "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
+  "homepage": "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization",
+  "os": [
+    "win32",
+    "linux"
+  ],
+  "optionalDependencies": {
+    "@lmdb/lmdb-linux-x64": "^3.0.13",
+    "@lmdb/lmdb-win32-x64": "^3.0.13",
+    "@rollup/rollup-win32-x64-msvc": "4.22.4",
+    "@rollup/rollup-linux-x64-gnu": "4.22.4"
+  }
 }
