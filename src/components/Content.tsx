@@ -48,7 +48,12 @@ const Content = () => {
           </Box>
         </Collapse>
       </Box>
-      <Box ref={boxRef} width="100%" height={isOpen ? "32vh" : "64vh"} overflow="hidden">
+      <Box
+        ref={boxRef}
+        width="100%"
+        height={isOpen ? "calc(100vh - 630px)" : "calc(100vh - 330px)"}
+        overflow="hidden"
+      >
         <Graph graphData={filteredGraphData} width={size.width} height={size.height} />
       </Box>
     </Box>
