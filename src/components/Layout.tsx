@@ -15,20 +15,15 @@ export default function Layout({ children }: LayoutProps) {
   });
 
   return (
-    <Flex
-      minHeight="100vh"
-      display="flex"
-      flexDirection="column"
-      width="100%"
-      overflowX="hidden" // Prevents horizontal overflow
-    >
+    <Flex minHeight="100vh" flexDirection="column" width="100%" overflowX="hidden">
       <Navbar />
       <Box
+        as="main"
         flex="1"
         width={contentWidth}
         mx="auto"
         justifyContent="center"
-        overflowX="hidden" // Prevents content overflow
+        overflowX="hidden"
       >
         {children}
       </Box>

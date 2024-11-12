@@ -7,7 +7,7 @@ import { getGroupColor } from "../utils";
 import FullScreenButton from "./FullScreenButton.tsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ResetViewButton from "./ResetViewButton.tsx";
-
+import ThemeSwitch   from "./ThemeSwitch.tsx";
 interface GraphProps {
   graphData: GraphData;
   width: number;
@@ -18,6 +18,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
   const [isFullScreen, setIsFullScreen] = useState(false);
   const [graphWidth, setGraphWidth] = useState(width);
   const [graphHeight, setGraphHeight] = useState(height);
+  const [switchOn, setSwitchOn] = useState<boolean>(false);
 
   const fgRef = useRef<any>(null);
 
@@ -102,6 +103,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
         linkCurvature={0.3}
         linkOpacity={0.5}
         linkWidth={5}
+        backgroundColor={switchOn ? "#ffffff" : "#000000"}
         nodeThreeObject={({ group }) => {
           const geometry =
             group === "" ? new THREE.BoxGeometry(8, 8, 8) : new THREE.SphereGeometry(5);
@@ -117,6 +119,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
       />
       <FullScreenButton isFullScreen={isFullScreen} setIsFullScreen={setIsFullScreen} />
       <ResetViewButton resetView={handleResetView} />
+      <ThemeSwitch switchOn={switchOn} setSwitchOn={setSwitchOn} />
       <Legend />
     </Box>
   );
