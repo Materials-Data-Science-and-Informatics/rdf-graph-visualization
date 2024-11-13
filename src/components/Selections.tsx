@@ -217,7 +217,7 @@ If your graph has more than 2000 nodes, it might take a while to load. Please wa
           Filter by group
         </Heading>
 
-        <HStack spacing={2}>
+        <HStack spacing={4}>
           {groups.map((group: string) => (
             <FilterSwitch
               key={group}

@@ -29,7 +29,7 @@ const FilterSwitch = ({ name, filters, setFilters, count }: FilterSwitchProps) =
 
   return (
     <FormControl>
-      <FormLabel htmlFor={`filter-${name}`}>{title()}</FormLabel>
+      <FormLabel fontSize='lg' htmlFor={`filter-${name}`}>{title()}</FormLabel>
       <Switch isChecked={isChecked} onChange={handleChange} id={`filter-${name}`} />
     </FormControl>
   );
