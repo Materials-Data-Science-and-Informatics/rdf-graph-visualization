@@ -153,11 +153,16 @@ const Selections: React.FC<SelectionsProps> = ({
   };
 
   const handleInfoClick = () => {
-    const info = `This is a simple RDF visualizer that allows you to upload a turtle file and visualize the graph. Check examples in the repository for sample config and turtle files.
-    
-You can filter the nodes by group and remove nodes that are not linked. The config file is loaded from a YAML file and you can check it by clicking 'Show config' button.
+    const info = `Overview
+This simple RDF visualizer allows you to upload a turtle file and visualize the graph. Check examples in the [repository](https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization) for sample config and turtle files.
+   
+Features
+- filter the nodes by groups
+- remove unlinked nodes
+- The config file is loaded from a YAML file
+- see and update the graph configuration by clicking the 'Show config' button.
 
-If your graph has more than 2000 nodes, it might take a while to load. Please wait until graph elements are rendered (stops spinning) before interacting with the graph.`;
+If your graph has more than 2000 nodes, it might take a while to load. Please wait until graph elements are rendered (stop spinning) before interacting with the graph.`;
     setModalText(info);
     onOpen();
   };
