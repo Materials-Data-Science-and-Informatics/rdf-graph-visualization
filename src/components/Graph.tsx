@@ -21,6 +21,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
   const [switchOn, setSwitchOn] = useState<boolean>(false);
 
   const fgRef = useRef<any>(null);
+  const labelColor = switchOn ? "#000000" : "#ffffff"; // Black on white background, white on dark
 
   const handleClick = useCallback(
     (node: NodeObject) => {
@@ -96,8 +97,8 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
         graphData={graphData}
         width={graphWidth}
         height={graphHeight}
-        nodeLabel={(node: NodeObject) => `${node.label || node.id}`}
-        linkLabel={(d: LinkObject) => `${d.label}`}
+        nodeLabel={(node: NodeObject) => `<span style="color: ${labelColor}">${node.label || node.id}</span>`}
+        linkLabel={(d: LinkObject) => `<span style="color: ${labelColor}">${d.label}</span>`}
         linkDirectionalArrowLength={7}
         linkDirectionalArrowRelPos={1}
         linkCurvature={0.3}
