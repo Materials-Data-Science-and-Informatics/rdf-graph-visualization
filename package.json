@@ -91,7 +91,8 @@
   "homepage": "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization",
   "os": [
     "win32",
-    "linux"
+    "linux",
+    "darwin"
   ],
   "optionalDependencies": {
     "@lmdb/lmdb-linux-x64": "^3.0.13",
