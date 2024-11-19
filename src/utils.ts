@@ -1,5 +1,16 @@
 import * as rdflib from "rdflib";
 import { GraphData, LinkObject, NodeObject } from "react-force-graph-3d";
+import CONFIG from "./config.ts";
+import { GroupType } from "./vite-env";
+
+const getGroupColor = (group: string) => {
+  for (const g of CONFIG.groups) {
+    if (g.name === group) {
+      return g.color;
+    }
+  }
+  return "gray";
+};
 
 const createGraph = (rdfData: string, baseUrl: string): rdflib.Store => {
   const store = rdflib.graph();
@@ -15,14 +26,18 @@ const createGraph = (rdfData: string, baseUrl: string): rdflib.Store => {
   return store;
 };
 
-const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): GraphData => {
+const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
   const nodesMap = new Map<string, NodeObject<NodeType>>();
   const edges: LinkObject<NodeType, LinkType>[] = [];
 
+  // create the element if not exists
   const safeUpdateElement = (id: string, label?: string, group?: string): void => {
+    const safeGroup = group ?? "";
+    const safeLabel = label ?? id;
+    const color = getGroupColor(safeGroup);
     if (!nodesMap.has(id)) {
       // create the node
-      const newNode = { id: id, label: label ?? id, group: group ?? "" } as NodeType;
+      const newNode = { id: id, label: safeLabel, group: safeGroup, color } as NodeType;
 
       nodesMap.set(id, newNode);
     } else {
@@ -32,7 +47,9 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
         id: id,
         label: label ?? node?.label,
         group: group ?? node?.group,
+        color: node?.color,
       };
+      updatedNode.color = getGroupColor(updatedNode.group ?? "");
 
       nodesMap.set(id, updatedNode);
     }
@@ -43,88 +60,97 @@ const rdfGraphToNodes = (store: rdflib.Store, removeUnconnectedNodes: boolean): 
     const pred = statement.predicate.value;
     const obj = statement.object.value;
 
+    // If the predicate is in the ignored list, skip this statement
+
+    if (
+      !(
+        CONFIG.relevantProperties &&
+        CONFIG.relevantProperties.size > 0 &&
+        (CONFIG.relevantProperties.has(pred) ||
+          pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type")
+      )
+    ) {
+      return; // Skip this statement
+    }
+
     // set node type
     if (pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") {
       const group = typeToGroup(obj);
 
+      if (group === "") {
+        return;
+      }
+
       safeUpdateElement(subj, undefined, group);
-    } else if (pred === "http://schema.org/name" || pred === "http://schema.org/text") {
-      // Check for schema:name, foaf:name, rdfs:label, etc.
+    } else if (pred in CONFIG.labelProperties) {
       const label = statement.object.value;
 
       safeUpdateElement(subj, label);
-    } else {
-      safeUpdateElement(subj);
-      safeUpdateElement(obj);
     }
 
     // Create links for relevant relationships
-    const relationProperties = [
-      "provider",
-      "license",
-      "keywords",
-      // "identifier",
-      "dataPublished",
-      "dateModified",
-      "creator",
-      "author",
-      "publisher",
-      "affiliation",
-    ];
-    const includesElement = relationProperties.some((item) => pred.includes(item));
+    const includesElement = CONFIG.relationProperties.some((item: string) => pred.includes(item));
     if (includesElement) {
-      if (pred.includes("affiliation")) {
-        safeUpdateElement(obj, undefined, "organization");
-      }
-      if (pred.includes("author") || pred.includes("creator")) {
-        safeUpdateElement(obj, undefined, "person");
+      const group = predToGroup(pred);
+      if (group !== "") {
+        safeUpdateElement(obj, undefined, group);
       }
       if (!nodesMap.has(subj)) {
         nodesMap.set(subj, { id: subj, label: subj, group: "" });
       }
-      edges.push({ source: subj, target: obj, label: pred });
+      if (!nodesMap.has(obj)) {
+        nodesMap.set(obj, { id: obj, label: obj, group: "" });
+      }
+      // set as source color, if not set target color, if not set default color gray
+      const linkColor = nodesMap.get(subj)?.color ?? nodesMap.get(obj)?.color ?? "gray";
+      edges.push({ source: subj, target: obj, label: pred, color: linkColor });
     }
   });
 
   const nodes = Array.from(nodesMap.values());
-  const graphData: GraphData = { nodes, links: edges };
-  const connectedNodes = removeNonConnectedNodes(graphData);
-  if (removeUnconnectedNodes) return { nodes: connectedNodes, links: edges };
-  else return graphData;
+  return { nodes, links: edges } as GraphData;
 };
 
 const removeNonConnectedNodes = (graphData: GraphData): NodeObject[] => {
+  // Collect all connected node ids from the links
   const connectedNodeIds = new Set(
-    graphData.links.flatMap(({ source, target }: NodeObject) => [source, target] as LinkObject)
+    graphData.links.flatMap(({ source, target }) => {
+      const sourceId =
+        typeof source === "string" || typeof source === "number" ? source : source?.id; // Handle cases where source could be undefined or an object
+
+      const targetId =
+        typeof target === "string" || typeof target === "number" ? target : target?.id; // Handle cases where target could be undefined or an object
+
+      // Only return IDs if sourceId and targetId are defined
+      return [sourceId, targetId].filter((id) => id !== undefined);
+    })
   );
 
   // Keep only nodes that are connected by edges
-  return graphData.nodes.filter((node: NodeObject) => connectedNodeIds.has(node.id));
+  return graphData.nodes.filter((node: NodeObject) =>
+    connectedNodeIds.has(node?.id?.toString() ?? "")
+  );
 };
 
 const typeToGroup = (type: string): string => {
-  const typeMap: Map<string, string> = new Map<string, string>();
-  //schema:Person, schema:Organization, schema:Dataset, schema:SoftwareSourceCode, schema:Document,
-  // schema:Article, schema:creativeWork, schema:Service
-
-  // set types
-  typeMap.set("person", "Person");
-  typeMap.set("dataset", "Dataset");
-  typeMap.set("organization", "Organization");
-  typeMap.set("software", "SoftwareSourceCode");
-  typeMap.set("document", "Document");
-  typeMap.set("article", "Article");
-  typeMap.set("creativeWork", "CreativeWork");
-  typeMap.set("service", "Service");
-
-  // iterate over the entries of the typeMap
-  for (const [key, value] of typeMap.entries()) {
-    // check if type input contains any of the elements in the values array
-    if (type.toLowerCase().includes(value.toLowerCase())) {
-      return key; // return the map key if a match is found
+  for (const group of CONFIG.groups) {
+    if (group.types.includes(type)) {
+      return group.name;
     }
   }
-
-  return ""; // return a default value if no match is found
+  return "";
 };
-export { createGraph, rdfGraphToNodes };
+
+const predToGroup = (pred: string): string => {
+  for (const group of CONFIG.groups) {
+    if (group.properties && group.properties.includes(pred)) {
+      return group.name;
+    }
+  }
+  return "";
+};
+
+// config groups keys
+const groups = CONFIG.groups.map((group: GroupType) => group.name);
+
+export { createGraph, rdfGraphToNodes, removeNonConnectedNodes, groups, getGroupColor };

@@ -1,34 +1,31 @@
 [project]
-name = "beamer-gui"
-version = "0.0.1"
-description = "A GUI for creating a Beamer presentation using LaTeX."
-keywords = ["beamer", "latex"]
+name = "rdf-graph-visualization"
+version = "0.1.0"
+description = "Visualization of RDF graphs in Turtle format in 3D on the web."
+keywords = ["rdf", "graph", "turtle", "visualization"]
 license = "MIT"
-repository = "https://github.com/Materials-Data-Science-and-Informatics/beamer-gui"
+repository = "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
+homepage = "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
 
 [[project.people]]
 family-names = "Soylu"
 given-names = "Mustafa"
 email = "m.soylu@fz-juelich.de"
 orcid = "https://orcid.org/0000-0003-2637-0432"
-
-contribution = "Main developer and project manager."
-contribution_types = ["maintenance", "code", "test", "review", "doc"]
-
+contribution = "The main author, maintainer and tester."
+contribution_begin = "2023-03-01"
+contribution_types = ["ideas", "code", "design", "test"]
 author = true
 maintainer = true
 
 [[project.people]]
-family-names = "D'Mello"
-given-names = "Fiona"
-orcid = "https://orcid.org/0000-0002-0465-1009"
-email = "f.dmello@fz-juelich.de"
+family-names = "Fathalla"
+given-names = "Said"
+email = "s.fathalla@fz-juelich.de"
+orcid = "https://orcid.org/0000-0002-2818-5890"
 
-contribution = "Main developer."
-contribution_types = ["ideas", "code", "test", "review", "doc"]
-
-author = true
-
+contribution_begin = "2023-03-01"
+contribution_types = ["ideas", "userTesting"]
 
 [[project.people]]
 family-names = "Hofmann"
@@ -36,6 +33,10 @@ given-names = "Volker"
 email = "v.hofmann@fz-juelich.de"
 orcid = "https://orcid.org/0000-0002-5149-603X"
 
+contribution = "Discussions and suggestions concerning tool scope and usability."
+contribution_begin = "2023-06-01"
+contribution_end = "2023-06-30"
+contribution_types = ["ideas", "userTesting"]
 publication_author = true
 
 [[project.people]]
@@ -44,7 +45,5 @@ given-names = "Stefan"
 email = "s.sandfeld@fz-juelich.de"
 orcid = "https://orcid.org/0000-0001-9560-4728"
 
-contribution_types = ["ideas", "fundingFinding"]
-
+contribution_types = ["fundingFinding"]
 publication_author = true
-
