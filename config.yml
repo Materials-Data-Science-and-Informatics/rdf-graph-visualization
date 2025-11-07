@@ -1,0 +1,59 @@
+# links will be created from these properties
+relationProperties:
+  - "http://schema.org/affiliation"
+  - "http://schema.org/dataPublished"
+  - "http://schema.org/dateModified"
+  - "http://schema.org/provider"
+  - "http://schema.org/license"
+  - "http://schema.org/publisher"
+  - "http://schema.org/author"
+  - "http://schema.org/creator"
+  - "http://schema.org/keywords"
+
+# labels will be created from these properties
+labelProperties:
+  - "http://schema.org/name"
+  - "http://schema.org/text"
+  - "http://schema.org/comment"
+
+# groups will be created from these properties
+groups:
+  - name: 'Organization'
+    types:
+      - 'http://schema.org/Organization'
+    properties:
+        - 'http://schema.org/affiliation'
+        - 'http://schema.org/provider'
+        - 'http://schema.org/publisher'
+    color: '#008000'
+  - name: 'Person'
+    types:
+      - 'http://schema.org/Person'
+    properties:
+        - 'http://schema.org/author'
+        - 'http://schema.org/creator'
+    color: '#FF0000'
+  - name: 'Dataset'
+    types:
+      - 'http://schema.org/Dataset'
+    color: '#0000FF'
+  - name: 'Software'
+    types:
+      - 'http://schema.org/SoftwareSourceCode'
+    color: '#FFFF00'
+  - name: 'Document'
+    types:
+      - 'http://schema.org/Document'
+    color: '#FFA500'
+  - name: 'Article'
+    types:
+      - 'http://schema.org/Article'
+    color: '#4B0082'
+  - name: 'CreativeWork'
+    types:
+      - 'http://schema.org/CreativeWork'
+    color: '#8A2BE2'
+  - name: 'Service'
+    types:
+      - 'http://schema.org/Service'
+    color: '#00FFFF'

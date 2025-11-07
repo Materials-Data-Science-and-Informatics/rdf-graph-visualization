@@ -13,6 +13,9 @@ RUN npm install
 # Copy the rest of the application files
 COPY . .
 
+# Copy the example config.yml to the root for Vite to process
+COPY examples/config.yml ./config.yml
+
 # Build the Vite app for production
 RUN npm run build
 
