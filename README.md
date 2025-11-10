@@ -77,14 +77,24 @@ in the [repository](https://github.com/Materials-Data-Science-and-Informatics/rd
 
 We kindly thank all authors and contributors.
 
+### Third-party Libraries
+
+This project uses the following open-source libraries:
+
+- **react-force-graph-3d** by Vasco Asturiano - MIT License
+  - Repository: [react-force-graph](https://github.com/vasturiano/react-force-graph)
+  - A React component for 3D force directed graphs using ThreeJS/WebGL
+
+### Funding
+
+This project was developed at the Institute for Materials Data Science and Informatics
+(IAS-9) of the Jülich Research Center and funded by the Helmholtz Metadata Collaboration
+(HMC), an incubator-platform of the Helmholtz Association within the framework of the
+Information and Data Science strategic initiative.
+
 <div>
 <img style="vertical-align: middle;" alt="HMC Logo" src="https://github.com/Materials-Data-Science-and-Informatics/Logos/raw/main/HMC/HMC_Logo_M.png" width=50% height=50% />
 &nbsp;&nbsp;
 <img style="vertical-align: middle;" alt="FZJ Logo" src="https://github.com/Materials-Data-Science-and-Informatics/Logos/raw/main/FZJ/FZJ.png" width=30% height=30% />
 </div>
 <br />
-
-This project was developed at the Institute for Materials Data Science and Informatics
-(IAS-9) of the Jülich Research Center and funded by the Helmholtz Metadata Collaboration
-(HMC), an incubator-platform of the Helmholtz Association within the framework of the
-Information and Data Science strategic initiative.
