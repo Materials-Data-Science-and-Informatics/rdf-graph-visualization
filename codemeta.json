@@ -18,7 +18,7 @@
   ],
   "name": "rdf-graph-visualization",
   "description": "Visualization of RDF graphs in Turtle format in 3D on the web.",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "keywords": [
     "rdf",
     "graph",

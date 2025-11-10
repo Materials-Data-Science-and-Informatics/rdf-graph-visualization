@@ -3,7 +3,7 @@ message: If you use this software, please cite it using these metadata.
 type: software
 title: rdf-graph-visualization
 abstract: Visualization of RDF graphs in Turtle format in 3D on the web.
-version: 0.1.0
+version: 0.2.0
 keywords:
 - rdf
 - graph
