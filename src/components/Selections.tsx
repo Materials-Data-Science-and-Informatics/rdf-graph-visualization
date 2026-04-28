@@ -22,8 +22,8 @@ import ConfigModal from "./TextModal.tsx";
 import yaml from "js-yaml";
 import configFile from "/config.yml?raw";
 
-const parseRDF = (rdfData: string, baseUrl: string): GraphData => {
-  const store = createGraph(rdfData, baseUrl);
+const parseRDF = (rdfData: string): GraphData => {
+  const store = createGraph(rdfData, "https://schema.org/");
   return rdfGraphToNodes(store);
 };
 
@@ -42,7 +42,6 @@ const Selections: React.FC<SelectionsProps> = ({
   const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
   const [loading, setLoading] = useState<boolean>(false);
-  const [baseUrl, setBaseUrl] = useState<string>("http://schema.org/");
   const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [modalText, setModalText] = useState<string>("");
@@ -70,7 +69,7 @@ const Selections: React.FC<SelectionsProps> = ({
       const fileContent = reader.result;
       try {
         if (typeof fileContent === "string") {
-          const data = parseRDF(fileContent, baseUrl);
+          const data = parseRDF(fileContent);
           setGraphData(data);
           setFilteredGraphData(data);
           setIsChecked(false);
@@ -155,7 +154,7 @@ const Selections: React.FC<SelectionsProps> = ({
   const handleInfoClick = () => {
     const info = `Overview
 This simple RDF visualizer allows you to upload a turtle file and visualize the graph. Check examples in the [repository](https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization) for sample config and turtle files.
-   
+
 Features
 - filter the nodes by groups
 - remove unlinked nodes
@@ -171,15 +170,6 @@ If your graph has more than 2000 nodes, it might take a while to load. Please wa
     <Box p={4} width="100%" mx="auto">
       <VStack spacing={4} alignItems="flex-start">
         <HStack spacing={4} alignItems="flex-start">
-          <FormControl>
-            <FormLabel htmlFor="base-url">RDF Base URL</FormLabel>
-            <Input
-              id="base-url"
-              type="text"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-            />
-          </FormControl>
           <FormControl>
             <FormLabel htmlFor="file-upload">Upload a turtle file</FormLabel>
             <Input
