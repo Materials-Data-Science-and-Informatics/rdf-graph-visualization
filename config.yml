@@ -1,3 +1,8 @@
+# Types to skip (not rendered as nodes)
+skipTypes:
+  - "https://schema.org/URL"
+  - "https://schema.org/Collection"
+
 relationProperties:
   - "https://schema.org/author"
   - "https://schema.org/contributor"
@@ -30,7 +35,6 @@ relationProperties:
 labelProperties:
   - "https://schema.org/name"
   - "https://schema.org/identifier"
-  - "https://schema.org/prefName"
 
 groups:
   - name: "Person"

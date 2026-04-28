@@ -75,6 +75,9 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
 
     // set node type
     if (pred === "http://www.w3.org/1999/02/22-rdf-syntax-ns#type") {
+      if (CONFIG.skipTypes?.includes(obj)) {
+        return;
+      }
       const group = typeToGroup(obj);
 
       if (group === "") {
@@ -98,6 +101,7 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
         if (group !== "") {
           safeUpdateElement(obj, undefined, group);
         }
+        // Only create node for edge targets if not already in map (let type statements handle it)
         if (!nodesMap.has(subj)) {
           nodesMap.set(subj, { id: subj, label: subj, group: "" });
         }
