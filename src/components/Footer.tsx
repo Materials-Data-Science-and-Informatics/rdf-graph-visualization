@@ -1,5 +1,6 @@
 import { Box, Flex, Link, Text, UnorderedList, ListItem } from "@chakra-ui/react";
 import { FaLinkedin, FaMastodon, FaTwitter, FaEnvelope, FaGithub } from "react-icons/fa";
+import { version } from "../../package.json";
 
 type IconType = "linkedin" | "mastodon" | "x" | "mattermost" | "mail";
 
@@ -65,12 +66,14 @@ const Footer = () => {
                 Imprint
               </Link>
             </ListItem>
+
             <ListItem>
               <Link href="mailto:m.soylu@fz-juelich.de" isExternal>
                 Contact
               </Link>
             </ListItem>
           </UnorderedList>
+          <Text>RDF Graph Visualization v{version}</Text>
           <Text>&copy; {new Date().getFullYear()} Forschungszentrum Jülich</Text>
         </Flex>
       </Flex>
