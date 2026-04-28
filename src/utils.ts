@@ -91,7 +91,7 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
     // Create links for relevant relationships
     const includesElement = CONFIG.relationProperties.some((item: string) => pred.includes(item));
     if (includesElement) {
-      const isLiteral = statement.object.termType === "literal";
+      const isLiteral = statement.object.termType === "Literal";
       
       if (!isLiteral) {
         const group = predToGroup(pred);
