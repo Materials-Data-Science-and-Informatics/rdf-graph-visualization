@@ -7,7 +7,7 @@ import { getGroupColor } from "../utils";
 import FullScreenButton from "./FullScreenButton.tsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import ResetViewButton from "./ResetViewButton.tsx";
-import ThemeSwitch   from "./ThemeSwitch.tsx";
+import ThemeSwitch from "./ThemeSwitch.tsx";
 interface GraphProps {
   graphData: GraphData;
   width: number;
@@ -26,15 +26,14 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
   const handleClick = useCallback(
     (node: NodeObject) => {
       if (!node || node.x === undefined || node.y === undefined || node.z === undefined) return;
-      if (!fgRef.current) return;
-
-      const distance = 80;
-      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
-
-      fgRef.current.cameraPosition(
-        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-        node,
-        2000
+      // copy node´s id to clipboard
+      navigator.clipboard.writeText((node.id ?? "").toString()).then(
+        () => {
+          console.log("Node ID copied to clipboard: ", node.id);
+        },
+        (err) => {
+          console.error("Could not copy text: ", err);
+        }
       );
     },
     [fgRef]
@@ -97,7 +96,9 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
         graphData={graphData}
         width={graphWidth}
         height={graphHeight}
-        nodeLabel={(node: NodeObject) => `<span style="color: ${labelColor}">${node.label || node.id}</span>`}
+        nodeLabel={(node: NodeObject) =>
+          `<span style="color: ${labelColor}">${node.label || node.id}</span>`
+        }
         linkLabel={(d: LinkObject) => `<span style="color: ${labelColor}">${d.label}</span>`}
         linkDirectionalArrowLength={7}
         linkDirectionalArrowRelPos={1}
