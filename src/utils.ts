@@ -91,19 +91,23 @@ const rdfGraphToNodes = (store: rdflib.Store): GraphData => {
     // Create links for relevant relationships
     const includesElement = CONFIG.relationProperties.some((item: string) => pred.includes(item));
     if (includesElement) {
-      const group = predToGroup(pred);
-      if (group !== "") {
-        safeUpdateElement(obj, undefined, group);
+      const isLiteral = statement.object.termType === "literal";
+      
+      if (!isLiteral) {
+        const group = predToGroup(pred);
+        if (group !== "") {
+          safeUpdateElement(obj, undefined, group);
+        }
+        if (!nodesMap.has(subj)) {
+          nodesMap.set(subj, { id: subj, label: subj, group: "" });
+        }
+        if (!nodesMap.has(obj)) {
+          nodesMap.set(obj, { id: obj, label: obj, group: "" });
+        }
+        // set as source color, if not set target color, if not set default color gray
+        const linkColor = nodesMap.get(subj)?.color ?? nodesMap.get(obj)?.color ?? "gray";
+        edges.push({ source: subj, target: obj, label: pred, color: linkColor });
       }
-      if (!nodesMap.has(subj)) {
-        nodesMap.set(subj, { id: subj, label: subj, group: "" });
-      }
-      if (!nodesMap.has(obj)) {
-        nodesMap.set(obj, { id: obj, label: obj, group: "" });
-      }
-      // set as source color, if not set target color, if not set default color gray
-      const linkColor = nodesMap.get(subj)?.color ?? nodesMap.get(obj)?.color ?? "gray";
-      edges.push({ source: subj, target: obj, label: pred, color: linkColor });
     }
   });
 
