@@ -96,41 +96,48 @@ const Selections: React.FC<SelectionsProps> = ({
     reader.readAsText(file);
   }, [file]);
 
+  // Filter graph data based on selected groups and optionally remove unconnected nodes
+  // Uses requestIdleCallback to avoid blocking the main thread during heavy filtering
   useEffect(() => {
     setLoading(true);
-    const filteredNodes = graphData.nodes.filter((node) => {
-      if (filters.size === 0) {
-        return true;
+    
+    requestIdleCallback(() => {
+      // Filter nodes by selected groups; if no filters, show all nodes
+      const filteredNodes = filters.size === 0
+        ? graphData.nodes
+        : graphData.nodes.filter((node) => {
+            // Handle "Default" filter by mapping it to empty string group
+            const tempFilters = new Set(filters);
+            if (filters.has("Default")) {
+              tempFilters.delete("Default");
+              tempFilters.add("");
+            }
+            return !tempFilters.has(node.group);
+          });
+
+      // Create a Set of node IDs for O(1) lookup during link filtering
+      const connectedNodeIds = new Set(filteredNodes.map((node) => node.id));
+      
+      // Filter links to only include those connecting remaining nodes
+      // Using Set.has() instead of Array.some() for better performance
+      const filteredLinks = graphData.links.filter((link: LinkObject) => {
+        const sourceId = typeof link.source === "object" ? link.source?.id : link.source;
+        const targetId = typeof link.target === "object" ? link.target?.id : link.target;
+        return connectedNodeIds.has(sourceId) && connectedNodeIds.has(targetId);
+      });
+
+      const filteredGraph = { nodes: filteredNodes, links: filteredLinks };
+
+      // Optionally remove nodes that have no connections
+      if (isChecked) {
+        const connectedNodes = removeNonConnectedNodes(filteredGraph);
+        setFilteredGraphData({ nodes: connectedNodes, links: filteredGraph.links });
+      } else {
+        setFilteredGraphData(filteredGraph);
       }
-      const tempFilters = new Set(filters);
-      if (filters.has("Default")) {
-        tempFilters.delete("Default");
-        tempFilters.add("");
-      }
-      return !tempFilters.has(node.group);
+      setLoading(false);
     });
-
-    const filteredLinks = graphData.links.filter((link: LinkObject) => {
-      return (
-        filteredNodes.some(
-          (node) => node.id === (typeof link.source === "object" ? link.source?.id : link.source)
-        ) &&
-        filteredNodes.some(
-          (node) => node.id === (typeof link.target === "object" ? link.target?.id : link.target)
-        )
-      );
-    });
-    const filteredGraph = { nodes: filteredNodes, links: filteredLinks };
-
-    if (isChecked) {
-      const connectedNodes = removeNonConnectedNodes(filteredGraph);
-      setFilteredGraphData({ nodes: connectedNodes, links: filteredGraph.links });
-    } else {
-      setFilteredGraphData(filteredGraph);
-    }
-
-    setLoading(false);
-  }, [isChecked, filters]);
+  }, [isChecked, filters, graphData]);
 
   useEffect(() => {
     const counts: Record<string, number> = {};
