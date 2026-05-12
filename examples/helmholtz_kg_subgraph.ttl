@@ -8604,3 +8604,279 @@ ns1:c9824e2f1933f5bbe525020d156f3e4ea407b0a60d807ac9ae4925f3ca8dd26e	ns0:affilia
 		ns1:Organization .
 <https://ror.org/040fv5d16>	rdf:type	ns1:Thing ,
 		ns1:Organization .
+@prefix rdf:	<http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix ns1:	<https://schema.org/> .
+<https://doi.org/10.5061/dryad.qnk98sfcg>	rdf:type	ns1:Thing ,
+		ns1:Dataset ,
+		ns1:CreativeWork .
+@prefix ns2:	<https://www.w3.org/ns/prov#> .
+@prefix ns3:	<http://purls.helmholtz-metadaten.de/helmholtzkg_api/> .
+<https://doi.org/10.5061/dryad.qnk98sfcg>	ns2:has_provenance	ns3:bc10146587ce35c06a1da09a449a71fe1306d46cfb362d9e70725ba7bf87e562 ;
+	ns1:identifier	"https://doi.org/10.5061/dryad.qnk98sfcg" ;
+	ns1:name	"Data from: Genome-wide association analysis of type 2 diabetes in the EPIC-InterAct study" ;
+	ns1:url	<https://datadryad.org/dataset/doi:10.5061/dryad.qnk98sfcg> ;
+	ns1:author	<https://orcid.org/0000-0003-3751-3929> ,
+		<https://orcid.org/0000-0003-2598-8388> ,
+		<https://orcid.org/0000-0003-3137-6337> ,
+		<https://orcid.org/0000-0002-5652-8459> ,
+		<https://orcid.org/0000-0002-9972-9779> ,
+		<https://orcid.org/0000-0001-5800-4520> ,
+		<https://orcid.org/0000-0002-5017-7344> .
+@prefix ns4:	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:> .
+<https://doi.org/10.5061/dryad.qnk98sfcg>	ns1:author	ns4:ffa02042c81026f90e8a4d17f8f33000584c478bde1d243dad4265d07291b71d ,
+		ns4:dd430bc3d00662a4d4050cf6cd8be708b7cf670c9a97605536378399f9dd6a0c ,
+		ns4:f78d9f8cc66869aac20d90c5792749f5e46e302865ae4c46906d4657318018cb ,
+		ns4:cb7b00a49e3609085f57c252378f3c0477cb0665da291b30dc8005039c9a538a ,
+		ns4:d4a8273b73b58cf9302ccee4741103ce67d15107a0853450efcada330aa4fefc ,
+		ns4:bb1086fb604dbd6d3dec2247bf86018636ed4e165f2c2a7c04aac38ce715c7ff ,
+		ns4:c9bd7d7a8fca7790cb371443ce887219d97fbb3e44fe88019721e6200fb59a96 ,
+		ns4:a2868d2b6d72378d7a66b0fb4f10915c7cd57930ecc0be08b8821ca37bafc4ee ,
+		ns4:ba9af74d73013de12994020d1011158660b4e467be3ee2a87d058351193a06f6 ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:9d37dc189cf014975b5ac3ec83edebd18346a118fd01472d57036f88bb41a308> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:83110900490c2c3db1802425c51831cb614991013b080e58915a7a89eaff7f9b> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:955dbda2b7510d390b92b634719ab2d3b8c739fbf56db559fe53d402af26a44f> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:6eb845ee53858cbac3e33b4bb2175c076dbece7d423b9125cee91d03580db718> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:80815d4b55f438a8b99d730158adf05301d8e197bbdcad9990c39f3bc41f433b> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:6773bf4f605cbd51195f2b02ffe6073300c2b5f35b3da4b060e643a840010362> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:67d14481a3b022d337ded9040849bdf9c45888a40bb2b425717e43316e0e37c2> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:443840ef26dcd53a31ca5306e920972ca738d2f9860fc25a71e296d360683eeb> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:602473e46c1d790cf83356c7b783d6ec8f785f6076f048caede31709429fe082> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:3a46b6274581cd3621fad0694f33389744317b184247e29a6de4ce1a4e14f36e> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:42d7b2c6eeb03abc6c4f7a5e03d88c65c76e49ad076747b41df393a81a12f57d> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:250c24189c9a7b0f7991d22494a24be5241b7f45b60b296b5200c637ef1ab3d3> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:324086c88cf27a13b186d454c5ad615f9cec4545cfc572804b1b7a695dc45989> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:1444a46560463bc75ddb88b97d1326a6d4aa6cdfd6c07b14f2cd1f6353165500> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:1167e8ce3fc9332a23cd42ce2a528688bab54f1a4cea90b29864a504dc4393fa> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:14447d145b794befbfdeddca946a5464770777a62eb337eab67320b68e64ff82> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:0506130de2bedc7caea219ef7797e79ae442e7b28bf276b2e87fb30f54b42a43> ;
+	ns1:datePublished	"2021-09-18T00:00:00Z" ;
+	ns1:description	"Type 2 diabetes (T2D) is a global public health challenge. Whilst the\n advent of genome-wide association studies has identified &gt;400\n genetic variants associated with T2D, our understanding of its biological\n mechanisms and translational insights is still limited. The EPIC-InterAct\n project, centred in 8 countries in the European Prospective Investigations\n into Cancer and Nutrition study, is one of the largest prospective studies\n of T2D. Established as a nested case-cohort study to investigate the\n interplay between genetic and lifestyle behavioural factors on the risk of\n T2D, a total of 12,403 individuals were identified as incident T2D cases\n and a representative sub-cohort of 16,154 individuals was selected from a\n larger cohort of 340,234 participants with a follow-up time of 3.99\n million person-years. We describe the results from a genome-wide\n association analysis between more than 8.9 million SNPs and T2D risk among\n 22,326 individuals (9,978 cases and 12,348 non-cases) from the\n EPIC-InterAct study. The summary statistics to be shared provide a\n valuable resource to facilitate further investigations into the genetics\n of T2D." ;
+	ns1:keywords	"Illumina 660W-Quad BeadChip" ,
+		"Prentice-weighted Cox regression" ,
+		"EPIC-InterAct" ,
+		"Illumina Core-Exome" ,
+		"Type 2 diabetes" ,
+		"METAL" ,
+		"European" ,
+		"logistic regression" ,
+		"genome-wide association studies (GWAS)" .
+@prefix ns5:	<https://creativecommons.org/publicdomain/zero/1.0/> .
+<https://doi.org/10.5061/dryad.qnk98sfcg>	ns1:license	ns5:legalcode ;
+	ns1:provider	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:08b6a62b8668519c99723ad254f89918203734b5f837264c5c60800e9c5190d3> ;
+	ns1:publisher	<https://ror.org/00x6h5n95> ;
+	ns1:version	"9" .
+@prefix rdf:	<http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix ns1:	<https://schema.org/> .
+<https://doi.org/10.5281/zenodo.17813602>	rdf:type	ns1:CreativeWork ,
+		ns1:Dataset ,
+		ns1:Thing .
+@prefix ns2:	<https://www.w3.org/ns/prov#> .
+<https://doi.org/10.5281/zenodo.17813602>	ns2:has_provenance	<http://purls.helmholtz-metadaten.de/helmholtzkg_api/963727332983e78383edfd295e41e9c69bdeca3674f872814ebb227ab14ababa> ;
+	ns1:identifier	"https://doi.org/10.5281/zenodo.17813602" ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:5105a6a347455666e028bd8243f67c53376bffe523c9f2c0b15ee4ee0579b01e> ;
+	ns1:name	"Electron-phonon-dominated charge-density-wave fluctuations in TiSe2 accessed by ultrafast nonequilibrium dynamics" ;
+	ns1:url	<https://zenodo.org/doi/10.5281/zenodo.17813602> ;
+	ns1:author	<https://orcid.org/0000-0002-1673-2973> ,
+		<https://orcid.org/0000-0002-8837-620X> ,
+		<https://orcid.org/0000-0001-8260-0234> ,
+		<https://orcid.org/0009-0008-2700-4921> ,
+		<https://orcid.org/0000-0003-2316-2224> ,
+		<https://orcid.org/0000-0003-3019-3248> ;
+	ns1:datePublished	"2025-12-04" ;
+	ns1:description	"This repository contains the datasets used to generate figures for the article:\n\n\u201CElectron-phonon-dominated charge-density-wave fluctuations in TiSe\u2082 accessed by ultrafast nonequilibrium dynamics.\u201DFragkos et al., Communications Physics (accepted, 2025); arXiv:2507.12430.\n\nAuthors:Sotirios Fragkos, Hibiki Orio, Nina Girotto Erhardt, Akib Jabed, Sarath Sasi, Quentin Courtade, Muthu P. T. Masilamani, Maximilian \u00DCnzelmann, Florian Diekmann, Baptiste Hildebrand, Dominique Descamps, St\u00E9phane Petit, Fabio Boschini, J\u00E1n Min\u00E1r, Yann Mairesse, Friedrich Reinert, Kai Rossnagel, Dino Novko, Samuel Beaulieu, and Jakub Schusser.\n\nThe files include experimental TR-ARPES measurements, HDF5 data , metadata files, and theoretical files required to reproduce figures from the publication\n\n\u00A0" ;
+	ns1:keywords	"" .
+@prefix ns3:	<https://creativecommons.org/licenses/by/4.0/> .
+<https://doi.org/10.5281/zenodo.17813602>	ns1:license	ns3:legalcode ;
+	ns1:provider	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:08b6a62b8668519c99723ad254f89918203734b5f837264c5c60800e9c5190d3> ;
+	ns1:publisher	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:656a19c8d475f9704a26b29bb8994e384fec88e0ce68228ccd306bf4460678a2> .
+@prefix rdf:	<http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix ns1:	<https://doi.org/10.3204/> .
+@prefix ns2:	<https://schema.org/> .
+ns1:pubdb-2021-02878	rdf:type	ns2:Thing ,
+		ns2:Dataset ,
+		ns2:CreativeWork .
+@prefix ns3:	<https://www.w3.org/ns/prov#> .
+@prefix ns4:	<http://purls.helmholtz-metadaten.de/helmholtzkg_api/> .
+ns1:pubdb-2021-02878	ns3:has_provenance	ns4:a6fbcc5ff61ed0a4cfeec8781f6f9511747da8f76227a7ed43767fb36b7b8ac2 ;
+	ns2:identifier	"https://doi.org/10.3204/pubdb-2021-02878" ;
+	ns2:name	"Raw data repository for manuscript \"Single Alloy Nanoparticle X-Ray Imaging during a Catalytic Reaction\"" ;
+	ns2:url	<https://bib-pubdb1.desy.de/record/460309> .
+@prefix ns5:	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:> .
+ns1:pubdb-2021-02878	ns2:author	ns5:d1038bff190b158feeac7128dbab6f48d355bc7bde009da50d3a5a94aba99c59 ,
+		ns5:e9a69b261c8e1002e90550155d43f2cedae446a859bc7bb256dfb527f42df1d1 ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:179cf83e1d1fafcbf32e6c5c457fa3724a42b354cf169ad4d75470fe9951fed4> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:31635c9a209b70c42785fb435044bbdeb480d251ffe0735e511733f0b56a83b8> ,
+		<https://orcid.org/0000-0001-6102-9518> ,
+		<https://orcid.org/0000-0002-0340-8234> ,
+		<https://orcid.org/0000-0002-0303-6282> ,
+		<https://orcid.org/0000-0001-9854-1101> ,
+		<https://orcid.org/0000-0002-3770-6344> ,
+		<https://orcid.org/0000-0001-7270-6211> ,
+		<https://orcid.org/0000-0003-1588-1747> ;
+	ns2:datePublished	"2021" ;
+	ns2:description	"Raw data depository for https://arxiv.org/abs/2103.01573. Details with file information are given in the file description-of-datasets.pdf" ;
+	ns2:keywords	"" ;
+	ns2:provider	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:08b6a62b8668519c99723ad254f89918203734b5f837264c5c60800e9c5190d3> ;
+	ns2:publisher	ns5:ba4d63a60769773efd062dded297d7d27c821cf5192629313b2c0a7a3cfe63a1 .
+@prefix rdf:	<http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix ns1:	<https://schema.org/> .
+<https://doi.org/10.5061/dryad.hdr7sqvk8>	rdf:type	ns1:Thing ,
+		ns1:CreativeWork ,
+		ns1:Dataset .
+@prefix ns2:	<https://www.w3.org/ns/prov#> .
+<https://doi.org/10.5061/dryad.hdr7sqvk8>	ns2:has_provenance	<http://purls.helmholtz-metadaten.de/helmholtzkg_api/54be3004ce7a59a5288736b1ebda8aed0204d817cc8044c26f356a2cc4b81e61> ;
+	ns1:identifier	"https://doi.org/10.5061/dryad.hdr7sqvk8" ;
+	ns1:name	"Polygenic risk score in Africa populations: progress and challenges" ;
+	ns1:url	<https://datadryad.org/dataset/doi:10.5061/dryad.hdr7sqvk8> ;
+	ns1:author	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:7c95c857ff9c1320ce21a31b8d35c07b7b0245387e4536f17d65ef7436b6ed93> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:82558c79c12d7ae0cf1cae4b6e052562cb83cdb535a47252b2089e5ebb7530ef> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:734f421a4389a9cbe277c9b3fb625728aa0aff8269007246bf7a6cc185aba56c> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:7abf9a92cf0ea68b46eed75f0327fafe7bc55de7401529cb1f3c7d964bf6479a> .
+@prefix ns3:	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:> .
+<https://doi.org/10.5061/dryad.hdr7sqvk8>	ns1:author	ns3:ed767f286fd3fd3f1c3216ef4f31823fb75337d9a33cf84176be907ae0964d01 ,
+		ns3:f792838ec9f94c32f90005276ccf038990bef6026240ada74e337e215d356f32 ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:8ef34142ac0ebf3c36429f8cec20dcd3719c20de63afde488a3c5864e9a5522c> ,
+		ns3:ecc0c4f6455d5ece70f17a4e4c708ef503b0b8f1bd88bf2a758d60ee68ebc8f6 ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:215f331213f003ca39197c42d6558fbf5ddaa8331d343ccde795cc3fdad66b44> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:24deacf83ba36289c3f87f0e97b940489cc20b9b5f0f9f580ac2a88c5eb7d8a7> ,
+		<https://orcid.org/0000-0002-1390-2359> ;
+	ns1:datePublished	"2023-02-08T00:00:00Z" ;
+	ns1:description	"Polygenic Risk Score (PRS) analysis is a method that predicts the genetic\n risk of an individual towards targeted traits. Even when there are no\n significant markers, it gives evidence of a genetic effect beyond the\n results of Genome-Wide Association Studies (GWAS). Moreover, it selects\n SNPs that contribute to the disease with low effect size making it more\n precise at individual level risk prediction. PRS analysis addresses the\n shortfall of GWAS by taking into account the SNPs/alleles with low effect\n size but play an indispensable role to the observed phenotypic/trait\n variance. PRS analysis has application which investigate\u00A0the\n genetic basis of several traits which includes rare diseases. However, the\n accuracy of PRS analysis depends on the genomic data of the underlying\n population. For instance, several studies show that obtaining higher\n prediction power of PRS analysis is challenging for non-Europeans. In this\n manuscript, we reviewed the conventional PRS methods and their application\n to Sub-Saharan African communities. We concluded that lack of sufficient\n GWAS data and tools is the limiting factor of applying PRS analysis to\n Sub-Saharan populations. We recommend developing Africa-specific PRS\n methods and tools for estimating, and analyzing Africa population data for\n clinical evaluation of PRSs of interest and predicting rare diseases." ;
+	ns1:keywords	"FOS: Biological sciences" .
+@prefix ns4:	<https://creativecommons.org/publicdomain/zero/1.0/> .
+<https://doi.org/10.5061/dryad.hdr7sqvk8>	ns1:license	ns4:legalcode ;
+	ns1:provider	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:08b6a62b8668519c99723ad254f89918203734b5f837264c5c60800e9c5190d3> ;
+	ns1:publisher	<https://ror.org/00x6h5n95> ;
+	ns1:version	"7" .
+@prefix rdf:	<http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix ns1:	<https://schema.org/> .
+<https://doi.org/10.5061/dryad.c261c>	rdf:type	ns1:CreativeWork ,
+		ns1:Dataset ,
+		ns1:Thing .
+@prefix ns2:	<https://www.w3.org/ns/prov#> .
+<https://doi.org/10.5061/dryad.c261c>	ns2:has_provenance	<http://purls.helmholtz-metadaten.de/helmholtzkg_api/8abb85851b33d95bf0e2b58f31cfe635f77f9fbc8e027b64360f463134f4a1de> ;
+	ns1:identifier	"https://doi.org/10.5061/dryad.c261c" ;
+	ns1:name	"Data from: Visual landmarks sharpen grid cell metric and confer context specificity to neurons of the medial entorhinal cortex" ;
+	ns1:url	<https://datadryad.org/dataset/doi:10.5061/dryad.c261c> .
+@prefix ns3:	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:> .
+<https://doi.org/10.5061/dryad.c261c>	ns1:author	ns3:b503a7a8c67dae61ed057a98524b0b633ab2ce98d1353fd111032331975b555d ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:53aefe1d1883068011a971b9e10b5533511f3b5c873555e00f0bd60684b6e452> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:58ee4bfddcf21aa5e2c5057bba024979d56defaef50b054d2df8c65b1576ef16> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:3b2c04d765677f912c5e9468f488c280e8ea7e08f07212e6dbb48d820133e0c6> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:429cb91a4b8d2f4faccfbb98687a9032389ca6b21e64a162fb2de29262835842> ;
+	ns1:datePublished	"2017-07-22T00:00:00Z" ;
+	ns1:description	"Neurons of the medial entorhinal cortex (MEC) provide spatial\n representations critical for navigation. In this network, the periodic\n firing fields of grid cells act as a metric element for position. The\n location of the grid firing fields depends on interactions between\n self-motion information, geometrical properties of the environment and\n nonmetric contextual cues. Here, we test whether visual information,\n including nonmetric contextual cues, also regulates the firing rate of MEC\n neurons. Removal of visual landmarks caused a profound impairment in grid\n cell periodicity. Moreover, the speed code of MEC neurons changed in\n darkness and the activity of border cells became less confined to\n environmental boundaries. Half of the MEC neurons changed their firing\n rate in darkness. Manipulations of nonmetric visual cues that left the\n boundaries of a 1D environment in place caused rate changes in grid cells.\n These findings reveal context specificity in the rate code of MEC neurons." ;
+	ns1:keywords	"Entorhinal cortex" ,
+		"path integration" ,
+		"speed cells" ,
+		"border cells" ,
+		"head-direction cells" ,
+		"grid cells" .
+@prefix ns4:	<https://creativecommons.org/publicdomain/zero/1.0/> .
+<https://doi.org/10.5061/dryad.c261c>	ns1:license	ns4:legalcode ;
+	ns1:provider	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:08b6a62b8668519c99723ad254f89918203734b5f837264c5c60800e9c5190d3> ;
+	ns1:publisher	<https://ror.org/00x6h5n95> ;
+	ns1:version	"1" .
+@prefix rdf:	<http://www.w3.org/1999/02/22-rdf-syntax-ns#> .
+@prefix ns1:	<https://schema.org/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	rdf:type	ns1:CreativeWork ,
+		ns1:Thing ,
+		ns1:Dataset .
+@prefix ns2:	<https://www.w3.org/ns/prov#> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns2:has_provenance	<http://purls.helmholtz-metadaten.de/helmholtzkg_api/850244fa776d836fc5d2e07baf1f23b28d1996d2cac86a7287c73d6a1e89c3cf> ;
+	ns1:identifier	"https://doi.org/10.6084/m9.figshare.23505186.v1" ;
+	ns1:name	"Additional file 3 of Buffy coat signatures of breast cancer risk in a prospective cohort study" ;
+	ns1:url	<https://springernature.figshare.com/articles/dataset/Additional_file_3_of_Buffy_coat_signatures_of_breast_cancer_risk_in_a_prospective_cohort_study/23505186/1> .
+@prefix ns3:	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:author	ns3:f2acd712a5f8d1f0f1046a17bb58101ce79aec0802df45cb5d1bc3e545b1605d ,
+		ns3:feca8a45673aa2c5f1ca3608c16778a015ef2cd0c2da609528b86e1a0de58948 ,
+		ns3:af92671942c1e91d3225113b7471a938dbd2766c3a8844508217f3b1c4e213f9 ,
+		ns3:b2719601924d97b0b2c1d4d4ef103923685adbb74414a4fb04afa3ad8e77b609 ,
+		ns3:a17f757329b49c798f6d896e51eb71b56969ae0e728b730557eb2e6734b1b753 ,
+		ns3:a29678a45c486ac31255028c00d1b38eebf8b0716c36d3e6a063c778fa237f3b ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:83d6318d639d4b709f8ce9333a93f66182b22f0a2bcaf4f3a4ae894e062b94e9> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:860d6d7170171309294c6c16a9fca128cab138cad37265db9fc70cb41a1686f6> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:7c0761f7eac7f9f225ec5cfccf78827fe3587a2cf7282f45dbed8207fde4ad00> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:82c04fbd28118f0d84566c96335eced91ae10c966373f96127c7477bd0e31493> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:71bed2717bb85756a38d7422ece5f6c19fa2801543cfc7efb2c985f8c5ff2b12> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:78ca4875c316878ed4d588728f4dbd20a0ee0fa364d608e487f054de9210bb31> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:63afc3bd8b8d5e46a7c37243ac0ddd50f76bd31346091c4dd50f73a0527d1810> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:6f906ec1b8fc72f04e837eb0e413d40f9ecfc49b08c426c589f18d1600ac2a3b> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:4515e9a64007b544a0ba36892c323f82123a3bdccef545f50bb485a22b2c8a42> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:544b6f0f6dd820a5722c6224ca5b347ac9bed7ad1901ff5bfc531d9990406e63> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:28195e0c0251a1c2a145e0f43e8804214922ee67a79938204ed954ddbb689e6f> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:319c34c7a007c608a75f2edb0205a1fb25cee3a5e7bd9fd93eb1b32a88443808> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:23a695235acc9ad7bb16bfc08b1cb661b8c04198633d87773f11f34dd50009e1> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:257ce048ebf521ae7911c35209470ca517888a620fe992bafc67d91419b126fe> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:15478a02446b7da0c523b6fe282b8d86e9f256efa750494f8a76530e29033fcd> ,
+		<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:20cbc8c6e9e14d258583481f1076cd4155f5bfe6aa965c3bb246a1c8354f4771> .
+@prefix ns4:	<https://doi.org/10.1186/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns4:s13148-016-0228-z .
+@prefix ns5:	<https://doi.org/10.1007/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns5:s10549-010-1188-1 ,
+		<https://doi.org/10.1016/j.annonc.2020.02.011> ,
+		<https://doi.org/10.1016/j.cell.2012.08.023> ,
+		<https://doi.org/10.1016/j.celrep.2018.09.082> ,
+		<https://doi.org/10.1016/j.ebiom.2016.02.008> ,
+		<https://doi.org/10.1016/j.ejca.2017.01.014> .
+@prefix ns6:	<https://doi.org/10.1038/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns6:nature12787 ,
+		<https://doi.org/10.1038/nbt.3820> ,
+		<https://doi.org/10.1002/ijc.29030> ,
+		<https://doi.org/10.1002/ijc.29205> ,
+		<https://doi.org/10.3322/caac.21492> ,
+		ns4:s13058-019-1145-9 ,
+		ns4:s13059-016-1064-3 ,
+		ns4:s13059-017-1191-5 ,
+		ns4:s13059-019-1664-9 ,
+		ns4:s13059-019-1827-8 ,
+		ns4:s13073-017-0500-7 ,
+		ns4:s13148-018-0471-6 ,
+		ns4:s13148-019-0717-y .
+@prefix ns7:	<https://doi.org/10.1093/nar/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns7:gkw377 ,
+		<https://doi.org/10.1101/gr.147942.112> ,
+		<https://doi.org/10.1126/science.aaz2078> ,
+		ns7:gkv007 ,
+		<https://doi.org/10.1126/scitranslmed.aaw8513> ,
+		<https://doi.org/10.1158/1940-6207.capr-20-0003> ,
+		<https://doi.org/10.1186/1471-2105-14-128> ,
+		<https://doi.org/10.1186/1471-2407-14-830> ,
+		ns4:s12885-019-5403-0 ,
+		ns6:s41591-020-0932-2 ,
+		ns6:s41698-018-0075-9 .
+@prefix ns8:	<https://doi.org/10.1093/bioinformatics/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns8:btx183 .
+@prefix ns9:	<https://doi.org/10.1093/carcin/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns9:bgx004 .
+@prefix ns10:	<https://doi.org/10.1093/hmg/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns10:ddp033 .
+@prefix ns11:	<https://doi.org/10.1093/ije/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns11:dyy029 .
+@prefix ns12:	<https://doi.org/10.1093/jmcb/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns12:mjy054 .
+@prefix ns13:	<https://doi.org/10.1093/jnci/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:citation	ns13:djz065 ,
+		ns6:ncb1827 ,
+		ns6:ncomms8776 ,
+		ns6:s41467-019-09828-0 ,
+		ns6:s41467-020-17316-z ,
+		ns6:s41571-020-0388-9 ,
+		ns6:s41586-018-0703-0 ,
+		ns6:s41586-018-0756-0 ,
+		ns6:s41591-018-0156-x ,
+		<https://doi.org/10.1214/16-aoas920> ,
+		<https://doi.org/10.18632/aging.100809> ,
+		<https://doi.org/10.18632/oncotarget.15573> ,
+		<https://doi.org/10.3109/15376516.2011.562671> ,
+		ns4:s13148-019-0656-7 ;
+	ns1:datePublished	"2023" ;
+	ns1:description	"Additional file 3. Supplementary Table 3. List of significantly differentially methylated regions (FDR &lt; 0.05, group mean difference &gt; 0.075) between cases and matched controls in prospectively-collected buffy-coat samples. The correlation between DNA methylation levels at these regions to time to diagnosis was determined by Kendall rank correlation." ;
+	ns1:keywords	"FOS: Biological sciences" ,
+		"Genetics" .
+@prefix ns14:	<https://creativecommons.org/licenses/by/4.0/> .
+<https://doi.org/10.6084/m9.figshare.23505186.v1>	ns1:license	ns14:legalcode ;
+	ns1:provider	<http://purls.helmholtz-metadaten.de/helmholtzkg/hkg:08b6a62b8668519c99723ad254f89918203734b5f837264c5c60800e9c5190d3> ;
+	ns1:publisher	ns3:a4853ef18f44dd39efc160139428faa1a0bd179d496722b94f97b2faf52f82fe ;
+	ns1:dateModified	"2023-06-13" ;
+	ns1:dateCreated	"2023-06-13" .
