@@ -8,7 +8,7 @@ import {
 } from "@chakra-ui/react";
 import * as React from "react";
 import { useState, Dispatch, SetStateAction, useEffect } from "react";
-import { createGraph, rdfGraphToNodes, removeNonConnectedNodes } from "../utils";
+import { createGraph, rdfGraphToNodes } from "../utils";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
 
@@ -19,7 +19,6 @@ const parseRDF = (rdfData: string): GraphData => {
 
 interface SelectionsProps {
   graphData: GraphData;
-  filteredGraphData: GraphData;
   setGraphData: Dispatch<SetStateAction<GraphData>>;
   setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
   setGraphKey: Dispatch<SetStateAction<number>>;
@@ -27,7 +26,6 @@ interface SelectionsProps {
 
 const Selections: React.FC<SelectionsProps> = ({
   graphData,
-  filteredGraphData,
   setGraphData,
   setFilteredGraphData,
   setGraphKey,
@@ -85,7 +83,10 @@ const Selections: React.FC<SelectionsProps> = ({
 
   // Filter graph data based on selected groups and optionally remove unconnected nodes
   useEffect(() => {
-    if (graphData.nodes.length === 0) return;
+    if (graphData.nodes.length === 0) {
+      setFilteredGraphData({ nodes: [], links: [] });
+      return;
+    }
 
     setLoading(true);
 
@@ -130,13 +131,18 @@ const Selections: React.FC<SelectionsProps> = ({
         newGraphData = { nodes: filteredNodes, links: filteredLinks };
       }
 
-      const nodeIdsChanged = JSON.stringify(newGraphData.nodes.map(n => n.id).sort()) !==
-                             JSON.stringify(filteredGraphData.nodes.map(n => n.id).sort());
+      // ForceGraph mutates graph objects in place, so pass fresh copies on every UI-driven update.
+      const graphSnapshot: GraphData = {
+        nodes: newGraphData.nodes.map((node) => ({ ...node })),
+        links: newGraphData.links.map((link) => ({
+          ...link,
+          source: typeof link.source === "object" ? link.source?.id : link.source,
+          target: typeof link.target === "object" ? link.target?.id : link.target,
+        })),
+      };
 
-      if (nodeIdsChanged) {
-        setFilteredGraphData(newGraphData);
-        setGraphKey((k) => k + 1);
-      }
+      setFilteredGraphData(graphSnapshot);
+      setGraphKey((k) => k + 1);
       setLoading(false);
     };
 
@@ -145,7 +151,7 @@ const Selections: React.FC<SelectionsProps> = ({
     } else {
       processFiltering();
     }
-  }, [isChecked, filters, graphData, filteredGraphData]);
+  }, [isChecked, filters, graphData, setFilteredGraphData, setGraphKey]);
 
   if (loading) {
     return <LoadingSpinner />;
