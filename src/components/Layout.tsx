@@ -53,7 +53,10 @@ If your graph has more than 2000 nodes, it might take a while to load. Please wa
         flex="1"
         width={contentWidth}
         mx="auto"
-        justifyContent="center"
+        display="flex"
+        flexDirection="column"
+        minH={0}
+        py={2}
         overflowX="hidden"
       >
         {children}

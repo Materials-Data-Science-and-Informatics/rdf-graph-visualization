@@ -37,7 +37,7 @@ const Content = () => {
   });
 
   return (
-    <Box width="100%" mb={4}>
+    <Box width="100%" flex="1" minH={0} display="flex" flexDirection="column" gap={4}>
       <Selections
         setGraphData={setGraphData}
         graphData={graphData}
@@ -46,8 +46,10 @@ const Content = () => {
       <Box
         ref={boxRef}
         width="100%"
-        height="calc(100vh - 220px)"
+        flex="1"
+        minH={{ base: "360px", md: "480px" }}
         overflow="hidden"
+        position="relative"
       >
         <Graph graphData={filteredGraphData} width={size.width} height={size.height} />
       </Box>

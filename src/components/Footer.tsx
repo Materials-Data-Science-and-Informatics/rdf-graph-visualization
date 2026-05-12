@@ -25,9 +25,15 @@ const Footer = () => {
   };
 
   return (
-    <Box as="footer" bg="rgb(0, 40, 100)" color="white" px={4} pt={3} mt={6}>
+    <Box as="footer" bg="rgb(0, 40, 100)" color="white" px={{ base: 4, md: 6 }} pt={4} pb={4} mt={4}>
       <Flex direction="column" mb={3} px={3}>
-        <Flex justifyContent="space-between" alignItems="start" mb={4}>
+        <Flex
+          justifyContent="space-between"
+          alignItems={{ base: "flex-start", md: "center" }}
+          direction={{ base: "column", md: "row" }}
+          gap={4}
+          mb={4}
+        >
           <Link href="https://helmholtz.de" target="_blank" aria-label="Open Helmholtz page">
             <svg xmlns="http://www.w3.org/2000/svg" width="200" height="28" fill="none">
               <path
@@ -36,13 +42,13 @@ const Footer = () => {
               ></path>
             </svg>
           </Link>
-          <Text fontSize="lg" ml={4}>
+          <Text fontSize="lg" ml={{ base: 0, md: 4 }}>
             Research for grand challenges.
           </Text>
         </Flex>
 
         <Flex mb={4}>
-          <UnorderedList display="flex" gap={4} listStyleType="none">
+          <UnorderedList display="flex" flexWrap="wrap" gap={4} listStyleType="none" ml={0}>
             {contact.map((item, index) => (
               <ListItem key={index}>
                 <Link
@@ -59,8 +65,13 @@ const Footer = () => {
           </UnorderedList>
         </Flex>
 
-        <Flex justifyContent="space-between">
-          <UnorderedList display="flex" listStyleType="none" gap={4}>
+        <Flex
+          justifyContent="space-between"
+          alignItems={{ base: "flex-start", md: "center" }}
+          direction={{ base: "column", md: "row" }}
+          gap={3}
+        >
+          <UnorderedList display="flex" flexWrap="wrap" listStyleType="none" gap={4} ml={0}>
             <ListItem>
               <Link href="https://www.fz-juelich.de/en/legal-notice" isExternal>
                 Imprint
