@@ -19,8 +19,6 @@ const Content = () => {
   const [size, setSize] = useState({ width: 0, height: 0 });
   // Timeout reference for debouncing resize events
   const resizeTimeoutRef = useRef<number | null>(null);
-  // Key to force graph recreation when filters change
-  const [graphKey, setGraphKey] = useState(0);
 
   // Observe container resize and debounce updates to prevent excessive re-renders
   // Debouncing is especially important for large graphs to maintain smooth UI
@@ -44,7 +42,6 @@ const Content = () => {
         setGraphData={setGraphData}
         graphData={graphData}
         setFilteredGraphData={setFilteredGraphData}
-        setGraphKey={setGraphKey}
       />
       <Box
         ref={boxRef}
@@ -52,7 +49,7 @@ const Content = () => {
         height="calc(100vh - 220px)"
         overflow="hidden"
       >
-        <Graph key={graphKey} graphData={filteredGraphData} width={size.width} height={size.height} />
+        <Graph graphData={filteredGraphData} width={size.width} height={size.height} />
       </Box>
     </Box>
   );

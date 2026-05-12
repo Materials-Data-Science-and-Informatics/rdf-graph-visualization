@@ -21,14 +21,12 @@ interface SelectionsProps {
   graphData: GraphData;
   setGraphData: Dispatch<SetStateAction<GraphData>>;
   setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
-  setGraphKey: Dispatch<SetStateAction<number>>;
 }
 
 const Selections: React.FC<SelectionsProps> = ({
   graphData,
   setGraphData,
   setFilteredGraphData,
-  setGraphKey,
 }: SelectionsProps) => {
   const [file, setFile] = useState<File | null>(null);
   const [isChecked, setIsChecked] = useState<boolean>(false);
@@ -89,8 +87,13 @@ const Selections: React.FC<SelectionsProps> = ({
     }
 
     setLoading(true);
+    let cancelled = false;
 
     const processFiltering = () => {
+      if (cancelled) {
+        return;
+      }
+
       // Filter nodes by selected groups; if no filters, show all nodes
       const filteredNodes =
         filters.size === 0
@@ -142,16 +145,19 @@ const Selections: React.FC<SelectionsProps> = ({
       };
 
       setFilteredGraphData(graphSnapshot);
-      setGraphKey((k) => k + 1);
       setLoading(false);
     };
 
     if (graphData.nodes.length > 500) {
-      requestIdleCallback(processFiltering);
+      window.setTimeout(processFiltering, 0);
     } else {
       processFiltering();
     }
-  }, [isChecked, filters, graphData, setFilteredGraphData, setGraphKey]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isChecked, filters, graphData, setFilteredGraphData]);
 
   if (loading) {
     return <LoadingSpinner />;
