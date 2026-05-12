@@ -13,14 +13,15 @@ type TextModalProps = {
   isOpen: boolean;
   onClose: () => void;
   text: string;
+  title?: string;
 };
 
-const TextModal = ({ isOpen, onClose, text }: TextModalProps) => {
+const TextModal = ({ isOpen, onClose, text, title }: TextModalProps) => {
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="xl">
       <ModalOverlay />
       <ModalContent>
-        <ModalHeader>YAML Config File</ModalHeader>
+        <ModalHeader>{title || "YAML Config File"}</ModalHeader>
         <ModalCloseButton />
         <ModalBody>
           <Box

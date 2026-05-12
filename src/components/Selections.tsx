@@ -2,23 +2,16 @@ import {
   Box,
   Checkbox,
   FormControl,
-  FormLabel,
   Input,
-  VStack,
   HStack,
   Button,
   Text,
-  useDisclosure,
 } from "@chakra-ui/react";
 import * as React from "react";
 import { useState, Dispatch, SetStateAction, useEffect } from "react";
 import { createGraph, rdfGraphToNodes, removeNonConnectedNodes } from "../utils";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
-import ConfigModal from "./TextModal.tsx";
-
-import yaml from "js-yaml";
-import configFile from "/config.yml?raw";
 
 const parseRDF = (rdfData: string): GraphData => {
   const store = createGraph(rdfData, "https://schema.org/");
@@ -42,10 +35,6 @@ const Selections: React.FC<SelectionsProps> = ({
   const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
   const [loading, setLoading] = useState<boolean>(false);
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const [modalText, setModalText] = useState<string>("");
-
-  const yamlContent = yaml.dump(yaml.load(configFile));
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -153,69 +142,30 @@ const Selections: React.FC<SelectionsProps> = ({
     return <LoadingSpinner />;
   }
 
-  const handleConfigClick = () => {
-    setModalText(yamlContent);
-    onOpen();
-  };
-
-  const handleInfoClick = () => {
-    const info = `Overview
-This simple RDF visualizer allows you to upload a turtle file and visualize the graph. Check examples in the [repository](https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization) for sample config and turtle files.
-
-Features
-- filter the nodes by groups
-- remove unlinked nodes
-- The config file is loaded from a YAML file
-- see and update the graph configuration by clicking the 'Show config' button.
-
-If your graph has more than 2000 nodes, it might take a while to load. Please wait until graph elements are rendered (stop spinning) before interacting with the graph.`;
-    setModalText(info);
-    onOpen();
-  };
-
   return (
     <Box p={4} width="100%" mx="auto">
-      <VStack spacing={4} alignItems="flex-start">
-        <HStack spacing={4} alignItems="flex-start">
-          <FormControl>
-            <FormLabel htmlFor="file-upload">Upload a turtle file</FormLabel>
-            <Input
-              id="file-upload"
-              type="file"
-              accept=".rdf, .ttl"
-              display="none"
-              onChange={handleFileChange}
-            />
-            <label htmlFor="file-upload">
-              <Button colorScheme="blue" as="span">
-                {file ? "Upload new file" : "Upload file"}
-              </Button>
-            </label>
-            {file && (
-              <Text mt={2} color="gray.500">
-                {file.name}
-              </Text>
-            )}
-          </FormControl>
-          <VStack>
-            <FormControl>
-              <Button onClick={handleInfoClick}>Show Info</Button>
-            </FormControl>
-            <FormControl>
-              <Button onClick={handleConfigClick}>Show Config</Button>
-            </FormControl>
-          </VStack>
-        </HStack>
-
-        <VStack spacing={1} alignItems="flex-start">
-          <FormControl>
-            <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
-              Add not connected nodes
-            </Checkbox>
-          </FormControl>
-        </VStack>
-      </VStack>
-      <ConfigModal isOpen={isOpen} onClose={onClose} text={modalText} />
+      <HStack spacing={4} alignItems="center">
+        <Input
+          id="file-upload"
+          type="file"
+          accept=".rdf, .ttl"
+          display="none"
+          onChange={handleFileChange}
+        />
+        <label htmlFor="file-upload">
+          <Button colorScheme="blue" as="span">
+            {file ? "Upload new file" : "Upload a turtle file"}
+          </Button>
+        </label>
+        {file && (
+          <Text mt={2} color="gray.500">
+            {file.name}
+          </Text>
+        )}
+        <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
+          Add not connected nodes
+        </Checkbox>
+      </HStack>
     </Box>
   );
 };
