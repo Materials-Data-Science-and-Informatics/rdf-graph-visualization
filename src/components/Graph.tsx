@@ -1,5 +1,5 @@
 import * as React from "react";
-import { memo, useCallback, useEffect, useRef, useState, useMemo } from "react";
+import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import ForceGraph3D, { GraphData, NodeObject, LinkObject } from "react-force-graph-3d";
 import * as THREE from "three";
 import { Box } from "@chakra-ui/react";
@@ -15,8 +15,7 @@ interface GraphProps {
   height: number;
 }
 
-// Wrap with memo to prevent unnecessary re-renders when parent state changes
-const Graph: React.FC<GraphProps> = memo(({ graphData, width, height }) => {
+const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
   // Fullscreen state for graph container
   const [isFullScreen, setIsFullScreen] = useState(false);
   // Separate width/height state to allow fullscreen to override parent dimensions
@@ -157,6 +156,6 @@ const Graph: React.FC<GraphProps> = memo(({ graphData, width, height }) => {
       <Legend />
     </Box>
   );
-});
+};
 
 export default Graph;

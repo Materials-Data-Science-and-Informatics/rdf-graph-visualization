@@ -29,15 +29,17 @@ interface SelectionsProps {
   graphData: GraphData;
   setGraphData: Dispatch<SetStateAction<GraphData>>;
   setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
+  setGraphKey: Dispatch<SetStateAction<number>>;
 }
 
 const Selections: React.FC<SelectionsProps> = ({
   graphData,
   setGraphData,
   setFilteredGraphData,
+  setGraphKey,
 }: SelectionsProps) => {
   const [file, setFile] = useState<File | null>(null);
-  const [isChecked, setIsChecked] = useState<boolean>(true);
+  const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
   const [loading, setLoading] = useState<boolean>(false);
   const { isOpen, onOpen, onClose } = useDisclosure();
@@ -68,8 +70,6 @@ const Selections: React.FC<SelectionsProps> = ({
         if (typeof fileContent === "string") {
           const data = parseRDF(fileContent);
           setGraphData(data);
-          setFilteredGraphData(data);
-          setIsChecked(false);
           setFilters(new Set<string>());
           console.log(
             `Loaded file: ${file.name} with ${data.nodes.length} nodes and ${data.links.length} links.`
@@ -126,14 +126,26 @@ const Selections: React.FC<SelectionsProps> = ({
 
       const filteredGraph = { nodes: filteredNodes, links: filteredLinks };
 
-      // Optionally remove nodes that have no connections
-      if (isChecked) {
+      let newGraphData: GraphData;
+      if (!isChecked) {
         const connectedNodes = removeNonConnectedNodes(filteredGraph);
-        setFilteredGraphData({ nodes: connectedNodes, links: filteredGraph.links });
+        newGraphData = { nodes: connectedNodes, links: filteredGraph.links };
       } else {
-        setFilteredGraphData(filteredGraph);
+        newGraphData = { nodes: filteredNodes, links: graphData.links };
       }
-      setLoading(false);
+
+      // Create deep copies to ensure new object references
+      const deepCopy = JSON.parse(JSON.stringify(newGraphData));
+      const emptyData = { nodes: [], links: [] };
+
+      // First clear the graph, then set new data with fresh references
+      setFilteredGraphData(emptyData);
+      setGraphKey((k) => k + 1);
+
+      requestAnimationFrame(() => {
+        setFilteredGraphData(deepCopy);
+        setLoading(false);
+      });
     });
   }, [isChecked, filters, graphData]);
 
@@ -198,7 +210,7 @@ If your graph has more than 2000 nodes, it might take a while to load. Please wa
         <VStack spacing={1} alignItems="flex-start">
           <FormControl>
             <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
-              Remove nodes that are not linked
+              Add not connected nodes
             </Checkbox>
           </FormControl>
         </VStack>

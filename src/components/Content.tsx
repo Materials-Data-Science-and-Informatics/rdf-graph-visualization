@@ -22,6 +22,8 @@ const Content = () => {
   const { isOpen, onToggle } = useDisclosure({ defaultIsOpen: true });
   // Timeout reference for debouncing resize events
   const resizeTimeoutRef = useRef<number | null>(null);
+  // Key to force graph recreation when filters change
+  const [graphKey, setGraphKey] = useState(0);
 
   // Observe container resize and debounce updates to prevent excessive re-renders
   // Debouncing is especially important for large graphs to maintain smooth UI
@@ -63,6 +65,7 @@ const Content = () => {
               setGraphData={setGraphData}
               graphData={graphData}
               setFilteredGraphData={setFilteredGraphData}
+              setGraphKey={setGraphKey}
             />
           </Box>
         </Collapse>
@@ -73,7 +76,7 @@ const Content = () => {
         height={isOpen ? "calc(100vh - 630px)" : "calc(100vh - 330px)"}
         overflow="hidden"
       >
-        <Graph graphData={filteredGraphData} width={size.width} height={size.height} />
+        <Graph key={graphKey} graphData={filteredGraphData} width={size.width} height={size.height} />
       </Box>
     </Box>
   );
