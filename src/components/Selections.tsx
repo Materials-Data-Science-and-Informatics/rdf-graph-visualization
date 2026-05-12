@@ -1,7 +1,6 @@
 import {
   Box,
   Checkbox,
-  FormControl,
   Input,
   HStack,
   Button,
@@ -20,6 +19,7 @@ const parseRDF = (rdfData: string): GraphData => {
 
 interface SelectionsProps {
   graphData: GraphData;
+  filteredGraphData: GraphData;
   setGraphData: Dispatch<SetStateAction<GraphData>>;
   setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
   setGraphKey: Dispatch<SetStateAction<number>>;
@@ -27,6 +27,7 @@ interface SelectionsProps {
 
 const Selections: React.FC<SelectionsProps> = ({
   graphData,
+  filteredGraphData,
   setGraphData,
   setFilteredGraphData,
   setGraphKey,
@@ -83,17 +84,17 @@ const Selections: React.FC<SelectionsProps> = ({
   }, [file]);
 
   // Filter graph data based on selected groups and optionally remove unconnected nodes
-  // Uses requestIdleCallback to avoid blocking the main thread during heavy filtering
   useEffect(() => {
+    if (graphData.nodes.length === 0) return;
+
     setLoading(true);
 
-    requestIdleCallback(() => {
+    const processFiltering = () => {
       // Filter nodes by selected groups; if no filters, show all nodes
       const filteredNodes =
         filters.size === 0
           ? graphData.nodes
           : graphData.nodes.filter((node) => {
-              // Handle "Default" filter by mapping it to empty string group
               const tempFilters = new Set(filters);
               if (filters.has("Default")) {
                 tempFilters.delete("Default");
@@ -102,41 +103,49 @@ const Selections: React.FC<SelectionsProps> = ({
               return !tempFilters.has(node.group);
             });
 
-      // Create a Set of node IDs for O(1) lookup during link filtering
-      const connectedNodeIds = new Set(filteredNodes.map((node) => node.id));
+      // Create a Set of node IDs for O(1) lookup
+      const filteredNodeIds = new Set(filteredNodes.map((node) => node.id));
 
-      // Filter links to only include those connecting remaining nodes
-      // Using Set.has() instead of Array.some() for better performance
+      // Filter links to only include those connecting filtered nodes
       const filteredLinks = graphData.links.filter((link: LinkObject) => {
         const sourceId = typeof link.source === "object" ? link.source?.id : link.source;
         const targetId = typeof link.target === "object" ? link.target?.id : link.target;
-        return connectedNodeIds.has(sourceId) && connectedNodeIds.has(targetId);
+        return filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId);
       });
-
-      const filteredGraph = { nodes: filteredNodes, links: filteredLinks };
 
       let newGraphData: GraphData;
       if (!isChecked) {
-        const connectedNodes = removeNonConnectedNodes(filteredGraph);
-        newGraphData = { nodes: connectedNodes, links: filteredGraph.links };
+        // Remove nodes that have no connections in the filtered view
+        const connectedNodeIds = new Set(
+          filteredLinks.flatMap((link) => {
+            const sourceId = typeof link.source === "object" ? link.source?.id : link.source;
+            const targetId = typeof link.target === "object" ? link.target?.id : link.target;
+            return [sourceId, targetId];
+          })
+        );
+        const connectedNodes = filteredNodes.filter((node) => connectedNodeIds.has(node.id));
+        newGraphData = { nodes: connectedNodes, links: filteredLinks };
       } else {
-        newGraphData = { nodes: filteredNodes, links: graphData.links };
+        // Show all filtered nodes with all their links
+        newGraphData = { nodes: filteredNodes, links: filteredLinks };
       }
 
-      // Create deep copies to ensure new object references
-      const deepCopy = JSON.parse(JSON.stringify(newGraphData));
-      const emptyData = { nodes: [], links: [] };
+      const nodeIdsChanged = JSON.stringify(newGraphData.nodes.map(n => n.id).sort()) !==
+                             JSON.stringify(filteredGraphData.nodes.map(n => n.id).sort());
 
-      // First clear the graph, then set new data with fresh references
-      setFilteredGraphData(emptyData);
-      setGraphKey((k) => k + 1);
+      if (nodeIdsChanged) {
+        setFilteredGraphData(newGraphData);
+        setGraphKey((k) => k + 1);
+      }
+      setLoading(false);
+    };
 
-      requestAnimationFrame(() => {
-        setFilteredGraphData(deepCopy);
-        setLoading(false);
-      });
-    });
-  }, [isChecked, filters, graphData]);
+    if (graphData.nodes.length > 500) {
+      requestIdleCallback(processFiltering);
+    } else {
+      processFiltering();
+    }
+  }, [isChecked, filters, graphData, filteredGraphData]);
 
   if (loading) {
     return <LoadingSpinner />;

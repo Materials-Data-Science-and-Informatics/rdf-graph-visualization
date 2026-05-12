@@ -43,6 +43,7 @@ const Content = () => {
       <Selections
         setGraphData={setGraphData}
         graphData={graphData}
+        filteredGraphData={filteredGraphData}
         setFilteredGraphData={setFilteredGraphData}
         setGraphKey={setGraphKey}
       />
