@@ -89,7 +89,8 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
     const boxGeometry = new THREE.BoxGeometry(8, 8, 8);
     const sphereGeometry = new THREE.SphereGeometry(5);
 
-    return ({ group }: { group: string }) => {
+    return (node: NodeObject) => {
+      const group = (node as any).group || "";
       const geometry = group === "" ? boxGeometry : sphereGeometry;
       const color = getGroupColor(group);
       
