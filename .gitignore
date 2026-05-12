@@ -26,3 +26,4 @@ dist-ssr
 # project configuration
 config.yml
 !examples/config.yml
+tsconfig.*.tsbuildinfo
