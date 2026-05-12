@@ -1,7 +1,7 @@
 import { Box, Collapse, useDisclosure, Text, HStack, IconButton } from "@chakra-ui/react";
 import Graph from "./Graph";
 import Selections from "./Selections";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import useResizeObserver from "@react-hook/resize-observer";
 import { GraphData } from "react-force-graph-3d";
 import { CiSquareChevUp, CiSquareChevDown } from "react-icons/ci";

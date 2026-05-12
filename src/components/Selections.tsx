@@ -5,7 +5,6 @@ import {
   FormLabel,
   Input,
   VStack,
-  Heading,
   HStack,
   Button,
   Text,
@@ -13,8 +12,7 @@ import {
 } from "@chakra-ui/react";
 import * as React from "react";
 import { useState, Dispatch, SetStateAction, useEffect } from "react";
-import { createGraph, rdfGraphToNodes, removeNonConnectedNodes, groups } from "../utils";
-import FilterSwitch from "./FilterSwitch.tsx";
+import { createGraph, rdfGraphToNodes, removeNonConnectedNodes } from "../utils";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
 import ConfigModal from "./TextModal.tsx";
@@ -39,10 +37,9 @@ const Selections: React.FC<SelectionsProps> = ({
   setFilteredGraphData,
 }: SelectionsProps) => {
   const [file, setFile] = useState<File | null>(null);
-  const [isChecked, setIsChecked] = useState<boolean>(false);
+  const [isChecked, setIsChecked] = useState<boolean>(true);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
   const [loading, setLoading] = useState<boolean>(false);
-  const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
   const { isOpen, onOpen, onClose } = useDisclosure();
   const [modalText, setModalText] = useState<string>("");
 
@@ -100,24 +97,25 @@ const Selections: React.FC<SelectionsProps> = ({
   // Uses requestIdleCallback to avoid blocking the main thread during heavy filtering
   useEffect(() => {
     setLoading(true);
-    
+
     requestIdleCallback(() => {
       // Filter nodes by selected groups; if no filters, show all nodes
-      const filteredNodes = filters.size === 0
-        ? graphData.nodes
-        : graphData.nodes.filter((node) => {
-            // Handle "Default" filter by mapping it to empty string group
-            const tempFilters = new Set(filters);
-            if (filters.has("Default")) {
-              tempFilters.delete("Default");
-              tempFilters.add("");
-            }
-            return !tempFilters.has(node.group);
-          });
+      const filteredNodes =
+        filters.size === 0
+          ? graphData.nodes
+          : graphData.nodes.filter((node) => {
+              // Handle "Default" filter by mapping it to empty string group
+              const tempFilters = new Set(filters);
+              if (filters.has("Default")) {
+                tempFilters.delete("Default");
+                tempFilters.add("");
+              }
+              return !tempFilters.has(node.group);
+            });
 
       // Create a Set of node IDs for O(1) lookup during link filtering
       const connectedNodeIds = new Set(filteredNodes.map((node) => node.id));
-      
+
       // Filter links to only include those connecting remaining nodes
       // Using Set.has() instead of Array.some() for better performance
       const filteredLinks = graphData.links.filter((link: LinkObject) => {
@@ -138,16 +136,6 @@ const Selections: React.FC<SelectionsProps> = ({
       setLoading(false);
     });
   }, [isChecked, filters, graphData]);
-
-  useEffect(() => {
-    const counts: Record<string, number> = {};
-    graphData.nodes.forEach((node) => {
-      let group = node.group || "Default";
-      group = group === "" ? "Default" : group;
-      counts[group] = (counts[group] || 0) + 1;
-    });
-    setGroupCounts(counts);
-  }, [graphData]);
 
   if (loading) {
     return <LoadingSpinner />;
@@ -214,28 +202,6 @@ If your graph has more than 2000 nodes, it might take a while to load. Please wa
             </Checkbox>
           </FormControl>
         </VStack>
-
-        <Heading as="h4" size="md">
-          Filter by group
-        </Heading>
-
-        <HStack spacing={4}>
-          {groups.map((group: string) => (
-            <FilterSwitch
-              key={group}
-              name={group}
-              filters={filters}
-              setFilters={setFilters}
-              count={groupCounts[group] || 0}
-            />
-          ))}
-          <FilterSwitch
-            name={"Default"}
-            filters={filters}
-            setFilters={setFilters}
-            count={groupCounts["Default"] || 0}
-          />
-        </HStack>
       </VStack>
       <ConfigModal isOpen={isOpen} onClose={onClose} text={modalText} />
     </Box>
