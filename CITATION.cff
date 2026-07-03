@@ -3,30 +3,30 @@ message: If you use this software, please cite it using these metadata.
 type: software
 title: rdf-graph-visualization
 abstract: Visualization of RDF graphs in Turtle format in 3D on the web.
-version: 0.2.0
+version: 0.3.0
 keywords:
-- rdf
-- graph
-- turtle
-- visualization
+  - rdf
+  - graph
+  - turtle
+  - visualization
 authors:
-- family-names: Soylu
-  given-names: Mustafa
-  orcid: https://orcid.org/0000-0003-2637-0432
-  email: m.soylu@fz-juelich.de
-- family-names: Hofmann
-  given-names: Volker
-  orcid: https://orcid.org/0000-0002-5149-603X
-  email: v.hofmann@fz-juelich.de
-- family-names: Sandfeld
-  given-names: Stefan
-  orcid: https://orcid.org/0000-0001-9560-4728
-  email: s.sandfeld@fz-juelich.de
+  - family-names: Soylu
+    given-names: Mustafa
+    orcid: https://orcid.org/0000-0003-2637-0432
+    email: m.soylu@fz-juelich.de
+  - family-names: Hofmann
+    given-names: Volker
+    orcid: https://orcid.org/0000-0002-5149-603X
+    email: v.hofmann@fz-juelich.de
+  - family-names: Sandfeld
+    given-names: Stefan
+    orcid: https://orcid.org/0000-0001-9560-4728
+    email: s.sandfeld@fz-juelich.de
 contact:
-- family-names: Soylu
-  given-names: Mustafa
-  orcid: https://orcid.org/0000-0003-2637-0432
-  email: m.soylu@fz-juelich.de
+  - family-names: Soylu
+    given-names: Mustafa
+    orcid: https://orcid.org/0000-0003-2637-0432
+    email: m.soylu@fz-juelich.de
 license: MIT
 repository-code: 
   https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization

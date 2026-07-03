@@ -1,6 +1,6 @@
 [project]
 name = "rdf-graph-visualization"
-version = "0.2.0"
+version = "0.3.0"
 description = "Visualization of RDF graphs in Turtle format in 3D on the web."
 keywords = ["rdf", "graph", "turtle", "visualization"]
 license = "MIT"

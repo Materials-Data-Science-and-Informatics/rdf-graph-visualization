@@ -44,8 +44,8 @@
   },
   "author": {
     "name": "Mustafa Soylu",
-    "email": "m.soylu@fz-juelich.de",
-    "url": "https://orcid.org/0000-0003-2637-0432"
+    "url": "https://orcid.org/0000-0003-2637-0432",
+    "email": "m.soylu@fz-juelich.de"
   },
   "description": "Visualization of RDF graphs in Turtle format in 3D on the web.",
   "keywords": [
@@ -57,8 +57,8 @@
   "maintainers": [
     {
       "name": "Mustafa Soylu",
-      "email": "m.soylu@fz-juelich.de",
-      "url": "https://orcid.org/0000-0003-2637-0432"
+      "url": "https://orcid.org/0000-0003-2637-0432",
+      "email": "m.soylu@fz-juelich.de"
     }
   ],
   "license": "MIT",
@@ -69,23 +69,23 @@
   "contributors": [
     {
       "name": "Mustafa Soylu",
-      "email": "m.soylu@fz-juelich.de",
-      "url": "https://orcid.org/0000-0003-2637-0432"
+      "url": "https://orcid.org/0000-0003-2637-0432",
+      "email": "m.soylu@fz-juelich.de"
     },
     {
       "name": "Volker Hofmann",
-      "email": "v.hofmann@fz-juelich.de",
-      "url": "https://orcid.org/0000-0002-5149-603X"
+      "url": "https://orcid.org/0000-0002-5149-603X",
+      "email": "v.hofmann@fz-juelich.de"
     },
     {
       "name": "Stefan Sandfeld",
-      "email": "s.sandfeld@fz-juelich.de",
-      "url": "https://orcid.org/0000-0001-9560-4728"
+      "url": "https://orcid.org/0000-0001-9560-4728",
+      "email": "s.sandfeld@fz-juelich.de"
     },
     {
       "name": "Said Fathalla",
-      "email": "s.fathalla@fz-juelich.de",
-      "url": "https://orcid.org/0000-0002-2818-5890"
+      "url": "https://orcid.org/0000-0002-2818-5890",
+      "email": "s.fathalla@fz-juelich.de"
     }
   ],
   "homepage": "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization",
