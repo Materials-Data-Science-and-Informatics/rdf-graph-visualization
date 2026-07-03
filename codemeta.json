@@ -13,12 +13,13 @@
       "givenName": "Mustafa",
       "familyName": "Soylu",
       "email": "m.soylu@fz-juelich.de",
-      "@id": "https://orcid.org/0000-0003-2637-0432"
+      "@id": "https://orcid.org/0000-0003-2637-0432",
+      "identifier": "https://orcid.org/0000-0003-2637-0432"
     }
   ],
   "name": "rdf-graph-visualization",
   "description": "Visualization of RDF graphs in Turtle format in 3D on the web.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "keywords": [
     "rdf",
     "graph",
@@ -31,7 +32,8 @@
       "givenName": "Mustafa",
       "familyName": "Soylu",
       "email": "m.soylu@fz-juelich.de",
-      "@id": "https://orcid.org/0000-0003-2637-0432"
+      "@id": "https://orcid.org/0000-0003-2637-0432",
+      "identifier": "https://orcid.org/0000-0003-2637-0432"
     }
   ],
   "license": [
@@ -45,21 +47,24 @@
       "givenName": "Said",
       "familyName": "Fathalla",
       "email": "s.fathalla@fz-juelich.de",
-      "@id": "https://orcid.org/0000-0002-2818-5890"
+      "@id": "https://orcid.org/0000-0002-2818-5890",
+      "identifier": "https://orcid.org/0000-0002-2818-5890"
     },
     {
       "@type": "Person",
       "givenName": "Volker",
       "familyName": "Hofmann",
       "email": "v.hofmann@fz-juelich.de",
-      "@id": "https://orcid.org/0000-0002-5149-603X"
+      "@id": "https://orcid.org/0000-0002-5149-603X",
+      "identifier": "https://orcid.org/0000-0002-5149-603X"
     },
     {
       "@type": "Person",
       "givenName": "Stefan",
       "familyName": "Sandfeld",
       "email": "s.sandfeld@fz-juelich.de",
-      "@id": "https://orcid.org/0000-0001-9560-4728"
+      "@id": "https://orcid.org/0000-0001-9560-4728",
+      "identifier": "https://orcid.org/0000-0001-9560-4728"
     }
   ],
   "url": "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
