@@ -1,5 +1,12 @@
 # RDF Graph Visualization
 
+> [!WARNING]
+> 🚧 **In development**
+>
+> This project is currently developed primarily for internal use. The public [GraphViz deployment](https://graphviz.unhide.helmholtz-metadaten.de/) is adapted to the Helmholtz KG internal data model, which limits its flexibility for other use cases.
+>
+> We are aware of this limitation and are considering further development toward a more flexible GraphViz solution.
+
 ## Description
 This project is a TypeScript/JavaScript application that processes RDF data to create a graph representation. It uses React for the frontend and Chakra UI for styling.
 
