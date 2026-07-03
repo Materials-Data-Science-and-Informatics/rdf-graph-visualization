@@ -1,59 +1,88 @@
-# links will be created from these properties
+# Types to skip (not rendered as nodes)
+skipTypes:
+  - "https://schema.org/URL"
+  - "https://schema.org/Collection"
+
 relationProperties:
-  - "http://schema.org/affiliation"
-  - "http://schema.org/dataPublished"
-  - "http://schema.org/dateModified"
-  - "http://schema.org/provider"
-  - "http://schema.org/license"
-  - "http://schema.org/publisher"
-  - "http://schema.org/author"
-  - "http://schema.org/creator"
-  - "http://schema.org/keywords"
+  - "https://schema.org/author"
+  - "https://schema.org/contributor"
+  - "https://schema.org/creator"
+  - "https://schema.org/provider"
+  - "https://schema.org/publisher"
+  - "https://schema.org/affiliation"
+  - "https://schema.org/parentOrganization"
+  - "https://schema.org/subOrganization"
+  - "https://schema.org/includedInDataCatalog"
+  - "https://schema.org/isPartOf"
+  - "https://schema.org/citation"
+  - "https://schema.org/license"
+  - "https://schema.org/datePublished"
+  - "https://schema.org/keywords"
+  - "https://schema.org/version"
+  - "https://schema.org/conditionsOfAccess"
+  - "https://schema.org/codeRepository"
+  - "https://schema.org/programmingLanguage"
+  - "https://schema.org/runtimePlatform"
+  - "https://schema.org/maintainer"
+  - "https://schema.org/dateCreated"
+  - "https://schema.org/dateModified"
+  - "https://schema.org/performer"
+  - "https://schema.org/organizer"
+  - "https://schema.org/startDate"
+  - "https://schema.org/endDate"
+  - "https://schema.org/location"
 
-# labels will be created from these properties
 labelProperties:
-  - "http://schema.org/name"
-  - "http://schema.org/text"
-  - "http://schema.org/comment"
+  - "https://schema.org/name"
+  - "https://schema.org/identifier"
 
-# groups will be created from these properties
 groups:
-  - name: 'Organization'
+  - name: "Person"
     types:
-      - 'http://schema.org/Organization'
-    properties:
-        - 'http://schema.org/affiliation'
-        - 'http://schema.org/provider'
-        - 'http://schema.org/publisher'
-    color: '#008000'
-  - name: 'Person'
+      - "https://schema.org/Person"
+    color: "#FF0000"
+  - name: "Institution"
     types:
-      - 'http://schema.org/Person'
-    properties:
-        - 'http://schema.org/author'
-        - 'http://schema.org/creator'
-    color: '#FF0000'
-  - name: 'Dataset'
+      - "https://schema.org/Organization"
+      - "https://schema.org/ResearchOrganization"
+      - "https://schema.org/EducationalOrganization"
+      - "https://schema.org/MedicalOrganization"
+      - "https://schema.org/FundingAgency"
+      - "https://schema.org/Corporation"
+      - "https://schema.org/ArchiveOrganization"
+      - "https://schema.org/NGO"
+      - "https://schema.org/GovernmentOrganization"
+    color: "#008000"
+  - name: "Dataset"
     types:
-      - 'http://schema.org/Dataset'
-    color: '#0000FF'
-  - name: 'Software'
+      - "https://schema.org/Dataset"
+    color: "#0000FF"
+  - name: "Document"
     types:
-      - 'http://schema.org/SoftwareSourceCode'
-    color: '#FFFF00'
-  - name: 'Document'
+      - "https://schema.org/Article"
+      - "https://schema.org/ScholarlyArticle"
+      - "https://schema.org/Book"
+      - "https://schema.org/Chapter"
+      - "https://schema.org/Text"
+      - "https://schema.org/Periodical"
+      - "https://schema.org/Thesis"
+      - "https://schema.org/Report"
+    color: "#FFA500"
+  - name: "Software"
     types:
-      - 'http://schema.org/Document'
-    color: '#FFA500'
-  - name: 'Article'
+      - "https://schema.org/SoftwareApplication"
+      - "https://schema.org/SoftwareSourceCode"
+    color: "#FFFF00"
+  - name: "Event"
     types:
-      - 'http://schema.org/Article'
-    color: '#4B0082'
-  - name: 'CreativeWork'
+      - "https://schema.org/Event"
+    color: "#00FFFF"
+  - name: "DataCatalog"
     types:
-      - 'http://schema.org/CreativeWork'
-    color: '#8A2BE2'
-  - name: 'Service'
+      - "https://schema.org/DataCatalog"
+    color: "#4B0082"
+  - name: "Instrument"
     types:
-      - 'http://schema.org/Service'
-    color: '#00FFFF'
+      - "https://schema.org/SociologicalInstrument"
+      - "https://schema.org/PhysicalInstrument"
+    color: "#A52A2A"

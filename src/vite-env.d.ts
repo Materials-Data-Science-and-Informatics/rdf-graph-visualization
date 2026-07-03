@@ -11,4 +11,5 @@ export type ConfigType = {
   relationProperties: string[];
   labelProperties: string[];
   groups: GroupType[];
+  skipTypes?: string[];
 };

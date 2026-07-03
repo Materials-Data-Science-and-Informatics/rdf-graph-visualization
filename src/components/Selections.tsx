@@ -1,29 +1,19 @@
 import {
   Box,
   Checkbox,
-  FormControl,
-  FormLabel,
   Input,
-  VStack,
-  Heading,
   HStack,
   Button,
   Text,
-  useDisclosure,
 } from "@chakra-ui/react";
 import * as React from "react";
 import { useState, Dispatch, SetStateAction, useEffect } from "react";
-import { createGraph, rdfGraphToNodes, removeNonConnectedNodes, groups } from "../utils";
-import FilterSwitch from "./FilterSwitch.tsx";
+import { createGraph, rdfGraphToNodes } from "../utils";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
-import ConfigModal from "./TextModal.tsx";
 
-import yaml from "js-yaml";
-import configFile from "/config.yml?raw";
-
-const parseRDF = (rdfData: string, baseUrl: string): GraphData => {
-  const store = createGraph(rdfData, baseUrl);
+const parseRDF = (rdfData: string): GraphData => {
+  const store = createGraph(rdfData, "https://schema.org/");
   return rdfGraphToNodes(store);
 };
 
@@ -42,12 +32,6 @@ const Selections: React.FC<SelectionsProps> = ({
   const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
   const [loading, setLoading] = useState<boolean>(false);
-  const [baseUrl, setBaseUrl] = useState<string>("http://schema.org/");
-  const [groupCounts, setGroupCounts] = useState<Record<string, number>>({});
-  const { isOpen, onOpen, onClose } = useDisclosure();
-  const [modalText, setModalText] = useState<string>("");
-
-  const yamlContent = yaml.dump(yaml.load(configFile));
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = event.target.files?.[0] || null;
@@ -70,10 +54,8 @@ const Selections: React.FC<SelectionsProps> = ({
       const fileContent = reader.result;
       try {
         if (typeof fileContent === "string") {
-          const data = parseRDF(fileContent, baseUrl);
+          const data = parseRDF(fileContent);
           setGraphData(data);
-          setFilteredGraphData(data);
-          setIsChecked(false);
           setFilters(new Set<string>());
           console.log(
             `Loaded file: ${file.name} with ${data.nodes.length} nodes and ${data.links.length} links.`
@@ -97,150 +79,114 @@ const Selections: React.FC<SelectionsProps> = ({
     reader.readAsText(file);
   }, [file]);
 
+  // Filter graph data based on selected groups and optionally remove unconnected nodes
   useEffect(() => {
-    setLoading(true);
-    const filteredNodes = graphData.nodes.filter((node) => {
-      if (filters.size === 0) {
-        return true;
-      }
-      const tempFilters = new Set(filters);
-      if (filters.has("Default")) {
-        tempFilters.delete("Default");
-        tempFilters.add("");
-      }
-      return !tempFilters.has(node.group);
-    });
-
-    const filteredLinks = graphData.links.filter((link: LinkObject) => {
-      return (
-        filteredNodes.some(
-          (node) => node.id === (typeof link.source === "object" ? link.source?.id : link.source)
-        ) &&
-        filteredNodes.some(
-          (node) => node.id === (typeof link.target === "object" ? link.target?.id : link.target)
-        )
-      );
-    });
-    const filteredGraph = { nodes: filteredNodes, links: filteredLinks };
-
-    if (isChecked) {
-      const connectedNodes = removeNonConnectedNodes(filteredGraph);
-      setFilteredGraphData({ nodes: connectedNodes, links: filteredGraph.links });
-    } else {
-      setFilteredGraphData(filteredGraph);
+    if (graphData.nodes.length === 0) {
+      setFilteredGraphData({ nodes: [], links: [] });
+      return;
     }
 
-    setLoading(false);
-  }, [isChecked, filters]);
+    setLoading(true);
+    let cancelled = false;
 
-  useEffect(() => {
-    const counts: Record<string, number> = {};
-    graphData.nodes.forEach((node) => {
-      let group = node.group || "Default";
-      group = group === "" ? "Default" : group;
-      counts[group] = (counts[group] || 0) + 1;
-    });
-    setGroupCounts(counts);
-  }, [graphData]);
+    const processFiltering = () => {
+      if (cancelled) {
+        return;
+      }
+
+      // Filter nodes by selected groups; if no filters, show all nodes
+      const filteredNodes =
+        filters.size === 0
+          ? graphData.nodes
+          : graphData.nodes.filter((node) => {
+              const tempFilters = new Set(filters);
+              if (filters.has("Default")) {
+                tempFilters.delete("Default");
+                tempFilters.add("");
+              }
+              return !tempFilters.has(node.group);
+            });
+
+      // Create a Set of node IDs for O(1) lookup
+      const filteredNodeIds = new Set(filteredNodes.map((node) => node.id));
+
+      // Filter links to only include those connecting filtered nodes
+      const filteredLinks = graphData.links.filter((link: LinkObject) => {
+        const sourceId = typeof link.source === "object" ? link.source?.id : link.source;
+        const targetId = typeof link.target === "object" ? link.target?.id : link.target;
+        return filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId);
+      });
+
+      let newGraphData: GraphData;
+      if (!isChecked) {
+        // Remove nodes that have no connections in the filtered view
+        const connectedNodeIds = new Set(
+          filteredLinks.flatMap((link) => {
+            const sourceId = typeof link.source === "object" ? link.source?.id : link.source;
+            const targetId = typeof link.target === "object" ? link.target?.id : link.target;
+            return [sourceId, targetId];
+          })
+        );
+        const connectedNodes = filteredNodes.filter((node) => connectedNodeIds.has(node.id));
+        newGraphData = { nodes: connectedNodes, links: filteredLinks };
+      } else {
+        // Show all filtered nodes with all their links
+        newGraphData = { nodes: filteredNodes, links: filteredLinks };
+      }
+
+      // ForceGraph mutates graph objects in place, so pass fresh copies on every UI-driven update.
+      const graphSnapshot: GraphData = {
+        nodes: newGraphData.nodes.map((node) => ({ ...node })),
+        links: newGraphData.links.map((link) => ({
+          ...link,
+          source: typeof link.source === "object" ? link.source?.id : link.source,
+          target: typeof link.target === "object" ? link.target?.id : link.target,
+        })),
+      };
+
+      setFilteredGraphData(graphSnapshot);
+      setLoading(false);
+    };
+
+    if (graphData.nodes.length > 500) {
+      window.setTimeout(processFiltering, 0);
+    } else {
+      processFiltering();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isChecked, filters, graphData, setFilteredGraphData]);
 
   if (loading) {
     return <LoadingSpinner />;
   }
 
-  const handleConfigClick = () => {
-    setModalText(yamlContent);
-    onOpen();
-  };
-
-  const handleInfoClick = () => {
-    const info = `Overview
-This simple RDF visualizer allows you to upload a turtle file and visualize the graph. Check examples in the [repository](https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization) for sample config and turtle files.
-   
-Features
-- filter the nodes by groups
-- remove unlinked nodes
-- The config file is loaded from a YAML file
-- see and update the graph configuration by clicking the 'Show config' button.
-
-If your graph has more than 2000 nodes, it might take a while to load. Please wait until graph elements are rendered (stop spinning) before interacting with the graph.`;
-    setModalText(info);
-    onOpen();
-  };
-
   return (
     <Box p={4} width="100%" mx="auto">
-      <VStack spacing={4} alignItems="flex-start">
-        <HStack spacing={4} alignItems="flex-start">
-          <FormControl>
-            <FormLabel htmlFor="base-url">RDF Base URL</FormLabel>
-            <Input
-              id="base-url"
-              type="text"
-              value={baseUrl}
-              onChange={(e) => setBaseUrl(e.target.value)}
-            />
-          </FormControl>
-          <FormControl>
-            <FormLabel htmlFor="file-upload">Upload a turtle file</FormLabel>
-            <Input
-              id="file-upload"
-              type="file"
-              accept=".rdf, .ttl"
-              display="none"
-              onChange={handleFileChange}
-            />
-            <label htmlFor="file-upload">
-              <Button colorScheme="blue" as="span">
-                {file ? "Upload new file" : "Upload file"}
-              </Button>
-            </label>
-            {file && (
-              <Text mt={2} color="gray.500">
-                {file.name}
-              </Text>
-            )}
-          </FormControl>
-          <VStack>
-            <FormControl>
-              <Button onClick={handleInfoClick}>Show Info</Button>
-            </FormControl>
-            <FormControl>
-              <Button onClick={handleConfigClick}>Show Config</Button>
-            </FormControl>
-          </VStack>
-        </HStack>
-
-        <VStack spacing={1} alignItems="flex-start">
-          <FormControl>
-            <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
-              Remove nodes that are not linked
-            </Checkbox>
-          </FormControl>
-        </VStack>
-
-        <Heading as="h4" size="md">
-          Filter by group
-        </Heading>
-
-        <HStack spacing={4}>
-          {groups.map((group: string) => (
-            <FilterSwitch
-              key={group}
-              name={group}
-              filters={filters}
-              setFilters={setFilters}
-              count={groupCounts[group] || 0}
-            />
-          ))}
-          <FilterSwitch
-            name={"Default"}
-            filters={filters}
-            setFilters={setFilters}
-            count={groupCounts["Default"] || 0}
-          />
-        </HStack>
-      </VStack>
-      <ConfigModal isOpen={isOpen} onClose={onClose} text={modalText} />
+      <HStack spacing={4} alignItems="center">
+        <Input
+          id="file-upload"
+          type="file"
+          accept=".rdf, .ttl"
+          display="none"
+          onChange={handleFileChange}
+        />
+        <label htmlFor="file-upload">
+          <Button colorScheme="blue" as="span">
+            {file ? "Upload new file" : "Upload a turtle file"}
+          </Button>
+        </label>
+        {file && (
+          <Text mt={2} color="gray.500">
+            {file.name}
+          </Text>
+        )}
+        <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
+          Add not connected nodes
+        </Checkbox>
+      </HStack>
     </Box>
   );
 };
