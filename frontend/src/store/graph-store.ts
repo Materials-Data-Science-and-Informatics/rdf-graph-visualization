@@ -20,7 +20,7 @@
 
 import Graph from "graphology";
 import type { AggregateNode, Edge, Node, Page, SubgraphResponse } from "../api/types";
-import type { GraphData } from "react-force-graph-3d";
+import type { RendererGraph } from "../render/renderer";
 import { getGroupColor } from "../config";
 
 /** Cursor sentinel for the first page (a page fetched with no cursor). */
@@ -205,7 +205,10 @@ export class GraphStore {
     this.consumedCursors = new Set();
     this.selectedNodeId = null;
     this.focusedNodeId = null;
-    this.focusTick = 0;
+    // NOTE: focusTick is deliberately NOT reset (card D1, contract V2): the
+    // focus token must stay monotonic across reloads, because the mounted
+    // renderer lives longer than a single store generation and gates
+    // fly-to on strictly increasing sequences.
     this.emit();
     return this.ingest(slice);
   }
@@ -248,10 +251,11 @@ export class GraphStore {
   // ------------------------------------------------------------------ render
 
   /**
-   * Current store contents as force-graph data (fresh copies each call —
-   * the 3D engine mutates node/link objects in place).
+   * Current store contents as renderer data (fresh copies each call — the
+   * mounted renderer owns the handed objects and may mutate them in place,
+   * CONTRACT.md §4).
    */
-  toGraphData(): GraphData {
+  toGraphData(): RendererGraph {
     const nodes = this.nodes().map((node) => ({
       id: node.id,
       label: node.label,
@@ -271,6 +275,6 @@ export class GraphStore {
         color: colorById.get(edge.source) ?? colorById.get(edge.target) ?? "gray",
       }));
 
-    return { nodes, links } as GraphData;
+    return { nodes, links };
   }
 }

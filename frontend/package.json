@@ -8,6 +8,7 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "check": "tsc -b && eslint . --max-warnings 0 && prettier --check .",
+    "test": "node scripts/run-contract-tests.mjs",
     "preview": "vite preview",
     "prepare": "husky"
   },
