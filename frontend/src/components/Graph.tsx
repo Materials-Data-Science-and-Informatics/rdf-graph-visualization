@@ -1,6 +1,11 @@
 import * as React from "react";
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
-import ForceGraph3D, { GraphData, NodeObject, LinkObject } from "react-force-graph-3d";
+import ForceGraph3D, {
+  GraphData,
+  NodeObject,
+  LinkObject,
+  ForceGraphMethods,
+} from "react-force-graph-3d";
 import * as THREE from "three";
 import { Box } from "@chakra-ui/react";
 import Legend from "./Legend.tsx";
@@ -13,9 +18,11 @@ interface GraphProps {
   graphData: GraphData;
   width: number;
   height: number;
+  /** Optional node activation hook (card C2: select/focus/expand-on-click). */
+  onNodeSelect?: (node: NodeObject) => void;
 }
 
-const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
+const Graph: React.FC<GraphProps> = ({ graphData, width, height, onNodeSelect }) => {
   // Fullscreen state for graph container
   const [isFullScreen, setIsFullScreen] = useState(false);
   // Separate width/height state to allow fullscreen to override parent dimensions
@@ -25,17 +32,22 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
   const [switchOn, setSwitchOn] = useState<boolean>(false);
 
   // Reference to ForceGraph3D instance for camera control
-  const fgRef = useRef<any>(null);
+  const fgRef = useRef<ForceGraphMethods | undefined>(undefined);
   // Cache materials by color to avoid recreating same materials on each render
   const materialCacheRef = useRef<Map<string, THREE.Material>>(new Map());
   // Label color changes based on theme: black on white background, white on dark
   const labelColor = switchOn ? "#000000" : "#ffffff";
 
-  // Copy node ID to clipboard when clicked
-  const handleClick = useCallback((node: NodeObject) => {
-    if (!node || node.x === undefined || node.y === undefined || node.z === undefined) return;
-    navigator.clipboard.writeText((node.id ?? "").toString()).catch(console.error);
-  }, []);
+  // Copy node ID to clipboard when clicked and hand the node to the store
+  // (select + focus + expand-on-click, card C2)
+  const handleClick = useCallback(
+    (node: NodeObject) => {
+      if (!node || node.x === undefined || node.y === undefined || node.z === undefined) return;
+      navigator.clipboard.writeText((node.id ?? "").toString()).catch(console.error);
+      onNodeSelect?.(node);
+    },
+    [onNodeSelect]
+  );
 
   // Update dimensions when fullscreen or parent dimensions change
   useEffect(() => {
@@ -90,10 +102,10 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height }) => {
     const sphereGeometry = new THREE.SphereGeometry(5);
 
     return (node: NodeObject) => {
-      const group = (node as any).group || "";
+      const group = (node as NodeObject<{ group?: string }>).group ?? "";
       const geometry = group === "" ? boxGeometry : sphereGeometry;
       const color = getGroupColor(group);
-      
+
       // Check cache for existing material of this color
       let material = materialCacheRef.current.get(color);
       if (!material) {

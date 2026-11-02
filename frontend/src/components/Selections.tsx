@@ -10,72 +10,40 @@ import {
   AlertDescription,
 } from "@chakra-ui/react";
 import * as React from "react";
-import { useState, Dispatch, SetStateAction, useEffect, useRef, useCallback } from "react";
-import { getSubgraph, ApiError } from "../api/client";
-import type { Page } from "../api/types";
-import { subgraphToGraphData } from "../utils";
+import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
+import { useGraphData, graphStore, type SliceActions } from "../store/use-graph-store";
 
 interface SelectionsProps {
-  graphData: GraphData;
-  setGraphData: Dispatch<SetStateAction<GraphData>>;
+  actions: SliceActions;
   setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
 }
 
 /**
- * Loads a bounded, cursor-paginated graph slice from the backend API as
- * typed JSON (contract: src/api/types.ts) and feeds it to the 3D graph.
- * Stale requests are aborted on re-fetch and on unmount.
+ * Slice controls (card C2): loads the first bounded, cursor-paginated slice
+ * into the graph store, and grows it further via cursor-continued "expand"
+ * (Load more / click a node) WITHOUT a refetch-all. Stale requests are
+ * aborted on re-fetch and on unmount (see useSliceActions).
  */
-const Selections: React.FC<SelectionsProps> = ({
-  graphData,
-  setGraphData,
-  setFilteredGraphData,
-}: SelectionsProps) => {
+const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }) => {
   const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
-  const [loading, setLoading] = useState<boolean>(true);
-  const [error, setError] = useState<string | null>(null);
-  const [page, setPage] = useState<Page | null>(null);
-  // The controller of the in-flight request; aborted on re-fetch/unmount.
-  const abortRef = useRef<AbortController | null>(null);
+  // Current store contents (re-renders on every merged slice).
+  const graphData = useGraphData();
 
-  const loadSlice = useCallback(async () => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setLoading(true);
-    setError(null);
-    try {
-      const slice = await getSubgraph({}, { signal: controller.signal });
-      if (controller.signal.aborted) return;
-      setGraphData(subgraphToGraphData(slice));
-      setPage(slice.page);
-      setFilters(new Set<string>());
-    } catch (err) {
-      if (controller.signal.aborted) return;
-      const message =
-        err instanceof ApiError
-          ? `${err.kind === "timeout" ? "Timed out" : "Failed to load"}: ${err.message}`
-          : err instanceof Error
-            ? err.message
-            : String(err);
-      setError(message);
-    } finally {
-      if (abortRef.current === controller) {
-        setLoading(false);
-      }
-    }
-  }, [setGraphData]);
-
-  // Initial fetch + abort on unmount.
+  // Initial fetch on mount (abort-on-unmount lives in useSliceActions).
+  const { load: loadSlice } = actions;
   useEffect(() => {
-    void loadSlice();
-    return () => {
-      abortRef.current?.abort();
-    };
+    loadSlice();
   }, [loadSlice]);
+
+  // A fresh load (replace) clears any active group filters.
+  useEffect(() => {
+    if (!actions.loading) {
+      setFilters(new Set<string>());
+    }
+  }, [actions.loading]);
 
   // Filter graph data based on selected groups and optionally remove unconnected nodes
   useEffect(() => {
@@ -163,31 +131,46 @@ const Selections: React.FC<SelectionsProps> = ({
     setIsChecked(event.target.checked);
   };
 
-  if (loading) {
+  const page = graphStore.page;
+
+  // First load only: no slice yet, spinner while the first page is fetched.
+  if (actions.loading && graphStore.nodeCount === 0) {
     return <LoadingSpinner />;
   }
 
   return (
     <Box p={4} width="100%" mx="auto">
       <HStack spacing={4} alignItems="center">
-        <Button colorScheme="blue" onClick={() => void loadSlice()} isLoading={loading}>
+        <Button colorScheme="blue" onClick={actions.load} isLoading={actions.loading}>
           Load slice
         </Button>
+        {graphStore.canExpand && (
+          <Button
+            colorScheme="teal"
+            variant="outline"
+            onClick={actions.expand}
+            isLoading={actions.expanding}
+          >
+            Load more
+          </Button>
+        )}
         <Text mt={2} color="gray.500" fontSize="sm">
           {page
-            ? `Bounded slice: limit ${page.limit}${page.truncated ? ", truncated" : ""}`
+            ? `${graphStore.nodeCount} nodes, ${graphStore.edgeCount} edges in store (limit ${page.limit}${
+                page.truncated ? ", truncated — click a node or Load more to expand" : ", complete"
+              })`
             : "No slice loaded yet"}
         </Text>
         <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
           Add not connected nodes
         </Checkbox>
       </HStack>
-      {error && (
+      {actions.error && (
         <Alert status="error" borderRadius="md" width="100%" mt={3} mb={3} mx="auto">
           <AlertIcon />
           <AlertTitle as="span">Could not load graph slice</AlertTitle>
           <AlertDescription as="span" data-testid="slice-error">
-            {error}
+            {actions.error}
           </AlertDescription>
         </Alert>
       )}
