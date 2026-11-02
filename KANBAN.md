@@ -13,6 +13,11 @@ The board of record is the **Hermes Kanban** (durable SQLite board), NOT this fi
   (alias-large 15/min, alias-code 30/min, alias-fast 50/min, alias-huge 10/min);
   on 429 honor the returned wait — the penalty ladder (60s..3600s) is shared.
 
+Sizing rule (added 2026-11-02 after hour-long runs were observed): one card = one worker
+session = 45-90 min of agent time max. Human-day estimates must be staged (commit per step,
+hard stop at cap, worker files a follow-up child card via kanban_create). New oversized
+cards enter via `create --triage` + `hermes kanban decompose <id>`.
+
 ## Card ID -> board task ID
 
 | Card | Task |
