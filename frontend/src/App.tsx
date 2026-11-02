@@ -6,9 +6,7 @@ import LoadingSpinner from "./components/LoadingSpinner.tsx";
 import { loadConfig } from "./config";
 
 type ConfigState =
-  | { status: "loading" }
-  | { status: "ready" }
-  | { status: "error"; message: string };
+  { status: "loading" } | { status: "ready" } | { status: "error"; message: string };
 
 /**
  * Card C4: the renderer config (palette, relation/label properties) is

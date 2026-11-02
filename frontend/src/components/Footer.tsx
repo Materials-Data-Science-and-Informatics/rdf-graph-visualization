@@ -25,7 +25,15 @@ const Footer = () => {
   };
 
   return (
-    <Box as="footer" bg="rgb(0, 40, 100)" color="white" px={{ base: 4, md: 6 }} pt={4} pb={4} mt={4}>
+    <Box
+      as="footer"
+      bg="rgb(0, 40, 100)"
+      color="white"
+      px={{ base: 4, md: 6 }}
+      pt={4}
+      pb={4}
+      mt={4}
+    >
       <Flex direction="column" mb={3} px={3}>
         <Flex
           justifyContent="space-between"

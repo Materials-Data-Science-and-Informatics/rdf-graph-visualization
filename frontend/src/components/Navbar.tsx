@@ -40,7 +40,10 @@ const Navbar = ({ onInfoClick, onConfigClick }: NavbarProps) => {
             px={3}
             py={1}
             borderRadius="md"
-            onClick={(e) => { e.preventDefault(); onInfoClick(); }}
+            onClick={(e) => {
+              e.preventDefault();
+              onInfoClick();
+            }}
             display="inline-flex"
             alignItems="center"
           >
@@ -55,7 +58,10 @@ const Navbar = ({ onInfoClick, onConfigClick }: NavbarProps) => {
             px={3}
             py={1}
             borderRadius="md"
-            onClick={(e) => { e.preventDefault(); onConfigClick(); }}
+            onClick={(e) => {
+              e.preventDefault();
+              onConfigClick();
+            }}
             display="inline-flex"
             alignItems="center"
           >
