@@ -35,7 +35,9 @@ repos:
         entry: bash -c 'cd backend && .venv/bin/mypy $(for f in "$@"; do printf "%s " "${f#backend/}"; done)' _
         language: system
         types: [python]
-        files: ^backend/
+        # tests/ excluded to match [tool.mypy] exclude in backend/pyproject.toml
+        # (check.sh's `mypy .` honours the same exclusion).
+        files: ^backend/app/
 
       - id: pylint
         name: pylint
