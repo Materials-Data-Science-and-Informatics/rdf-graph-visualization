@@ -8,13 +8,13 @@
 > We are aware of this limitation and are considering further development toward a more flexible GraphViz solution.
 
 ## Description
-This project is a TypeScript/JavaScript application that processes RDF data to create a graph representation. It uses React for the frontend and Chakra UI for styling.
+This project is a TypeScript/React application that fetches bounded graph slices as typed JSON from a backend API and renders them as a 3D force-directed graph.
 
-We strongly suggest users to use `turtle` format for RDF data and `schema.org` vocabulary for the properties. The application is designed to work with the `schema.org` vocabulary, since we developed it for a specific use case. However, it can be easily modified to work with other vocabularies.
+The backend resolves the data model (types, groups, labels, relations) and serves pre-filtered, paginated slices, so the frontend stays a thin, typed client.
 
 ## Features
-- Parses RDF data and filters relevant properties.
-- Creates nodes and edges for a graph representation.
+- Fetches a bounded, cursor-paginated graph slice as typed JSON (cancellable fetch with per-endpoint timeouts).
+- Creates nodes and edges for a 3D force-directed representation.
 - Filters and displays nodes based on user-selected criteria.
 
 ## Installation
@@ -42,9 +42,12 @@ npm run dev
 npm run build
 ```
 
+The app talks to the backend API under `/api` (typed JSON, see `frontend/src/api/`).
+In development Vite proxies `/api` to `http://127.0.0.1:8000` (override with
+`API_PROXY_TARGET`); the Docker image proxies the same path via nginx.
+
 ## Configuration
 Configuration file has the necessary information to show nodes and links in the graph. Since a 3D graph on the browser consumes a lot of resources, it is important to filter the data to show only the necessary information. Properties that are not in the yaml file will be ignored. You can check [example config file](examples/config.yml) for more information. 
-You can also check example RDF files in the examples folder to see how the data should be formatted.
 
 The configuration file is a YAML file that has the following properties:
 ```yaml

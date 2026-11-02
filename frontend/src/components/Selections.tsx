@@ -1,21 +1,21 @@
 import {
   Box,
   Checkbox,
-  Input,
   HStack,
   Button,
   Text,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
 } from "@chakra-ui/react";
 import * as React from "react";
-import { useState, Dispatch, SetStateAction, useEffect } from "react";
-import { createGraph, rdfGraphToNodes } from "../utils";
+import { useState, Dispatch, SetStateAction, useEffect, useRef, useCallback } from "react";
+import { getSubgraph, ApiError } from "../api/client";
+import type { Page } from "../api/types";
+import { subgraphToGraphData } from "../utils";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
-
-const parseRDF = (rdfData: string): GraphData => {
-  const store = createGraph(rdfData, "https://schema.org/");
-  return rdfGraphToNodes(store);
-};
 
 interface SelectionsProps {
   graphData: GraphData;
@@ -23,61 +23,59 @@ interface SelectionsProps {
   setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
 }
 
+/**
+ * Loads a bounded, cursor-paginated graph slice from the backend API as
+ * typed JSON (contract: src/api/types.ts) and feeds it to the 3D graph.
+ * Stale requests are aborted on re-fetch and on unmount.
+ */
 const Selections: React.FC<SelectionsProps> = ({
   graphData,
   setGraphData,
   setFilteredGraphData,
 }: SelectionsProps) => {
-  const [file, setFile] = useState<File | null>(null);
   const [isChecked, setIsChecked] = useState<boolean>(false);
   const [filters, setFilters] = useState<Set<string>>(new Set<string>());
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+  const [page, setPage] = useState<Page | null>(null);
+  // The controller of the in-flight request; aborted on re-fetch/unmount.
+  const abortRef = useRef<AbortController | null>(null);
 
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0] || null;
-    setFile(selectedFile);
-  };
-
-  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setIsChecked(event.target.checked);
-  };
-
-  useEffect(() => {
-    if (!file) {
-      console.log("No file selected.");
-      return;
-    }
-
-    const reader = new FileReader();
-
-    reader.onload = () => {
-      const fileContent = reader.result;
-      try {
-        if (typeof fileContent === "string") {
-          const data = parseRDF(fileContent);
-          setGraphData(data);
-          setFilters(new Set<string>());
-          console.log(
-            `Loaded file: ${file.name} with ${data.nodes.length} nodes and ${data.links.length} links.`
-          );
-        } else {
-          console.error("File content is not a string.");
-        }
-      } catch (error) {
-        console.error("Error parsing RDF:", error);
-        window.alert("Error parsing RDF. Please check the file format.");
-      }
-      setLoading(false);
-    };
-
-    reader.onerror = (error) => {
-      console.error("Error reading file:", error);
-    };
-
-    console.log("Reading file:", file.name);
+  const loadSlice = useCallback(async () => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
-    reader.readAsText(file);
-  }, [file]);
+    setError(null);
+    try {
+      const slice = await getSubgraph({}, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setGraphData(subgraphToGraphData(slice));
+      setPage(slice.page);
+      setFilters(new Set<string>());
+    } catch (err) {
+      if (controller.signal.aborted) return;
+      const message =
+        err instanceof ApiError
+          ? `${err.kind === "timeout" ? "Timed out" : "Failed to load"}: ${err.message}`
+          : err instanceof Error
+            ? err.message
+            : String(err);
+      setError(message);
+    } finally {
+      if (abortRef.current === controller) {
+        setLoading(false);
+      }
+    }
+  }, [setGraphData]);
+
+  // Initial fetch + abort on unmount.
+  useEffect(() => {
+    void loadSlice();
+    return () => {
+      abortRef.current?.abort();
+    };
+  }, [loadSlice]);
 
   // Filter graph data based on selected groups and optionally remove unconnected nodes
   useEffect(() => {
@@ -86,7 +84,6 @@ const Selections: React.FC<SelectionsProps> = ({
       return;
     }
 
-    setLoading(true);
     let cancelled = false;
 
     const processFiltering = () => {
@@ -145,19 +142,26 @@ const Selections: React.FC<SelectionsProps> = ({
       };
 
       setFilteredGraphData(graphSnapshot);
-      setLoading(false);
     };
 
     if (graphData.nodes.length > 500) {
-      window.setTimeout(processFiltering, 0);
-    } else {
-      processFiltering();
+      const timeout = window.setTimeout(processFiltering, 0);
+      return () => {
+        cancelled = true;
+        window.clearTimeout(timeout);
+      };
     }
+
+    processFiltering();
 
     return () => {
       cancelled = true;
     };
   }, [isChecked, filters, graphData, setFilteredGraphData]);
+
+  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    setIsChecked(event.target.checked);
+  };
 
   if (loading) {
     return <LoadingSpinner />;
@@ -166,27 +170,27 @@ const Selections: React.FC<SelectionsProps> = ({
   return (
     <Box p={4} width="100%" mx="auto">
       <HStack spacing={4} alignItems="center">
-        <Input
-          id="file-upload"
-          type="file"
-          accept=".rdf, .ttl"
-          display="none"
-          onChange={handleFileChange}
-        />
-        <label htmlFor="file-upload">
-          <Button colorScheme="blue" as="span">
-            {file ? "Upload new file" : "Upload a turtle file"}
-          </Button>
-        </label>
-        {file && (
-          <Text mt={2} color="gray.500">
-            {file.name}
-          </Text>
-        )}
+        <Button colorScheme="blue" onClick={() => void loadSlice()} isLoading={loading}>
+          Load slice
+        </Button>
+        <Text mt={2} color="gray.500" fontSize="sm">
+          {page
+            ? `Bounded slice: limit ${page.limit}${page.truncated ? ", truncated" : ""}`
+            : "No slice loaded yet"}
+        </Text>
         <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
           Add not connected nodes
         </Checkbox>
       </HStack>
+      {error && (
+        <Alert status="error" borderRadius="md" width="100%" mt={3} mb={3} mx="auto">
+          <AlertIcon />
+          <AlertTitle as="span">Could not load graph slice</AlertTitle>
+          <AlertDescription as="span" data-testid="slice-error">
+            {error}
+          </AlertDescription>
+        </Alert>
+      )}
     </Box>
   );
 };

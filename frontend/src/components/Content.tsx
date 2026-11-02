@@ -11,7 +11,7 @@ const DEBOUNCE_MS = 150;
 const Content = () => {
   // Filtered graph data shown in the visualization (after applying filters)
   const [filteredGraphData, setFilteredGraphData] = useState<GraphData>({ nodes: [], links: [] });
-  // Original graph data loaded from RDF file
+  // Original graph data loaded from the API (typed slice)
   const [graphData, setGraphData] = useState<GraphData>({ nodes: [], links: [] });
   // Reference to the graph container for resize observation
   const boxRef = useRef<HTMLDivElement | null>(null);

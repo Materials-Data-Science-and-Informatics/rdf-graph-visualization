@@ -25,7 +25,7 @@ export default function Layout({ children }: LayoutProps) {
 
   const handleInfoClick = () => {
     const info = `Overview
-This simple RDF visualizer allows you to upload a turtle file and visualize the graph. Check examples in the [repository](https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization) for sample config and turtle files.
+This graph explorer loads bounded graph slices from the backend API as typed JSON and visualizes them in 3D. Check the [repository](https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization) for sample config.
 
 Features
 - filter the nodes by groups
