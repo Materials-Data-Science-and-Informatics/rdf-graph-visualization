@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
+# SPDX-License-Identifier: MIT
 """QLever SPARQL client — the single gateway from the API to the endpoint.
 
 Card B1. Every SPARQL traffic in this backend goes through :class:`QleverClient`;
@@ -186,6 +188,7 @@ class QleverClient:
         return bool(payload.get("boolean"))
 
     def close(self) -> None:
+        """Close the underlying httpx client (idempotent)."""
         self._client.close()
 
     def __enter__(self) -> Self:
@@ -243,7 +246,9 @@ class QleverClient:
 # -- process-wide client (endpoint cards call get_client()) -----------------
 
 _client_lock = threading.Lock()
-_client: QleverClient | None = None
+# Lazily-built shared client; a module global is deliberate — one httpx pool
+# per process, overridable in tests via set_client().
+_client: QleverClient | None = None  # pylint: disable=invalid-name
 
 
 def get_client() -> QleverClient:
@@ -252,10 +257,13 @@ def get_client() -> QleverClient:
     ``QLEVER_URL`` / ``QLEVER_TIMEOUT_S`` are read at first use, so tests and
     deployments can set env before the first request.
     """
-    global _client
+    global _client  # pylint: disable=global-statement
     with _client_lock:
         if _client is None:
-            from app.settings import Settings  # local import: keep settings leaf
+            # local import: keep app.settings a leaf so it never cycles back
+            from app.settings import (  # pylint: disable=import-outside-toplevel
+                Settings,
+            )
 
             s = Settings.from_env()
             _client = QleverClient(s.qlever_url, timeout_s=s.request_timeout_s)
@@ -264,7 +272,7 @@ def get_client() -> QleverClient:
 
 def set_client(client: QleverClient | None) -> None:
     """Override (or reset, with ``None``) the shared client — test hook."""
-    global _client
+    global _client  # pylint: disable=global-statement
     with _client_lock:
         if _client is not None and client is not _client:
             _client.close()
@@ -272,4 +280,5 @@ def set_client(client: QleverClient | None) -> None:
 
 
 def reset_client() -> None:
+    """Reset the shared client (test hook)."""
     set_client(None)

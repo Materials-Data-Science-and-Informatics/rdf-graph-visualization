@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
+# SPDX-License-Identifier: MIT
 """Guard the F3 contract: backend pydantic model and frontend TS types must match.
 
 Parses frontend/src/api/types.ts with a light regex (no Node needed) and compares
@@ -10,6 +12,7 @@ import re
 from pathlib import Path
 
 import pytest
+from pydantic import BaseModel
 
 from app import contract
 
@@ -31,7 +34,7 @@ MODEL_TO_INTERFACE = {
 
 
 def _ts_interface_fields(text: str, name: str) -> set[str]:
-    match = re.search(rf"interface {name}\s*\{{(.*?)\}}", text, re.S)
+    match = re.search(rf"interface {name}\s*\{{(.*?)\}}", text, re.DOTALL)
     assert match, f"interface {name} not found in types.ts"
     fields = set()
     for line in match.group(1).splitlines():
@@ -43,7 +46,7 @@ def _ts_interface_fields(text: str, name: str) -> set[str]:
 
 
 @pytest.mark.parametrize("name,model", sorted(MODEL_TO_INTERFACE.items()))
-def test_contract_fields_match(name: str, model: type) -> None:
+def test_contract_fields_match(name: str, model: type[BaseModel]) -> None:
     text = TS_TYPES.read_text(encoding="utf-8")
     ts_fields = _ts_interface_fields(text, name)
     py_fields = set(model.model_fields.keys())

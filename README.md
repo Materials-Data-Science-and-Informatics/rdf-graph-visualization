@@ -47,7 +47,7 @@ In development Vite proxies `/api` to `http://127.0.0.1:8000` (override with
 `API_PROXY_TARGET`); the Docker image proxies the same path via nginx.
 
 ## Configuration
-Configuration file has the necessary information to show nodes and links in the graph. Since a 3D graph on the browser consumes a lot of resources, it is important to filter the data to show only the necessary information. Properties that are not in the yaml file will be ignored. You can check [example config file](examples/config.yml) for more information. 
+Configuration file has the necessary information to show nodes and links in the graph. Since a 3D graph on the browser consumes a lot of resources, it is important to filter the data to show only the necessary information. Properties that are not in the yaml file will be ignored. You can check [example config file](examples/config.yml) for more information.
 
 The configuration file is a YAML file that has the following properties:
 ```yaml

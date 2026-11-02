@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
+# SPDX-License-Identifier: MIT
 """Frozen API contract (card F3).
 
 These models are the single source of truth for the JSON shape exchanged with the
@@ -31,6 +33,8 @@ NodeType = Literal[
 
 
 class Node(BaseModel):
+    """One graph node: an entity IRI with display metadata."""
+
     id: str = Field(description="Entity IRI (stable key).")
     label: str
     type: NodeType
@@ -39,6 +43,8 @@ class Node(BaseModel):
 
 
 class Edge(BaseModel):
+    """One directed, labelled relationship between two nodes."""
+
     id: str
     source: str
     target: str
@@ -55,37 +61,49 @@ class Page(BaseModel):
 
 
 class Subgraph(Node):
-    pass
+    """Backward-compatible alias kept for the frozen API contract."""
 
 
 class SubgraphResponse(BaseModel):
+    """Bounded node/edge slice of the graph plus its pagination state."""
+
     nodes: list[Node]
     edges: list[Edge]
     page: Page
 
 
 class AggregateNode(BaseModel):
+    """Per-group node count for the aggregate/legend endpoint."""
+
     group: str
     type: NodeType
     count: int
 
 
 class AggregateResponse(BaseModel):
+    """Counts of all graph nodes grouped by data-model class."""
+
     nodes: list[AggregateNode]
 
 
 class SearchResult(BaseModel):
+    """One match returned by the label/entity search endpoint."""
+
     id: str
     label: str
     type: NodeType
 
 
 class SearchResponse(BaseModel):
+    """Search hits for the verbatim query string."""
+
     query: str
     results: list[SearchResult]
 
 
 class EntityResponse(BaseModel):
+    """Full entity view: the node plus its property values."""
+
     node: Node
     properties: dict[str, list[str]] = Field(
         default_factory=dict,
@@ -94,12 +112,16 @@ class EntityResponse(BaseModel):
 
 
 class ConfigTypePreset(BaseModel):
+    """Renderer preset for one data-model class (group, colour)."""
+
     group: str
     type: NodeType
     color: str
 
 
 class ConfigResponse(BaseModel):
+    """Static frontend configuration derived from the data model."""
+
     relation_properties: list[str]
     label_properties: list[str]
     skip_types: list[str]

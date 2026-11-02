@@ -1,0 +1,16 @@
+{
+  "name": "hkg-graph-explorer",
+  "private": true,
+  "version": "0.4.0",
+  "description": "HKG graph explorer monorepo root (husky + aggregate check for both trees).",
+  "scripts": {
+    "prepare": "husky",
+    "check": "bash scripts/check.sh",
+    "check:backend": "bash backend/check.sh",
+    "check:frontend": "cd frontend && pnpm run check"
+  },
+  "devDependencies": {
+    "husky": "^9.1.7"
+  },
+  "license": "MIT"
+}

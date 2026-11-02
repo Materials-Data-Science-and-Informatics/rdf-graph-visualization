@@ -1,3 +1,5 @@
+# SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
+# SPDX-License-Identifier: MIT
 """FastAPI entrypoint for the HKG graph-explorer backend.
 
 Only the health probe lives here at F2. Endpoint cards (B2-B7) mount their own
@@ -14,6 +16,7 @@ app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0")
 
 @app.get("/api/health")
 def health() -> dict[str, object]:
+    """Liveness probe reporting the active endpoint configuration."""
     settings = Settings.from_env()
     return {
         "status": "ok",

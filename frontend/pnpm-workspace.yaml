@@ -1,0 +1,7 @@
+# pnpm v10: allow only the build scripts we need (pnpm blocks postinstall by default).
+onlyBuiltDependencies:
+  - husky
+  - "@lmdb/lmdb-linux-x64"
+  - "@lmdb/lmdb-win32-x64"
+  - "@rollup/rollup-linux-x64-gnu"
+  - "@rollup/rollup-win32-x64-msvc"

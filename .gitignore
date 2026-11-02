@@ -1,4 +1,4 @@
-frontend/node_modules/
+node_modules/
 backend/.venv/
 dist/
 __pycache__/
@@ -7,3 +7,4 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 *.tsbuildinfo
+.husky/_/

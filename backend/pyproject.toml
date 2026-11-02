@@ -1,3 +1,14 @@
+# SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
+# SPDX-License-Identifier: MIT
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+# Explicit flat-layout selection so `pip install .` (Docker backend stage)
+# doesn't trip on multiple top-level packages (app/, tests/).
+packages = ["app"]
+
 [project]
 name = "hkg-graph-explorer-backend"
 version = "0.4.0.dev0"
@@ -14,7 +25,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "mypy>=1.14", "ruff>=0.8", "pip-audit>=2.7"]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "mypy>=1.14", "ruff>=0.8", "pylint>=3.3", "pip-audit>=2.7"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

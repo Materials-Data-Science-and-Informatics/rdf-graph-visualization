@@ -1,0 +1,15 @@
+# SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
+# SPDX-License-Identifier: MIT
+#
+# REUSE 3.3 global licensing (parsed by `reuse` >= 6). Most files also carry
+# inline SPDX-FileCopyrightText / SPDX-License-Identifier headers; the
+# catch-all annotation below (precedence "closest" is the default) fills in
+# the rest — data fixtures, generated lockfiles, metadata, and legacy sources
+# not yet re-annotated — so `reuse lint` is green.
+
+version = 1
+
+[[annotations]]
+path = ["**"]
+SPDX-FileCopyrightText = "2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors"
+SPDX-License-Identifier = "MIT"
