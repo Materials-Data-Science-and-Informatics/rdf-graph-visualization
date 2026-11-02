@@ -9,7 +9,7 @@ import ForceGraph3D, {
 import * as THREE from "three";
 import { Box } from "@chakra-ui/react";
 import Legend from "./Legend.tsx";
-import { getGroupColor } from "../utils";
+import { getGroupColor } from "../config";
 import FullScreenButton from "./FullScreenButton.tsx";
 import ResetViewButton from "./ResetViewButton.tsx";
 import ThemeSwitch from "./ThemeSwitch.tsx";

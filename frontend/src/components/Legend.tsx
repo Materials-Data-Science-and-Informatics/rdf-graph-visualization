@@ -1,8 +1,13 @@
 import { Flex, Box, Text } from "@chakra-ui/react";
 import * as React from "react";
-import CONFIG from "../config.ts";
-import { GroupType } from "../vite-env";
+import { FALLBACK_COLOR, getPaletteEntries } from "../config";
 
+/**
+ * Palette legend (card C4): entries come from the runtime /api/config
+ * palette (module registry), not a build-time YAML import. The trailing
+ * "Default" row is the code-side fallback colour for groups absent from the
+ * config (e.g. "Unknown").
+ */
 const Legend: React.FC = () => {
   return (
     <Flex
@@ -15,16 +20,16 @@ const Legend: React.FC = () => {
       boxShadow="md"
       flexDirection="column"
     >
-      {CONFIG.groups.map((group: GroupType) => (
-        <Flex key={group.name} alignItems="center" marginBottom="5px" flexDirection="row">
-          <Box width="12px" height="12px" backgroundColor={group.color} marginRight="8px" />
+      {getPaletteEntries().map(({ group, color }) => (
+        <Flex key={group} alignItems="center" marginBottom="5px" flexDirection="row">
+          <Box width="12px" height="12px" backgroundColor={color} marginRight="8px" />
           <Text fontSize="sm" textTransform="capitalize">
-            {group.name}
+            {group}
           </Text>
         </Flex>
       ))}
       <Flex alignItems="center" marginBottom="5px" flexDirection="row">
-        <Box width="12px" height="12px" backgroundColor="gray" marginRight="8px" />
+        <Box width="12px" height="12px" backgroundColor={FALLBACK_COLOR} marginRight="8px" />
         <Text fontSize="sm" textTransform="capitalize">
           Default
         </Text>

@@ -21,7 +21,7 @@
 import Graph from "graphology";
 import type { AggregateNode, Edge, Node, Page, SubgraphResponse } from "../api/types";
 import type { GraphData } from "react-force-graph-3d";
-import { getGroupColor } from "../utils";
+import { getGroupColor } from "../config";
 
 /** Cursor sentinel for the first page (a page fetched with no cursor). */
 export const FIRST_PAGE_CURSOR = "";
