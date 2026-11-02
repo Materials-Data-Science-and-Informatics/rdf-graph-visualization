@@ -1,56 +1,51 @@
-# KANBAN — fullstack graph explorer refactor
+# KANBAN — pointer only
 
-Board of record for `refactor/fullstack-graph-explorer`. One row per card; move `Status`
-(Backlog → Ready → InProgress → Review → Done). A card is **Ready** exactly when every card
-in its `Dep` column is Done. Full DoD text per card: commit history + the plan doc.
+The board of record is the **Hermes Kanban** (durable SQLite board), NOT this file:
 
-**Working agreement**
-- One card = one commit/PR referencing the card ID.
-- Implementers: whoever picks up the card (main agent or the second kanban agent). Do not
-  implement beyond your picked card.
-- LLM budget (shared token, limits per https://sdlaml.pages.jsc.fz-juelich.de/ai/guides/blablador_api_access/):
-  combined agents stay ≤50 % of internal caps — alias-large ≤15/min, alias-code ≤30/min,
-  alias-fast ≤50/min, alias-huge ≤10/min. On 429: honor returned wait, never blind-retry
-  (penalty ladder 60 s→3600 s is shared by both agents).
-- QLever: cards B* develop against **dev** endpoint only until shipping is planned.
-- No push/merge decisions from agents; the owner pushes and merges.
+- Board slug: `hkg-graph-explorer` ("HKG Graph Explorer", workdir = this repo)
+- GUI: desktop app → **Capabilities ▸ Plugins → enable "Kanban"** (ships disabled) →
+  sidebar `/kanban` entry → board switcher picks `hkg-graph-explorer`.
+- CLI: `hermes kanban --board hkg-graph-explorer list|show|assign|comment|complete ...`
+- Workers: `hermes kanban assign <task> <profile>` lets the dispatcher run cards.
+- Shared-token LLM budget for ALL workers: stay <=50% of Blablador internal caps
+  (alias-large 15/min, alias-code 30/min, alias-fast 50/min, alias-huge 10/min);
+  on 429 honor the returned wait — the penalty ladder (60s..3600s) is shared.
 
-| ID | Card | Milestone | Dep | Wave | Status | Est |
-|---|---|---|---|---|---|---|
-| F1 | Monorepo restructure (frontend/ tree, Dockerfile paths) | M0 | — | 1 | **Done** (06e4e9f) | 1d |
-| F2 | FastAPI skeleton + pytest scaffold (backend/) | M0 | — | 1 | **Done** (this commit) | 0.5d |
-| F3 | Freeze API contract (pydantic contract.py ⇄ TS types.ts + drift test) | M0 | — | 1 | **Done** (this commit) | 0.5d |
-| F4 | Multi-stage Dockerfile: nginx + uvicorn + supervisord, `/api` proxy | M0 | F1,F2 | 2 | Ready | 1d |
-| F6 | `hkg_data_model` pinned integration + validated wrappers | M0 | F2 | 2 | Ready | 1d |
-| F7 | HKG conventions: pre-commit, ruff/mypy/pylint, pnpm, eslint flat, husky, REUSE/somesy | M0 | F1,F2 | 2 | Ready | 1d |
-| B1 | QLever client (httpx, templates, retries-off-on-429, timeouts, QLEVER_URL) | M1 | F2,F3 | 2 | Ready | 1d |
-| F5 | CI: test+lint jobs; `-rc` image on branch tags | M0 | F4 | 3 | Backlog | 0.5d |
-| B2 | `/api/expand/{iri}` + `/api/entity/{iri}` | M1 | B1,F6 | 3 | Backlog | 1d |
-| B3 | `/api/subgraph?type=&limit=&cursor=` | M1 | B1,F3 | 3 | Backlog | 1.5d |
-| B4 | `/api/aggregate` (counts by type) | M1 | B1 | 3 | Backlog | 1d |
-| B5 | `/api/search?q=` (autocomplete source) | M1 | B1 | 3 | Backlog | 1d |
-| C0 | Tailwind v4 + shadcn/ui foundation; remove Chakra/emotion/framer-motion | M2 | F1,F7 | 3 | Backlog | 1.5d |
-| B6 | `/api/config` presets from data-model classes | M1 | B1,F6 | 4 | Backlog | 1d |
-| B7 | TTL cache + rate limit middleware | M1 | B2,B3,B4,B5 | 4 | Backlog | 0.5d |
-| C1 | Remove rdflib + snapshot path; typed API client | M2 | F1,F3 | 2 | Backlog* | 1d |
-| C2 | graphology store (slice merge, aggregates, selection) | M2 | C1 | 4 | Backlog | 1.5d |
-| D1 | `GraphRenderer` interface + adapter registry | M3 | C2 | 4 | Backlog | 0.5d |
-| B8 | Backend test suite: fixtures + contract | M1 | B7,F6 | 5 | Backlog | 1.5d |
-| C3 | URL-synced view state | M2 | C2 | 5 | Backlog | 1d |
-| C4 | Replace build-time config with `/api/config` | M2 | C1,B6 | 5 | Backlog | 0.5d |
-| D2 | Sigma v3 2D adapter + worker forceatlas2 | M3 | D1 | 5 | Backlog | 2d |
-| D3 | cosmos.gl 3D adapter (luma.gl peers pinned) | M3 | D1 | 5 | Backlog | 2d |
-| D4 | Renderer toggle (keeps selection/filters/positions) | M3 | D2,D3,C0 | 6 | Backlog | 1d |
-| D5 | Benchmark fixture 5k/25k + committed fps numbers | M3 | D2,D3 | 6 | Backlog | 1d |
-| E1 | Autocomplete search → fly-to | M4 | C2,B5,C0 | 6 | Backlog | 1d |
-| E2 | Entity detail panel + PURL | M4 | C2,B2,C0 | 6 | Backlog | 1.5d |
-| E4 | Filter panel + legend from `/api/config` | M4 | C2,C4,C0 | 6 | Backlog | 1d |
-| E3 | Aggregate-first landing (typed clusters, expand-on-click) | M4 | D2,B4 | 7 | Backlog | 2d |
-| E5 | Performance pass vs budgets (≤1500/expansion, <2 s paint, 50 fps) | M4 | D4,D5,E3 | 7 | Backlog | 1.5d |
-| E6 | E2E smoke (Playwright): search→expand→toggle→share | M4 | E1,E2,E4 | 7 | Backlog | 1d |
+## Card ID -> board task ID
 
-\* C1's code deps (F1,F3) are Done — it becomes Ready as soon as wave-2 picks are made; it
-was kept behind F7 by convention (formatting/lint rules land before new feature code).
+| Card | Task |
+|---|---|
+| F1 | `t_91fa6dd5` |
+| F2 | `t_7646959a` |
+| F3 | `t_c23adac5` |
+| F4 | `t_f6c3b963` |
+| F6 | `t_7a7352a0` |
+| F7 | `t_1cc7f7a0` |
+| B1 | `t_494f80ee` |
+| F5 | `t_5b7b2e3b` |
+| B2 | `t_94baccdc` |
+| B3 | `t_66cfcaaa` |
+| B4 | `t_01ed1a80` |
+| B5 | `t_7c2222df` |
+| C0 | `t_c1df57ee` |
+| B6 | `t_b8d12767` |
+| B7 | `t_0f0b2db0` |
+| C1 | `t_a353230d` |
+| C2 | `t_0d38e313` |
+| D1 | `t_a101dc36` |
+| B8 | `t_60eace7f` |
+| C3 | `t_463d011d` |
+| C4 | `t_b6253005` |
+| D2 | `t_a276c41a` |
+| D3 | `t_aa79193c` |
+| D4 | `t_ff66ba27` |
+| D5 | `t_89b15480` |
+| E1 | `t_9bc2bff9` |
+| E2 | `t_e754a66d` |
+| E4 | `t_4d185fa6` |
+| E3 | `t_9b4f8c06` |
+| E5 | `t_1f94e893` |
+| E6 | `t_613c173c` |
 
-**Out of scope (separate plan later):** tagging/ghcr publication, graphviz-deployment changes,
-prod rollout/rollback. Board ends at E5+E6 green = benchmarked RC candidate.
+Done: F1 (t_91fa6dd5), F2 (t_7646959a), F3 (t_c23adac5) — pre-board work, commits 06e4e9f / b836159.
+Board ends at E5+E6 green = benchmarked RC candidate. Shipping = separate plan later.
