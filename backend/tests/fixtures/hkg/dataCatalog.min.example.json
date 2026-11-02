@@ -1,0 +1,9 @@
+{
+  "@context": {
+    "@vocab": "https://schema.org/"
+  },
+  "@type": "DataCatalog",
+  "@id": "https://purls.helmholtz-metadaten.de/hkg/catalog/001",
+  "name": "DataCatalog name",
+  "url": "https://somedomain.com"
+}

@@ -1,0 +1,8 @@
+{
+  "@context": {
+    "@vocab": "https://schema.org/"
+  },
+  "@type": "Organization",
+  "@id": "https://ror.org/xxxxxxxxx",
+  "name": "Some Organization"
+}

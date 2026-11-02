@@ -1,0 +1,11 @@
+{
+  "@context": {
+    "@vocab": "https://schema.org/",
+    "source": "https://www.w3.org/ns/prov#has_provenance",
+    "SociologicalInstrument": "https://rdf-vocabulary.ddialliance.org/discovery.html#dfn-disco-instrument",
+    "PhysicalInstrument": "https://uri.gbv.de/terminology/datacite-resourcetypegeneral/Instrument"
+  },
+  "@type": "PhysicalInstrument",
+  "@id": "https://hkg.helmholtz.de/instrument/fzj-sem-2026-001",
+  "name": "FEI Quanta 200F SEM"
+}

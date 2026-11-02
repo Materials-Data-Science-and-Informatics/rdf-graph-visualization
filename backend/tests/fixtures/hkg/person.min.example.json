@@ -1,0 +1,8 @@
+{
+  "@context": {
+    "@vocab": "https://schema.org/"
+  },
+  "@type": "Person",
+  "@id": "https://orcid.org/xxxx-xxxx-xxxx-xxxx",
+  "name": "John Doe"
+}
