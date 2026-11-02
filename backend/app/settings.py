@@ -10,8 +10,9 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 
-# Default is the HKG QLever SPARQL endpoint that was verified live during
-# research (POST, JSON/CSV). Dev deployments override this with the dev host.
+# Default is the HKG QLever *dev* endpoint (B1: dev endpoint until shipping);
+# deployments point QLEVER_URL at the prod endpoint later. Verified live during
+# research (POST, JSON/CSV).
 DEFAULT_QLEVER_URL = "https://sparql.unhide.helmholtz-metadaten.de/sparql"
 
 

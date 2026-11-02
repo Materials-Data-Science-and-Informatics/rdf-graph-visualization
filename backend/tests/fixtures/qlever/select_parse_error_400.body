@@ -1,0 +1,16 @@
+{
+    "exception": "Invalid SPARQL query: Token \"SELEC\": mismatched input 'SELEC' expecting {SELECT, CONSTRUCT, DESCRIBE, ASK, WITH}",
+    "metadata": {
+        "line": 1,
+        "positionInLine": 0,
+        "startIndex": 0,
+        "stopIndex": 4
+    },
+    "query": "SELEC WHERE { }",
+    "resultsize": 0,
+    "status": "ERROR",
+    "time": {
+        "computeResult": 0,
+        "total": 0
+    }
+}

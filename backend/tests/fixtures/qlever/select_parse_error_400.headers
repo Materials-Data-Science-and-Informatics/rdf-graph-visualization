@@ -1,0 +1,7 @@
+HTTP/2 400 
+access-control-allow-headers: *
+access-control-allow-methods: GET, POST, OPTIONS
+access-control-allow-origin: *
+content-type: application/json
+date: Mon, 02 Nov 2026 16:12:41 GMT
+
