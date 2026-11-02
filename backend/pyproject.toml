@@ -1,0 +1,38 @@
+[project]
+name = "hkg-graph-explorer-backend"
+version = "0.4.0.dev0"
+description = "SPARQL-backed graph API for the HKG graph visualization"
+requires-python = ">=3.11"
+dependencies = ["fastapi>=0.115", "httpx>=0.27", "pydantic>=2.9", "uvicorn>=0.32"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3", "pytest-asyncio>=0.24", "mypy>=1.14", "ruff>=0.8", "pip-audit>=2.7"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py311"
+
+[tool.ruff.format]
+# ruff-format is the single formatter (Black-compatible), per HKG convention.
+
+[tool.mypy]
+exclude = ["tests/"]
+strict = false
+check_untyped_defs = true
+
+[tool.pylint]
+ignore-paths = ["tests"]
+max-line-length = 120
+max-args = 6
+max-positional-arguments = 6
+min-public-methods = 0
+
+[tool.coverage.run]
+source = ["app"]
+omit = ["tests/*"]
+
+[tool.coverage.report]
+fail_under = 90

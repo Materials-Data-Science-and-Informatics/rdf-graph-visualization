@@ -1,0 +1,22 @@
+"""FastAPI entrypoint for the HKG graph-explorer backend.
+
+Only the health probe lives here at F2. Endpoint cards (B2-B7) mount their own
+routers under /api; the QLever client (B1) is the single SPARQL gateway.
+"""
+
+from fastapi import FastAPI
+
+from app.settings import Settings
+
+app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0")
+
+
+@app.get("/api/health")
+def health() -> dict[str, object]:
+    settings = Settings.from_env()
+    return {
+        "status": "ok",
+        "qlever_url": settings.qlever_url,
+        "default_limit": settings.default_limit,
+        "max_limit": settings.max_limit,
+    }
