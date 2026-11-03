@@ -20,6 +20,9 @@ export {
 } from "./registry";
 export { createStubRenderer, seedPosition } from "./stub";
 export type { StubRenderer } from "./stub";
+// Card D3 — cosmos.gl (`@cosmos.gl/graph`) adapter + its inspection surface.
+export { createCosmosRenderer } from "./cosmos";
+export type { CosmosRenderer } from "./cosmos";
 // Card D2 — sigma 2D adapter, deterministic position seeding, engine
 // registration (CONTRACT.md §7).
 export { djb2, mulberry32, POSITION_SPAN, seedPosition2D } from "./seeding";
