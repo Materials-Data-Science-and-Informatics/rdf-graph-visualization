@@ -28,7 +28,10 @@ export type { CosmosRenderer } from "./cosmos";
 export { djb2, mulberry32, POSITION_SPAN, seedPosition2D } from "./seeding";
 export { createSigmaRenderer, SIGMA_RENDERER_ID } from "./sigma";
 export type {
+  SigmaCameraState,
+  SigmaLabelLodOptions,
   SigmaLayoutOptions,
+  SigmaNodeLabelState,
   SigmaRenderer,
   SigmaRendererDiagnostics,
   SigmaRendererOptions,

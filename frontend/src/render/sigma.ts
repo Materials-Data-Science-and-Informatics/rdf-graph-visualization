@@ -14,6 +14,11 @@
 //   - getPositions() snapshots the graph attributes — 2D, no z (P6);
 //   - focus() applies the strictly-increasing-sequence gate (V2) and pans
 //     the camera to the node; resetView() fits the current bounding box (V3);
+//   - labels are adapter display state (S3, card D2): a deterministic
+//     zoom/degree LOD runs in the nodeReducer, and a camera listener forces
+//     one fresh data pass when a camera move crosses an LOD regime boundary
+//     (sigma caches reducer output; pans and same-regime zooms cost nothing,
+//     and the render itself always runs in sigma's own frame loop);
 //   - selection is one-way: sigma's "clickNode" event → onNodeSelect(id)
 //     (S1) — the id only, never the (renderer-owned) node object;
 //   - lifecycle L1–L4: data methods throw before mount, every method is a
@@ -63,6 +68,50 @@ export interface SigmaLayoutOptions {
   settings?: Partial<ForceAtlas2Settings>;
 }
 
+/** Default label LOD: every label is shown while the camera ratio ≤ this. */
+export const LABEL_ZOOM_RATIO = 2.5;
+/** Default label LOD: high-degree labels are shown while the camera ratio ≤ this. */
+export const LABEL_HIGH_DEGREE_ZOOM_RATIO = 5;
+/** Default label LOD: node degree that counts as "high-degree" (tie-break). */
+export const LABEL_HIGH_DEGREE_MIN = 10;
+
+/**
+ * Label level-of-detail thresholds (card D2 S3). Labels are renderer
+ * display state (CONTRACT.md §2): the nodeReducer keeps or drops the label
+ * from the camera zoom ratio and the node degree — a label shows while the
+ * ratio ≤ zoomRatio, high-degree nodes keep theirs out to
+ * highDegreeZoomRatio. All thresholds are deterministic constants; nothing
+ * here ever touches positions.
+ */
+export interface SigmaLabelLodOptions {
+  /** Master switch; false keeps every label (sigma's own heuristics only). */
+  enabled?: boolean;
+  /** Show every label while the camera ratio ≤ this (default {@link LABEL_ZOOM_RATIO}). */
+  zoomRatio?: number;
+  /** Show high-degree labels while the camera ratio ≤ this (default {@link LABEL_HIGH_DEGREE_ZOOM_RATIO}, floored at zoomRatio). */
+  highDegreeZoomRatio?: number;
+  /** Degree that counts as high-degree (default {@link LABEL_HIGH_DEGREE_MIN}). */
+  highDegreeMin?: number;
+}
+
+/** The sigma camera's current view state (2D; the adapter never rotates). */
+export interface SigmaCameraState {
+  x: number;
+  y: number;
+  ratio: number;
+}
+
+/**
+ * The label LOD decision currently baked into a node's cached sigma display
+ * data — what the reducer decided for the node at the last data pass.
+ */
+export interface SigmaNodeLabelState {
+  /** The label the renderer shows for the node right now (null = hidden). */
+  label: string | null;
+  /** True when the label survives sigma's own density/size heuristics. */
+  forceLabel: boolean;
+}
+
 /**
  * The sigma 2D adapter. Everything on the base GraphRenderer plus explicit
  * layout control: the force-atlas2 run happens in the adapter's OWN Web
@@ -82,6 +131,23 @@ export interface SigmaRenderer extends GraphRenderer, SigmaRendererDiagnostics {
   stopLayout(): void;
   /** True while a layout run is in flight. */
   readonly layoutRunning: boolean;
+  /**
+   * Current sigma camera view state, or null before mount / after dispose.
+   * `ratio` is sigma's zoom ratio (bigger = more zoomed out).
+   */
+  getCameraState(): SigmaCameraState | null;
+  /**
+   * Apply a camera view state immediately (no animation). Label LOD reacts
+   * to it (card D2 S3). Silent no-op after dispose, throws before mount.
+   */
+  setCameraState(view: Partial<SigmaCameraState>): void;
+  /**
+   * The label LOD decision currently in the node's cached sigma display data
+   * (see {@link SigmaNodeLabelState}), or null for an unknown node / before
+   * mount / after dispose. Diagnostic seam: the app's data surface stays the
+   * contract methods.
+   */
+  getNodeLabelState(nodeId: string): SigmaNodeLabelState | null;
 }
 
 export interface SigmaRendererOptions {
@@ -91,6 +157,8 @@ export interface SigmaRendererOptions {
    * the same interface — the adapter itself stays runtime-agnostic.
    */
   layoutWorkerFactory?: () => LayoutWorkerClient;
+  /** Label LOD thresholds (card D2 S3); defaults see {@link SigmaLabelLodOptions}. */
+  labelLod?: SigmaLabelLodOptions;
 }
 
 /** The registry id the app registers this factory under (engines.ts). */
@@ -162,6 +230,42 @@ export function createSigmaRenderer(
     if (disposed) return false;
     if (!mounted) throw new Error(`renderer "${id}": ${op} before mount`);
     return true;
+  }
+
+  // ---- label LOD (S3) -------------------------------------------------
+  // Resolution order: a label shows iff the camera ratio is within its
+  // threshold, and a node's threshold is the high-degree one only when its
+  // degree clears the tie-break. sigma's own density/size heuristics run on
+  // top; high-degree keepers set forceLabel so hub labels survive them.
+  const labelLod: Required<SigmaLabelLodOptions> = {
+    enabled: factoryOptions.labelLod?.enabled ?? true,
+    zoomRatio: factoryOptions.labelLod?.zoomRatio ?? LABEL_ZOOM_RATIO,
+    highDegreeZoomRatio: Math.max(
+      factoryOptions.labelLod?.highDegreeZoomRatio ?? LABEL_HIGH_DEGREE_ZOOM_RATIO,
+      factoryOptions.labelLod?.zoomRatio ?? LABEL_ZOOM_RATIO
+    ),
+    highDegreeMin: factoryOptions.labelLod?.highDegreeMin ?? LABEL_HIGH_DEGREE_MIN,
+  };
+  // The camera ratio the last data pass evaluated (null until sigma has run
+  // one). Used to detect a zoom crossing an LOD boundary so we know when a
+  // re-render is actually required — sigma caches the reducer output, so a
+  // pure camera move within one regime needs no relabel and a move ACROSS a
+  // regime must force one data pass. Three regimes: all labels, high-degree
+  // only, none.
+  let lodAppliedRatio: number | null = null;
+
+  /** The LOD regime a camera ratio falls into (0 all / 1 high-degree / 2 none). */
+  function lodRegime(ratio: number): 0 | 1 | 2 {
+    if (!labelLod.enabled || ratio <= labelLod.zoomRatio) return 0;
+    if (ratio <= labelLod.highDegreeZoomRatio) return 1;
+    return 2;
+  }
+
+  /** Whether a node of this degree keeps its label at this camera ratio. */
+  function lodKeepsLabel(degree: number, ratio: number): boolean {
+    if (!labelLod.enabled) return true;
+    if (ratio <= labelLod.zoomRatio) return true;
+    return degree >= labelLod.highDegreeMin && ratio <= labelLod.highDegreeZoomRatio;
   }
 
   const renderer: SigmaRenderer = {
@@ -238,11 +342,22 @@ export function createSigmaRenderer(
         // particular — must be passed through with `...data`.
         // Node colour tracks the LIVE /api/config palette (card C4) instead
         // of a set()-time snapshot: the reducer runs on every refresh.
-        nodeReducer: (_node, data) => ({
-          ...data,
-          label: data.label ?? null,
-          color: getGroupColor(typeof data.group === "string" ? data.group : ""),
-        }),
+        // Label LOD (S3): keep the label only where the current camera
+        // ratio allows it for the node's degree; high-degree keepers also
+        // set forceLabel so hub labels survive sigma's own density/size
+        // heuristics. Display-only — positions are never touched here.
+        nodeReducer: (node, data) => {
+          const ratio = sigma ? sigma.getCamera().getState().ratio : 1;
+          lodAppliedRatio = ratio;
+          const degree = graph.degree(node);
+          const keep = lodKeepsLabel(degree, ratio);
+          return {
+            ...data,
+            label: keep ? (data.label ?? null) : null,
+            forceLabel: keep && labelLod.enabled && degree >= labelLod.highDegreeMin,
+            color: getGroupColor(typeof data.group === "string" ? data.group : ""),
+          };
+        },
         edgeReducer: (_edge, data) => ({
           ...data,
           label: data.label ?? null,
@@ -254,6 +369,17 @@ export function createSigmaRenderer(
       s.on("clickNode", (payload) => {
         if (disposed) return;
         for (const listener of listeners) listener(payload.node);
+      });
+      // Label LOD reacts to zoom with NO app-side invalidation (S3): sigma
+      // caches reducer output across camera moves, so a camera event that
+      // crosses an LOD regime boundary forces ONE fresh data pass (the
+      // reducer then re-reads the live ratio). Pans and same-regime zooms
+      // cost nothing; the render itself runs in sigma's own frame loop.
+      s.getCamera().on("updated", () => {
+        if (disposed || !sigma || lodAppliedRatio === null) return;
+        const ratio = sigma.getCamera().getState().ratio;
+        if (lodRegime(ratio) === lodRegime(lodAppliedRatio)) return;
+        sigma.refresh({ schedule: true });
       });
     },
 
@@ -383,11 +509,30 @@ export function createSigmaRenderer(
       return positions;
     },
 
+    getCameraState(): SigmaCameraState | null {
+      if (!sigma || disposed) return null;
+      const { x, y, ratio } = sigma.getCamera().getState();
+      return { x, y, ratio };
+    },
+
+    setCameraState(view: Partial<SigmaCameraState>): void {
+      if (!guard("setCameraState") || !sigma) return;
+      sigma.getCamera().setState(view);
+    },
+
+    getNodeLabelState(nodeId: string): SigmaNodeLabelState | null {
+      if (!sigma || disposed || !graph.hasNode(nodeId)) return null;
+      const data = sigma.getNodeDisplayData(nodeId);
+      if (!data) return null;
+      return { label: data.label ?? null, forceLabel: data.forceLabel === true };
+    },
+
     dispose(): void {
       if (disposed) return; // L4: idempotent
       disposed = true;
       listeners.clear();
       lastFocus = null;
+      lodAppliedRatio = null;
       teardownLayout(); // L3: cancel the layout run, terminate its worker
       if (sigma) {
         sigma.kill(); // cancels frames, unbinds captors/window, frees GL
