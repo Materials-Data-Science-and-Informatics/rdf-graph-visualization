@@ -25,8 +25,11 @@ import Graph from "graphology";
 import Sigma from "sigma";
 
 import { getGroupColor } from "../config";
+import type { LayoutWorkerClient, LayoutRequest } from "./layout-worker";
+import { createLayoutWorker } from "./layout-worker";
 import type { GraphRenderer, NodePosition, RendererGraph } from "./renderer";
 import { seedPosition2D } from "./seeding";
+import type { ForceAtlas2Settings } from "./forceatlas2";
 
 /** Node attributes the adapter stores (positions are renderer-owned, P1). */
 interface NodeAttrs {
@@ -51,7 +54,44 @@ export interface SigmaRendererDiagnostics {
   lastFocus: { nodeId: string; sequence: number } | null;
 }
 
-export type SigmaRenderer = GraphRenderer & SigmaRendererDiagnostics;
+/** Options for a force-atlas2 layout run started on this adapter. */
+export interface SigmaLayoutOptions {
+  /** Total iterations (default 300). */
+  iterations?: number;
+  /** Iterations per posted tick (default 16). */
+  iterationsPerTick?: number;
+  settings?: Partial<ForceAtlas2Settings>;
+}
+
+/**
+ * The sigma 2D adapter. Everything on the base GraphRenderer plus explicit
+ * layout control: the force-atlas2 run happens in the adapter's OWN Web
+ * Worker (CONTRACT.md L3 — the renderer owns its layout ticks and cancels
+ * them on dispose()), and the worker's position snapshots are applied to the
+ * adapter's own graph attributes (P1 — positions stay renderer-owned; there
+ * is no external apply-positions API in the base contract on purpose).
+ */
+export interface SigmaRenderer extends GraphRenderer, SigmaRendererDiagnostics {
+  /**
+   * Start (or restart) a force-atlas2 layout over the current graph, from
+   * the current positions. Ticks land as attribute updates while it runs;
+   * `layoutRunning` flips to false on the final tick or after stopLayout().
+   */
+  startLayout(options?: SigmaLayoutOptions): void;
+  /** Ask the layout worker to stop; the last applied tick stands. */
+  stopLayout(): void;
+  /** True while a layout run is in flight. */
+  readonly layoutRunning: boolean;
+}
+
+export interface SigmaRendererOptions {
+  /**
+   * Layout-worker factory. Defaults to createLayoutWorker (browser Worker).
+   * Headless tests inject a node:worker_threads-backed implementation of
+   * the same interface — the adapter itself stays runtime-agnostic.
+   */
+  layoutWorkerFactory?: () => LayoutWorkerClient;
+}
 
 /** The registry id the app registers this factory under (engines.ts). */
 export const SIGMA_RENDERER_ID = "sigma";
@@ -60,7 +100,10 @@ export const SIGMA_RENDERER_ID = "sigma";
  * Factory for the sigma 2D adapter. The registry (registry.ts) stores this,
  * never instances — every call returns a fresh, unmounted renderer.
  */
-export function createSigmaRenderer(id: string = SIGMA_RENDERER_ID): SigmaRenderer {
+export function createSigmaRenderer(
+  id: string = SIGMA_RENDERER_ID,
+  factoryOptions: SigmaRendererOptions = {}
+): SigmaRenderer {
   let mounted = false;
   let disposed = false;
   let sigma: Sigma<NodeAttrs, EdgeAttrs> | null = null;
@@ -71,6 +114,45 @@ export function createSigmaRenderer(id: string = SIGMA_RENDERER_ID): SigmaRender
   // Directed, like the store's graph: a (source, target) pair is one edge,
   // and the handed links carry direction (predicate order matters in RDF).
   const graph = new Graph<NodeAttrs, EdgeAttrs>({ type: "directed" });
+
+  // Layout worker state (adapter-owned, L3): one worker per renderer,
+  // created lazily on the first startLayout, terminated on dispose().
+  let layoutClient: LayoutWorkerClient | null = null;
+  let layoutUnsubscribe: (() => void) | null = null;
+  let layoutRunning = false;
+  /** id → position index for the CURRENT run (the worker's snapshot layout). */
+  let layoutIndex: Map<string, number> | null = null;
+
+  function teardownLayout(): void {
+    layoutRunning = false;
+    layoutIndex = null;
+    if (layoutUnsubscribe) {
+      layoutUnsubscribe();
+      layoutUnsubscribe = null;
+    }
+    if (layoutClient) {
+      layoutClient.dispose();
+      layoutClient = null;
+    }
+  }
+
+  function applyLayoutTick(positions: Float32Array): void {
+    if (!layoutIndex) return;
+    // Only apply to nodes that are still in the graph (a set() mid-run
+    // cancels the run, but be defensive: never write a stale snapshot into
+    // a node the run did not originate).
+    for (const [nodeId, i] of layoutIndex) {
+      if (graph.hasNode(nodeId)) {
+        graph.mergeNodeAttributes(nodeId, { x: positions[2 * i], y: positions[2 * i + 1] });
+      }
+    }
+  }
+
+  function stopLayout(): void {
+    if (disposed) return;
+    if (layoutClient) layoutClient.stopLayout();
+    layoutRunning = false;
+  }
 
   // True when the operation may proceed. Post-dispose it returns false
   // (silent no-op, contract §5 L3); before mount it throws (L2). Callers
@@ -88,6 +170,62 @@ export function createSigmaRenderer(id: string = SIGMA_RENDERER_ID): SigmaRender
     get lastFocus(): { nodeId: string; sequence: number } | null {
       return lastFocus;
     },
+
+    get layoutRunning(): boolean {
+      return layoutRunning;
+    },
+
+    startLayout(options: SigmaLayoutOptions = {}): void {
+      if (!guard("startLayout")) return;
+      if (graph.order === 0) return; // nothing to lay out
+      const nodes: string[] = [];
+      const positions = new Float64Array(2 * graph.order);
+      let i = 0;
+      for (const nodeId of graph.nodes()) {
+        const attrs = graph.getNodeAttributes(nodeId);
+        if (!Number.isFinite(attrs.x) || !Number.isFinite(attrs.y)) {
+          throw new Error(
+            `renderer "${id}": startLayout needs finite x/y on every node ("${nodeId}")`
+          );
+        }
+        positions[2 * i] = attrs.x;
+        positions[2 * i + 1] = attrs.y;
+        nodes.push(nodeId);
+        i++;
+      }
+      const indexOf = new Map(nodes.map((nodeId, idx) => [nodeId, idx]));
+      const links: [number, number][] = [];
+      for (const edge of graph.edges()) {
+        const s = indexOf.get(graph.source(edge));
+        const t = indexOf.get(graph.target(edge));
+        if (s !== undefined && t !== undefined) links.push([s, t]);
+      }
+
+      if (!layoutClient) {
+        layoutClient = (factoryOptions.layoutWorkerFactory ?? createLayoutWorker)();
+        layoutUnsubscribe = layoutClient.onTick((tick) => {
+          // Guarded twice: a tick that arrives after dispose() (the worker
+          // is terminated, but be exact) or after stopLayout()/set() must
+          // not touch the graph (L3).
+          if (disposed || !layoutRunning || !layoutClient) return;
+          applyLayoutTick(tick.positions);
+          if (tick.done) layoutRunning = false;
+        });
+      }
+      layoutIndex = indexOf;
+      layoutRunning = true;
+      const request: LayoutRequest = {
+        nodes,
+        links,
+        positions,
+        iterations: options.iterations,
+        iterationsPerTick: options.iterationsPerTick,
+        settings: options.settings,
+      };
+      layoutClient.startLayout(request);
+    },
+
+    stopLayout,
 
     mount(container: HTMLElement): void {
       if (disposed) return;
@@ -121,6 +259,10 @@ export function createSigmaRenderer(id: string = SIGMA_RENDERER_ID): SigmaRender
 
     set(g: RendererGraph): void {
       if (!guard("set") || !sigma) return;
+      // A layout run is a one-shot convergence over the data snapshot that
+      // existed when it started; new data invalidates it — the app calls
+      // startLayout() again if it wants the new graph laid out.
+      if (layoutRunning) stopLayout();
       const wanted = new Set(g.nodes.map((n) => n.id));
 
       // P4: release state for nodes that vanished (graphology drops their
@@ -246,6 +388,7 @@ export function createSigmaRenderer(id: string = SIGMA_RENDERER_ID): SigmaRender
       disposed = true;
       listeners.clear();
       lastFocus = null;
+      teardownLayout(); // L3: cancel the layout run, terminate its worker
       if (sigma) {
         sigma.kill(); // cancels frames, unbinds captors/window, frees GL
         sigma = null;
