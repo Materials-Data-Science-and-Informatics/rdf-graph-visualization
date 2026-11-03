@@ -14,9 +14,10 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { ApiError, getSubgraph } from "../api/client";
 import type { SubgraphResponse } from "../api/types";
 import type { GraphData } from "react-force-graph-3d";
+import { updateSearchKeys } from "../view-state";
 import { GraphStore, type MergeResult } from "./graph-store";
 
-/** App-wide singleton store (card C3 later serializes view state, not data). */
+/** App-wide singleton store (card C3 serializes view state around it, not the data). */
 export const graphStore = new GraphStore();
 
 export function useGraphStoreVersion(): number {
@@ -60,14 +61,41 @@ export async function expandNextPage(signal?: AbortSignal): Promise<MergeResult 
   return graphStore.ingest(slice, cursor);
 }
 
+/**
+ * Card C3 (URL restore): load the first page, then keep expanding until the
+ * store's next-page cursor equals `targetCursor` — i.e. until the store
+ * holds exactly the pages the shared view had when its URL was copied.
+ * Returns as soon as the slice runs out (a shrunken dataset degrades to
+ * "everything the server has left" instead of looping).
+ */
+export async function loadToCursor(
+  targetCursor: string | null,
+  signal?: AbortSignal
+): Promise<void> {
+  await loadFirstPage(signal);
+  if (targetCursor === null) return;
+  while (graphStore.nextCursor !== null && graphStore.nextCursor !== targetCursor) {
+    await expandNextPage(signal);
+  }
+}
+
+/** Keep the URL's `cursor` key in step with the store (C3 data-state sync). */
+function syncCursorToUrl(): void {
+  updateSearchKeys({ cursor: graphStore.nextCursor });
+}
+
 export interface SliceActions {
   /** Initial load / reload in flight (replace, from the first page). */
   loading: boolean;
   /** Cursor-continued expand in flight. */
   expanding: boolean;
   error: string | null;
-  /** Load the first page and replace the store (initial load, reload button). */
-  load: () => void;
+  /**
+   * Load the first page and replace the store (initial load, reload button).
+   * With a `targetCursor` (C3 URL restore) keep expanding until the shared
+   * view's data state is reached; without one, a plain fresh first page.
+   */
+  load: (targetCursor?: string | null) => void;
   /** Fetch the next cursor page and merge it; no-op when complete/blocked. */
   expand: () => void;
   clearError: () => void;
@@ -81,16 +109,17 @@ export function useSliceActions(): SliceActions {
   const expandAbortRef = useRef<AbortController | null>(null);
   const expandInFlightRef = useRef(false);
 
-  const load = useCallback(() => {
+  const load = useCallback((targetCursor: string | null = null) => {
     loadAbortRef.current?.abort();
     const controller = new AbortController();
     loadAbortRef.current = controller;
     setLoading(true);
     void (async () => {
       try {
-        await loadFirstPage(controller.signal);
+        await loadToCursor(targetCursor, controller.signal);
         if (controller.signal.aborted) return;
         setError(null);
+        syncCursorToUrl();
       } catch (err) {
         if (controller.signal.aborted) return;
         setError(describe(err));
@@ -113,6 +142,7 @@ export function useSliceActions(): SliceActions {
         await expandNextPage(controller.signal);
         if (controller.signal.aborted) return;
         setError(null);
+        syncCursorToUrl();
       } catch (err) {
         if (controller.signal.aborted) return;
         setError(describe(err));

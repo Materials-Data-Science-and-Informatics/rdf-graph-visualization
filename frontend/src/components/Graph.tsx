@@ -13,6 +13,7 @@ import { getGroupColor } from "../config";
 import FullScreenButton from "./FullScreenButton.tsx";
 import ResetViewButton from "./ResetViewButton.tsx";
 import ThemeSwitch from "./ThemeSwitch.tsx";
+import { initialViewState, updateSearchKeys } from "../view-state";
 
 interface GraphProps {
   graphData: GraphData;
@@ -28,8 +29,13 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height, onNodeSelect })
   // Separate width/height state to allow fullscreen to override parent dimensions
   const [graphWidth, setGraphWidth] = useState(width);
   const [graphHeight, setGraphHeight] = useState(height);
-  // Theme toggle: dark mode (default) vs light mode
-  const [switchOn, setSwitchOn] = useState<boolean>(false);
+  // Theme toggle: dark mode (default) vs light mode. Card C3: initial value
+  // comes from the opened URL; changes are written back (replaceState).
+  const [switchOn, setSwitchOn] = useState<boolean>(initialViewState.theme === "light");
+
+  useEffect(() => {
+    updateSearchKeys({ theme: switchOn ? "light" : null });
+  }, [switchOn]);
 
   // Reference to ForceGraph3D instance for camera control
   const fgRef = useRef<ForceGraphMethods | undefined>(undefined);
@@ -93,6 +99,47 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height, onNodeSelect })
       3000 // duration of the transition (in ms)
     );
   }, [graphData]);
+
+  // ----------------------------------------------------------------- card C3
+
+  const hasNodes = graphData.nodes.length > 0;
+  // One-shot: apply the camera captured in the opened URL once the engine
+  // has its first data (transitionMs 0 = immediate, no fly animation).
+  const restoredCameraRef = useRef(false);
+  useEffect(() => {
+    if (restoredCameraRef.current || !fgRef.current || !hasNodes) return;
+    if (!initialViewState.camera) return;
+    restoredCameraRef.current = true;
+    const look = initialViewState.look ?? { x: 0, y: 0, z: 0 };
+    fgRef.current.cameraPosition(initialViewState.camera, look, 0);
+  }, [hasNodes]);
+
+  // Card C3: keep the URL's cam/look keys in step with the live camera
+  // (polled; only writes when a rounded value actually changed).
+  useEffect(() => {
+    if (!hasNodes) return;
+    let lastCam = "";
+    let lastLook = "";
+    const id = window.setInterval(() => {
+      const fg = fgRef.current;
+      if (!fg) return;
+      const pos = fg.camera().position;
+      const controls = fg.controls() as unknown as {
+        target?: { x: number; y: number; z: number };
+      };
+      // OrbitControls keeps the true orbit pivot in controls.target; fall
+      // back to the engine's derived look-at point when it is absent.
+      const look = controls?.target ?? fg.cameraPosition().lookAt;
+      const cam = `${pos.x.toFixed(3)},${pos.y.toFixed(3)},${pos.z.toFixed(3)}`;
+      const lookAt = `${look.x.toFixed(3)},${look.y.toFixed(3)},${look.z.toFixed(3)}`;
+      if (cam !== lastCam || lookAt !== lastLook) {
+        lastCam = cam;
+        lastLook = lookAt;
+        updateSearchKeys({ cam, look: lookAt });
+      }
+    }, 500);
+    return () => window.clearInterval(id);
+  }, [hasNodes]);
 
   // Memoize node 3D objects to avoid recreating geometries and materials on each render
   // Box geometry for nodes without group (default), sphere for grouped nodes

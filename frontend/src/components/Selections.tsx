@@ -14,6 +14,7 @@ import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
 import { useGraphData, graphStore, type SliceActions } from "../store/use-graph-store";
+import { initialViewState, updateSearchKeys } from "../view-state";
 
 interface SelectionsProps {
   actions: SliceActions;
@@ -27,23 +28,31 @@ interface SelectionsProps {
  * aborted on re-fetch and on unmount (see useSliceActions).
  */
 const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }) => {
-  const [isChecked, setIsChecked] = useState<boolean>(false);
-  const [filters, setFilters] = useState<Set<string>>(new Set<string>());
+  // Card C3: initial view state is read from the opened URL (one-time
+  // capture); every change below writes its keys back (replaceState).
+  const [isChecked, setIsChecked] = useState<boolean>(initialViewState.showIsolated);
+  const [filters, setFilters] = useState<Set<string>>(() => new Set(initialViewState.hiddenGroups));
   // Current store contents (re-renders on every merged slice).
   const graphData = useGraphData();
 
-  // Initial fetch on mount (abort-on-unmount lives in useSliceActions).
+  // Initial fetch on mount. A URL with a `cursor` param re-fetches exactly
+  // the pages the shared view had (card C3); a plain URL loads the first
+  // page only.
   const { load: loadSlice } = actions;
   useEffect(() => {
-    loadSlice();
+    loadSlice(initialViewState.nextCursor);
   }, [loadSlice]);
 
-  // A fresh load (replace) clears any active group filters.
+  // Card C3: keep the URL's filter keys in step with the state. (A fresh
+  // load via the "Load slice" button below clears the group filters — the
+  // previous load-completion effect is gone so a restored filter survives
+  // the initial load.)
   useEffect(() => {
-    if (!actions.loading) {
-      setFilters(new Set<string>());
-    }
-  }, [actions.loading]);
+    updateSearchKeys({ hide: filters.size > 0 ? [...filters].join(",") : null });
+  }, [filters]);
+  useEffect(() => {
+    updateSearchKeys({ iso: isChecked ? "1" : null });
+  }, [isChecked]);
 
   // Filter graph data based on selected groups and optionally remove unconnected nodes
   useEffect(() => {
@@ -141,7 +150,15 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
   return (
     <Box p={4} width="100%" mx="auto">
       <HStack spacing={4} alignItems="center">
-        <Button colorScheme="blue" onClick={actions.load} isLoading={actions.loading}>
+        <Button
+          colorScheme="blue"
+          // A fresh load (replace) starts with no active group filters.
+          onClick={() => {
+            setFilters(new Set<string>());
+            actions.load();
+          }}
+          isLoading={actions.loading}
+        >
           Load slice
         </Button>
         {graphStore.canExpand && (

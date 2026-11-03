@@ -1,10 +1,11 @@
 import { Box } from "@chakra-ui/react";
 import Graph from "./Graph";
 import Selections from "./Selections";
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import useResizeObserver from "@react-hook/resize-observer";
 import { NodeObject, GraphData } from "react-force-graph-3d";
-import { graphStore, useSliceActions } from "../store/use-graph-store";
+import { graphStore, useSliceActions, useGraphStoreVersion } from "../store/use-graph-store";
+import { initialViewState, updateSearchKeys } from "../view-state";
 
 // Debounce delay for resize observer to prevent excessive re-renders during window resize
 const DEBOUNCE_MS = 150;
@@ -51,6 +52,27 @@ const Content = () => {
     },
     [actions]
   );
+
+  // Card C3: keep the URL's `sel` key in step with the store selection.
+  useGraphStoreVersion();
+  const selectedId = graphStore.selectedId;
+  useEffect(() => {
+    updateSearchKeys({ sel: selectedId });
+  }, [selectedId]);
+
+  // Card C3: restore the URL's selection once the initial slice is in the
+  // store (one successful load; a failed first load retries on the next one).
+  const restoredSelRef = useRef(false);
+  useEffect(() => {
+    if (restoredSelRef.current || actions.loading) return;
+    if (graphStore.nodeCount === 0) return;
+    restoredSelRef.current = true;
+    const id = initialViewState.selectedId;
+    if (id && graphStore.hasNode(id)) {
+      graphStore.select(id);
+      graphStore.focus(id);
+    }
+  }, [actions]);
 
   return (
     <Box width="100%" flex="1" minH={0} display="flex" flexDirection="column" gap={4}>
