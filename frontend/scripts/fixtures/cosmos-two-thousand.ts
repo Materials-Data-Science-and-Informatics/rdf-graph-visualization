@@ -13,7 +13,9 @@ export function makeTwoThousandNodeGraph(nodeCount = 2000): RendererGraph {
     nodes.push({
       id: `node-${i}`,
       label: `Node ${i}`,
-      group: GROUPS[i % GROUPS.length] ?? "ClassA",
+      // Every 17th node is UNGROUPED so S2's ungrouped look (square, palette
+      // fallback) is part of the render check too.
+      group: i % 17 === 0 ? undefined : (GROUPS[i % GROUPS.length] ?? "ClassA"),
     });
   }
 

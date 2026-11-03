@@ -24,6 +24,10 @@ const entry = join(frontend, "scripts", "cosmos-render-check.ts");
 const outDir = mkdtempSync(join(tmpdir(), "cosmos-render-"));
 const bundle = join(outDir, "cosmos-render-check.iife.js");
 const screenshot = process.env.COSMOS_RENDER_SCREENSHOT || join(outDir, "cosmos-2k.png");
+// S3 knobs: node count and whether to run the interaction phase after the
+// first frame (resetView + focus fly-to + node-select + theme round trip).
+const nodeCount = Number(process.env.COSMOS_RENDER_NODES || "2000");
+const interactions = process.env.COSMOS_RENDER_INTERACTIONS !== "0";
 
 // --- 1. bundle the harness -------------------------------------------------
 const requireFromFrontend = createRequire(join(frontend, "package.json"));
@@ -39,7 +43,11 @@ await esbuild.build({
   outfile: bundle,
 });
 const pageHtml =
-  "<!doctype html><html><body></body><script>" + readFileSync(bundle, "utf8") + "</script></html>";
+  "<!doctype html><html><body></body><script>window.__COSMOS_OPTIONS__=" +
+  JSON.stringify({ nodes: nodeCount, interactions }) +
+  ";</script><script>" +
+  readFileSync(bundle, "utf8") +
+  "</script></html>";
 
 // --- 2. locate a headless browser -----------------------------------------
 function firstExisting(paths) {
@@ -99,17 +107,34 @@ try {
     if (m.type() === "error" && !benign(m.text())) pageErrors.push("console: " + m.text());
   });
   await page.setContent(pageHtml, { waitUntil: "load" });
-  await page.waitForFunction("window.__COSMOS_RESULT__ !== undefined", { timeout: 30000 });
+  await page.waitForFunction("window.__COSMOS_RESULT__ !== undefined", { timeout: 120000 });
   const result = await page.evaluate(() => window.__COSMOS_RESULT__);
   const pageError = await page.evaluate(() => window.__COSMOS_ERROR__ || null);
   await page.screenshot({ path: screenshot });
 
   const problems = [];
-  if (result.nodes !== 2000) problems.push(`expected 2000 nodes, got ${result.nodes}`);
+  if (result.nodes !== nodeCount) problems.push(`expected ${nodeCount} nodes, got ${result.nodes}`);
   if (result.headless) problems.push("adapter ran headless instead of constructing a GL engine");
   if (!result.canvas) problems.push("no canvas was created");
   if (result.nonBlackPx < 500)
     problems.push(`canvas non-blank pixels below threshold (${result.nonBlackPx} < 500)`);
+  if (interactions) {
+    const expected = [
+      "resetView",
+      "focus",
+      "nodeSelect",
+      "themeRoundTrip",
+      "resetView-after-focus",
+    ];
+    if (!result.interactions) problems.push("interaction phase did not report");
+    else {
+      if (result.interactions.error)
+        problems.push(`interaction phase failed: ${result.interactions.error}`);
+      const performed = result.interactions.performed || [];
+      for (const step of expected)
+        if (!performed.includes(step)) problems.push(`interaction step missing: ${step}`);
+    }
+  }
   if (pageErrors.length) problems.push("page errors: " + pageErrors.join(" | "));
   if (pageError) problems.push("page error event: " + pageError);
 
