@@ -13,10 +13,14 @@ contract models from ``app.contract``):
   so one query returns both sets in a single endpoint call.
 - expand rows carry a ``?dir`` flag (``in`` / ``out``) for edge direction.
 
-Deterministic paging: subgraph rows are ORDER BY ``?kind, ?node, ?other`` so
-``LIMIT`` + :func:`encode_cursor`/ :func:`decode_cursor` (offset cursors)
-round-trip stably. Cards pass ``limit + 1`` and drop the extra row to set
-``Page.truncated``.
+Deterministic paging: subgraph rows are ORDER BY ``?kind ?node ?other ?pred
+?nodeType ?otherType`` (a total order — no ties), so ``LIMIT`` +
+:func:`encode_cursor`/ :func:`decode_cursor` (offset cursors) round-trip
+stably. Each row is unique (node rows grouped per (node, type); edge rows
+are one solution per (node, pred, other, types) tuple), and the endpoint
+folds them first-in-sort-order (per IRI / per (source, target) pair), so a
+cursor can neither skip nor repeat rows. Cards pass ``limit + 1`` and drop
+the extra row to set ``Page.truncated``.
 """
 
 from __future__ import annotations
@@ -47,8 +51,12 @@ def iri_ref(iri: str) -> str:
 
 
 def iri_list(iris: list[str] | tuple[str, ...]) -> str:
-    """IRIs for a VALUES / IN list."""
-    return ", ".join(iri_ref(i) for i in iris)
+    """IRIs for a VALUES / IN list.
+
+    Whitespace-separated on purpose: the QLever parser (unlike the SPARQL
+    1.1 grammar) rejects comma separators inside VALUES blocks.
+    """
+    return " ".join(iri_ref(i) for i in iris)
 
 
 def clamp_limit(limit: int | None, default: int = 500, max_: int = 5000) -> int:
@@ -116,47 +124,111 @@ def subgraph_query(
     relation_iris: list[str],
     label_iris: list[str],
     limit: int,
-    offset: int = 0,
+    offset_node: int = 0,
+    offset_edge: int = 0,
 ) -> str:
     """Seeds of the given classes plus the edges between them — one call (B3).
 
-    ``LIMIT`` is server-side; pass ``limit + 1`` from the endpoint to detect
-    truncation. ``offset`` comes from :func:`decode_cursor`.
+    Rows: node rows are one per (node, type, label) combination; edge rows
+    one per (source, predicate, target, types) tuple for edges whose BOTH
+    endpoints are typed with one of ``type_iris`` (cross-type edges
+    included — the two endpoint type variables are independent). No
+    aggregation on purpose: a ``GROUP BY`` over all typed nodes forces the
+    engine to materialize the full node set before any LIMIT applies (the
+    dev endpoint OOMs on it); the endpoint folds node-row multiplicity
+    deterministically instead (first row in sort order per IRI, first
+    *real* label wins).
+
+    Paging: each branch carries its OWN ``LIMIT``/``OFFSET`` (the node and
+    edge streams advance independently) and is pre-ordered in the
+    projection of the global order, so every page is a bounded top-k scan
+    per branch. The outer ``ORDER BY`` (a total order over the row keys;
+    remaining ties are indistinguishable rows) + ``LIMIT`` merges the two
+    batches — the endpoint feeds back the per-stream consumed counts as
+    the next cursor, which is what makes paging gap-free and repeat-free.
+    The endpoint passes ``limit`` (already clamped to settings
+    ``max_limit``); branches and outer fetch ``limit + 1`` to detect
+    truncation — this builder is the *probe-capable* template, so it must
+    not re-clamp the upper bound (a ``max + 1`` probe would be silently
+    cut back and truncation at the max page would go undetected).
+    ``limit`` must be >= 1 (validated input); offsets come from
+    :func:`decode_subgraph_cursor`.
+
+    QLever dialect notes (verified live against the dev endpoint): the
+    parser rejects comma separators in VALUES blocks (see :func:`iri_list`),
+    rejects ``IN`` with a variable RHS (restrictions are written as
+    ``VALUES`` solution filters), and rejects ``MIN(?x) AS ?x`` where ``?x``
+    is also bound in the query body.
     """
-    limit = clamp_limit(limit)
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError(f"limit must be an int >= 1, got {limit!r}")
+    for name, off in (("offset_node", offset_node), ("offset_edge", offset_edge)):
+        if not isinstance(off, int) or isinstance(off, bool) or off < 0:
+            raise ValueError(f"{name} must be an int >= 0, got {off!r}")
+    types = iri_list(type_iris)
+    preds = iri_list(relation_iris)
+    labels = iri_list(label_iris)
+    probe = limit + 1
     return f"""PREFIX rdf: <http://www.w3.org/1999/02/22-rdf-syntax-ns#>
-SELECT ?kind ?node ?other ?nodeType ?label ?pred WHERE {{
-  VALUES ?t {{ {iri_list(type_iris)} }}
-  VALUES ?p {{ {iri_list(relation_iris)} }}
-  VALUES ?lbl {{ {iri_list(label_iris)} }}
+SELECT ?kind ?node ?other ?nodeType ?otherType ?label ?pred WHERE {{
   {{
     SELECT ?node (STR("node") AS ?kind) (STR("") AS ?other) ?nodeType ?label
     WHERE {{
-      ?node a ?t .
-      OPTIONAL {{ ?node ?lbl ?label }}
+      VALUES ?nodeType {{ {types} }}
+      ?node a ?nodeType .
+      OPTIONAL {{ ?node ?lbl ?label . VALUES ?lbl {{ {labels} }} }}
     }}
+    ORDER BY ?node ?nodeType ?label
+    LIMIT {probe} OFFSET {offset_node}
   }}
   UNION {{
-    SELECT ?node ?other (STR("edge") AS ?kind) ?nodeType ?label ?pred WHERE {{
-      ?node a ?t .
-      ?other a ?t .
+    SELECT ?node ?other (STR("edge") AS ?kind) ?nodeType ?otherType ?pred
+    WHERE {{
+      VALUES ?nodeType {{ {types} }}
+      ?node a ?nodeType .
+      VALUES ?pred {{ {preds} }}
       ?node ?pred ?other .
-      FILTER(?pred IN ?p)
-      OPTIONAL {{ ?node ?lbl ?label }}
+      VALUES ?otherType {{ {types} }}
+      ?other a ?otherType .
     }}
-  }}
-  UNION {{
-    SELECT ?node ?other (STR("edge") AS ?kind) ?nodeType ?label ?pred WHERE {{
-      ?node a ?t .
-      ?other a ?t .
-      ?other ?pred ?node .
-      FILTER(?pred IN ?p)
-      OPTIONAL {{ ?node ?lbl ?label }}
-    }}
+    ORDER BY ?node ?pred ?other ?nodeType ?otherType
+    LIMIT {probe} OFFSET {offset_edge}
   }}
 }}
-ORDER BY ?kind ?node ?other
-LIMIT {limit} OFFSET {offset}"""
+ORDER BY ?kind ?node ?other ?pred ?nodeType ?otherType ?label
+LIMIT {probe} OFFSET 0"""
+
+
+def encode_subgraph_cursor(offset_node: int, offset_edge: int) -> str:
+    """Opaque cursor for ``subgraph_query`` paging: per-stream offsets."""
+    if offset_node < 0 or offset_edge < 0:
+        raise ValueError("cursor offsets must be >= 0")
+    payload = json.dumps({"n": offset_node, "e": offset_edge}).encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii")
+
+
+def decode_subgraph_cursor(cursor: str | None) -> tuple[int, int]:
+    """Inverse of :func:`encode_subgraph_cursor`; raises ``ValueError`` on
+    malformed cursors (422 at the endpoint). ``None`` (cursor omitted on the
+    first page) is the start of the stream: ``(0, 0)``."""
+    if cursor is None:
+        return 0, 0
+    if not isinstance(cursor, str) or not cursor:
+        raise ValueError("cursor must be a non-empty string")
+    try:
+        raw = base64.urlsafe_b64decode(cursor.encode("ascii"))
+        payload = json.loads(raw)
+    except (ValueError, UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ValueError(f"malformed cursor: {exc}") from exc
+    try:
+        if not isinstance(payload, dict):
+            raise TypeError("cursor payload must be an object")
+        offset_node, offset_edge = int(payload["n"]), int(payload["e"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ValueError(f"malformed cursor: {exc}") from exc
+    if offset_node < 0 or offset_edge < 0:
+        raise ValueError("cursor offsets must be >= 0")
+    return offset_node, offset_edge
 
 
 def expand_query(

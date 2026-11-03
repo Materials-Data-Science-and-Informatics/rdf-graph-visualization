@@ -252,19 +252,56 @@ LABELS = [
 
 def test_subgraph_template_has_bounds_order_and_types():
     q = templates.subgraph_query(
-        type_iris=TYPES, relation_iris=RELATIONS, label_iris=LABELS, limit=500, offset=0
+        type_iris=TYPES, relation_iris=RELATIONS, label_iris=LABELS, limit=500
     )
     assert "<https://schema.org/Person>" in q
-    assert "LIMIT 500 OFFSET 0" in q
+    # probe-capable: branches and outer fetch limit+1
+    assert q.count("LIMIT 501") == 3
     assert "ORDER BY ?kind ?node ?other" in q
+    assert "ORDER BY ?node ?nodeType ?label" in q
+    assert "ORDER BY ?node ?pred ?other ?nodeType ?otherType" in q
     assert '"node"' in q and '"edge"' in q
 
 
-def test_subgraph_limit_is_clamped_to_max():
+def test_subgraph_template_trusts_clamped_limit_but_rejects_invalid():
+    # B3: the endpoint clamps the client limit (settings max); the template
+    # must NOT re-clamp the upper bound — it emits limit+1 verbatim as the
+    # truncation probe, or truncation at the max page goes undetected.
     q = templates.subgraph_query(
-        type_iris=TYPES, relation_iris=RELATIONS, label_iris=LABELS, limit=10**9
+        type_iris=TYPES, relation_iris=RELATIONS, label_iris=LABELS, limit=5001
     )
-    assert "LIMIT 5000 OFFSET 0" in q
+    assert q.count("LIMIT 5002") == 3
+    # per-stream offsets are emitted verbatim (the cursor drives paging)
+    q2 = templates.subgraph_query(
+        type_iris=TYPES,
+        relation_iris=RELATIONS,
+        label_iris=LABELS,
+        limit=10,
+        offset_node=4,
+        offset_edge=11,
+    )
+    assert "LIMIT 11 OFFSET 4" in q2
+    assert "LIMIT 11 OFFSET 11" in q2
+    for bad in (
+        {"limit": 0},
+        {"limit": -1},
+        {"limit": 500, "offset_node": -1},
+        {"limit": 500, "offset_edge": -1},
+    ):
+        with pytest.raises(ValueError):
+            templates.subgraph_query(
+                type_iris=TYPES, relation_iris=RELATIONS, label_iris=LABELS, **bad
+            )
+
+
+def test_subgraph_cursor_round_trips():
+    assert templates.decode_subgraph_cursor(None) == (0, 0)
+    assert templates.decode_subgraph_cursor(
+        templates.encode_subgraph_cursor(7, 13)
+    ) == (7, 13)
+    for bad in ("", "!!!", "Y29uc3RhbnQ="):
+        with pytest.raises(ValueError):
+            templates.decode_subgraph_cursor(bad)
 
 
 def test_expand_template_iri_and_directions():
