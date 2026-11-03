@@ -24,6 +24,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+from collections.abc import Sequence
 
 #: IRI must carry a scheme and may not contain SPARQL delimiters/whitespace.
 _SCHEME_RE = re.compile(r"^[A-Za-z][A-Za-z0-9+.\-]*:")
@@ -46,9 +47,16 @@ def iri_ref(iri: str) -> str:
     return f"<{assert_valid_iri(iri)}>"
 
 
-def iri_list(iris: list[str] | tuple[str, ...]) -> str:
-    """IRIs for a VALUES / IN list."""
-    return ", ".join(iri_ref(i) for i in iris)
+def iri_list(iris: Sequence[str]) -> str:
+    """IRIs for a VALUES list.
+
+    Newline-separated: the SPARQL 1.1 grammar defines a dataBlock as
+    ``DataItem+`` — whitespace-separated, *no commas*. Permissive engines
+    (Jena, Virtuoso) tolerate commas, but QLever's strict parser rejects them
+    (verified live against the dev endpoint: ``VALUES ?x { <a>, <b> }`` →
+    400 "extraneous input ','").
+    """
+    return "\n".join(iri_ref(i) for i in iris)
 
 
 def clamp_limit(limit: int | None, default: int = 500, max_: int = 5000) -> int:
@@ -162,45 +170,75 @@ LIMIT {limit} OFFSET {offset}"""
 def expand_query(
     *,
     iri: str,
-    relation_iris: list[str],
-    label_iris: list[str],
+    relation_iris: Sequence[str],
+    label_iris: Sequence[str],
     limit: int,
 ) -> str:
     """One entity plus its in/out 1-hop neighbours — one call (B2).
 
     Center row first (``?dir = ""``), then ``in``/``out`` neighbour rows.
+    Each branch aggregates (``GROUP BY`` + ``MIN``) so an entity with several
+    types/labels yields exactly one row, and ``ORDER BY ?dir ?node ?pred``
+    keeps the row stream deterministic under ``LIMIT`` (truncation is stable).
+    Edge rows carry ``?pred`` so the endpoint can build contract Edges; the
+    center row carries ``?pred = ""``.
+
+    QLever parser constraints (verified live against the dev endpoint):
+    - ``FILTER(?pred IN ?p)`` with a *variable* list is rejected — the
+      relation set is a ``VALUES ?pred`` inside each branch's WHERE instead.
+    - an AS projection may not shadow a body variable — aggregations use
+      fresh ``?nt``/``?lblval`` variables.
+
+    The caller owns the limit policy: it clamps the page size to the
+    configured max and passes ``page_size + 1`` so the endpoint can detect
+    truncation (``Page.truncated``). The template only guards the floor/type,
+    it does not re-clamp — re-clamping here would clip the ``+1`` probe at the
+    hard max and make truncation undetectable.
     """
-    limit = clamp_limit(limit)
-    return f"""SELECT ?kind ?dir ?node ?nodeType ?label WHERE {{
-  VALUES ?p {{ {iri_list(relation_iris)} }}
-  VALUES ?lbl {{ {iri_list(label_iris)} }}
+    if not isinstance(limit, int) or isinstance(limit, bool):
+        raise TypeError(f"limit must be an int, got {limit!r}")
+    limit = max(1, limit)
+    center = iri_ref(iri)
+    relations = iri_list(relation_iris)
+    labels = iri_list(label_iris)
+    return f"""SELECT ?kind ?dir ?node ?nodeType ?label ?pred WHERE {{
   {{
-    SELECT {iri_ref(iri)} AS ?node (STR("node") AS ?kind) (STR("") AS ?dir)
-           ?nodeType ?label
+    SELECT ?node (STR("node") AS ?kind) (STR("") AS ?dir)
+           (MIN(?nt) AS ?nodeType) (MIN(?lblval) AS ?label) (STR("") AS ?pred)
     WHERE {{
-      {iri_ref(iri)} a ?nodeType .
-      OPTIONAL {{ {iri_ref(iri)} ?lbl ?label }}
+      VALUES ?node {{ {center} }}
+      VALUES ?lbl {{ {labels} }}
+      OPTIONAL {{ ?node a ?nt }}
+      OPTIONAL {{ ?node ?lbl ?lblval }}
     }}
+    GROUP BY ?node
   }}
   UNION {{
-    SELECT ?node (STR("out") AS ?dir) (STR("edge") AS ?kind) ?nodeType ?label
+    SELECT ?node (STR("out") AS ?dir) (STR("edge") AS ?kind)
+           (MIN(?nt) AS ?nodeType) (MIN(?lblval) AS ?label) ?pred
     WHERE {{
-      {iri_ref(iri)} ?pred ?node .
-      FILTER(?pred IN ?p)
-      OPTIONAL {{ ?node a ?nodeType }}
-      OPTIONAL {{ ?node ?lbl ?label }}
+      {center} ?pred ?node .
+      VALUES ?pred {{ {relations} }}
+      VALUES ?lbl {{ {labels} }}
+      OPTIONAL {{ ?node a ?nt }}
+      OPTIONAL {{ ?node ?lbl ?lblval }}
     }}
+    GROUP BY ?node ?pred
   }}
   UNION {{
-    SELECT ?node (STR("in") AS ?dir) (STR("edge") AS ?kind) ?nodeType ?label
+    SELECT ?node (STR("in") AS ?dir) (STR("edge") AS ?kind)
+           (MIN(?nt) AS ?nodeType) (MIN(?lblval) AS ?label) ?pred
     WHERE {{
-      ?node ?pred {iri_ref(iri)} .
-      FILTER(?pred IN ?p)
-      OPTIONAL {{ ?node a ?nodeType }}
-      OPTIONAL {{ ?node ?lbl ?label }}
+      ?node ?pred {center} .
+      VALUES ?pred {{ {relations} }}
+      VALUES ?lbl {{ {labels} }}
+      OPTIONAL {{ ?node a ?nt }}
+      OPTIONAL {{ ?node ?lbl ?lblval }}
     }}
+    GROUP BY ?node ?pred
   }}
 }}
+ORDER BY ?dir ?node ?pred
 LIMIT {limit}"""
 
 
@@ -245,13 +283,15 @@ ORDER BY DESC(?count)"""
 def entity_properties_query(*, iri: str, limit: int = 200) -> str:
     """All (predicate, object) pairs of one entity — B2 /api/entity.
 
-    ``limit`` bounds the property list; the endpoint sets
-    ``truncated`` when the row count hits it.
+    ``limit`` bounds the property list. The object's type is deliberately NOT
+    joined in: an object carrying several ``rdf:type`` values would fan the
+    (pred, obj) row out once per type and duplicate every value in the
+    response. A triple store already de-duplicates triples, so each distinct
+    (pred, obj) pair is returned exactly once.
     """
     limit = clamp_limit(limit, default=200)
-    return f"""SELECT ?pred ?obj ?objType WHERE {{
+    return f"""SELECT ?pred ?obj WHERE {{
   {iri_ref(iri)} ?pred ?obj .
-  OPTIONAL {{ ?obj a ?objType }}
 }}
 ORDER BY ?pred ?obj
 LIMIT {limit}"""
