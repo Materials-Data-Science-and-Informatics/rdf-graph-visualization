@@ -1,5 +1,4 @@
-import { Box, Flex, useBreakpointValue, useDisclosure } from "@chakra-ui/react";
-import { ReactNode, useState } from "react";
+import { useState, type ReactNode } from "react";
 import Navbar from "./Navbar";
 import Footer from "./Footer";
 import ConfigModal from "./TextModal";
@@ -10,13 +9,7 @@ interface LayoutProps {
 }
 
 export default function Layout({ children }: LayoutProps) {
-  const contentWidth = useBreakpointValue({
-    base: "95%", // for screens smaller than 720px
-    md: "85%", // for screens between 720px and 1080px
-    xl: "75%", // for screens larger than 1080px
-  });
-
-  const { isOpen, onOpen, onClose } = useDisclosure();
+  const [isOpen, setIsOpen] = useState(false);
   const [modalText, setModalText] = useState("");
   const [modalTitle, setModalTitle] = useState("");
 
@@ -33,7 +26,7 @@ Features
 If your graph has more than 2000 nodes, it might take a while to load. Please wait until graph elements are rendered (stop spinning) before interacting with the graph.`;
     setModalTitle("Info");
     setModalText(info);
-    onOpen();
+    setIsOpen(true);
   };
 
   const handleConfigClick = () => {
@@ -42,27 +35,22 @@ If your graph has more than 2000 nodes, it might take a while to load. Please wa
     const snapshot = getConfigSnapshot();
     setModalTitle("Config (/api/config)");
     setModalText(snapshot ? JSON.stringify(snapshot, null, 2) : "Config not loaded yet.");
-    onOpen();
+    setIsOpen(true);
   };
 
   return (
-    <Flex minHeight="100vh" flexDirection="column" width="100%" overflowX="hidden">
+    <div className="flex min-h-screen w-full flex-col overflow-x-hidden">
       <Navbar onInfoClick={handleInfoClick} onConfigClick={handleConfigClick} />
-      <Box
-        as="main"
-        flex="1"
-        width={contentWidth}
-        mx="auto"
-        display="flex"
-        flexDirection="column"
-        minH={0}
-        py={2}
-        overflowX="hidden"
-      >
+      <main className="mx-auto flex w-[95%] min-h-0 flex-1 flex-col overflow-x-hidden py-2 md:w-[85%] xl:w-[75%]">
         {children}
-      </Box>
-      <ConfigModal isOpen={isOpen} onClose={onClose} text={modalText} title={modalTitle} />
+      </main>
+      <ConfigModal
+        isOpen={isOpen}
+        onClose={() => setIsOpen(false)}
+        text={modalText}
+        title={modalTitle}
+      />
       <Footer />
-    </Flex>
+    </div>
   );
 }

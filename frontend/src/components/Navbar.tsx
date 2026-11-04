@@ -6,7 +6,7 @@ interface NavbarProps {
 }
 
 const navLinkClasses =
-  "inline-flex items-center rounded-md border border-white px-3 py-1 font-bold text-white " +
+  "inline-flex items-center rounded-[6px] border border-white px-3 py-1 font-bold text-white " +
   "text-base md:text-xl";
 
 const Navbar = ({ onInfoClick, onConfigClick }: NavbarProps) => {
