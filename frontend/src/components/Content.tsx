@@ -1,5 +1,6 @@
 import Graph from "./Graph";
 import Selections from "./Selections";
+import EntityPanel from "./EntityPanel";
 import { useState, useRef, useCallback, useEffect } from "react";
 import useResizeObserver from "@react-hook/resize-observer";
 import { NodeObject, GraphData } from "react-force-graph-3d";
@@ -86,6 +87,8 @@ const Content = () => {
           height={size.height}
           onNodeSelect={handleNodeSelect}
         />
+        {/* Card E2: the selected node opens the detail drawer over the graph. */}
+        {selectedId && <EntityPanel iri={selectedId} onClose={() => graphStore.select(null)} />}
       </div>
     </div>
   );
