@@ -229,20 +229,118 @@ describe("clustersToGraphData", () => {
 // ------------------------------------------------------------ landing mode
 
 describe("pickLandingMode", () => {
-  it("slice deep links (cursor/sel) win over ov, which wins over the overview", () => {
+  it("ov wins over plain slice deep links; cursor/sel restore the legacy view", () => {
+    // A typed cluster deep link is more specific: the `cursor` next to `ov`
+    // belongs to that typed slice.
     assert.equal(
-      pickLandingMode({ nextCursor: "c1", selectedId: null, ov: null }),
-      "slice-restore"
+      pickLandingMode({ nextCursor: "c1", selectedId: null, ov: "Person" }),
+      "ov-restore"
     );
     assert.equal(
       pickLandingMode({ nextCursor: null, selectedId: "http://x/1", ov: "Person" }),
-      "slice-restore"
+      "ov-restore"
     );
     assert.equal(
       pickLandingMode({ nextCursor: null, selectedId: null, ov: "Person" }),
       "ov-restore"
     );
+    assert.equal(
+      pickLandingMode({ nextCursor: "c1", selectedId: null, ov: null }),
+      "slice-restore"
+    );
+    assert.equal(
+      pickLandingMode({ nextCursor: null, selectedId: "http://x/1", ov: null }),
+      "slice-restore"
+    );
     assert.equal(pickLandingMode({ nextCursor: null, selectedId: null, ov: null }), "overview");
+  });
+});
+
+// --------------------------------------------------- URL view-state (ov key)
+
+describe("view-state ov key (card E3 S3)", () => {
+  it("parses, serializes and round-trips the expanded cluster", async () => {
+    const { DEFAULT_VIEW_STATE, parseViewState, toSearch } = await import("../src/view-state");
+    assert.equal(parseViewState("").ov, null);
+    assert.equal(parseViewState("?ov=Person&cursor=c2").ov, "Person");
+    const state = { ...DEFAULT_VIEW_STATE, ov: "Person", nextCursor: "c2" };
+    const search = toSearch(state);
+    assert.match(search, /ov=Person/);
+    assert.equal(parseViewState(`?${search}`).ov, "Person");
+    // defaults omitted: no ov key in the search string
+    assert.doesNotMatch(toSearch(DEFAULT_VIEW_STATE), /ov=/);
+  });
+});
+
+// ------------------------------------------------------- restoreExpanded
+
+describe("OverviewStore.restoreExpanded (shared cluster URL)", () => {
+  function pagedFake() {
+    const fake = makeFakeClient();
+    fake.client.subgraph = async (query, options) => {
+      fake.subgraphQueries.push(query);
+      if (options?.signal?.aborted) {
+        throw new DOMException("The operation was aborted.", "AbortError");
+      }
+      if (!query.cursor) {
+        return {
+          nodes: [
+            { id: "http://x/p1", label: "p1", type: "Person" as NodeType, group: "Person" },
+            { id: "http://x/p2", label: "p2", type: "Person" as NodeType, group: "Person" },
+          ],
+          edges: [],
+          page: { cursor: "c2", limit: 2, truncated: true },
+        };
+      }
+      if (query.cursor === "c2") {
+        return {
+          nodes: [{ id: "http://x/p3", label: "p3", type: "Person" as NodeType, group: "Person" }],
+          edges: [],
+          page: { limit: 1, truncated: false },
+        };
+      }
+      throw new Error(`unexpected cursor ${query.cursor}`);
+    };
+    return fake;
+  }
+
+  it("fetches the typed first page; the target cursor marks the shared pending page", async () => {
+    const fake = pagedFake();
+    const graph = new GraphStore();
+    const store = new OverviewStore(graph, fake.client);
+    await store.load();
+    await store.restoreExpanded("Person", "c2");
+    // C3 semantics: the URL cursor is the page still PENDING at share time,
+    // so the store holds exactly the pages before it (typed page 1 only).
+    assert.equal(graph.nodeCount, 2);
+    assert.equal(store.activeType, "Person");
+    assert.equal(store.view, "slice");
+    assert.equal(graph.nextCursor, "c2");
+    assert.deepEqual(fake.subgraphQueries, [{ type: "Person" }]);
+  });
+
+  it("stops early when the slice runs out before the target cursor", async () => {
+    const fake = pagedFake();
+    const graph = new GraphStore();
+    const store = new OverviewStore(graph, fake.client);
+    await store.load();
+    await store.restoreExpanded("Person", "c-unreachable");
+    // page 1 (cursor c2) + page 2 (complete) — then the slice runs out
+    assert.equal(graph.nodeCount, 3);
+    assert.equal(graph.nextCursor, null);
+  });
+
+  it("an aborted restore leaves a consistent (possibly partial) state", async () => {
+    const fake = pagedFake();
+    const graph = new GraphStore();
+    const store = new OverviewStore(graph, fake.client);
+    await store.load();
+    const controller = new AbortController();
+    void controller.abort();
+    const result = await store.restoreExpanded("Person", "c2", controller.signal);
+    assert.equal(result, null);
+    assert.equal(store.view, "clusters"); // expand never switched views
+    assert.equal(graph.nodeCount, 0);
   });
 });
 
@@ -429,5 +527,20 @@ describe("OverviewStore view transitions", () => {
     assert.equal(store.view, "slice");
     assert.equal(store.activeType, null);
     assert.equal(store.isClusterView, false);
+  });
+
+  it("enterSlice clears an expanded cluster (a plain reload drops ov state)", async () => {
+    const fake = makeFakeClient();
+    const store = new OverviewStore(new GraphStore(), fake.client);
+    await store.load();
+    await store.expand("Person");
+    assert.equal(store.activeType, "Person");
+    store.enterSlice();
+    assert.equal(store.view, "slice");
+    assert.equal(store.activeType, null);
+    // already a plain slice: no state change (no emit)
+    const snapshot = store.getSnapshot();
+    store.enterSlice();
+    assert.equal(store.getSnapshot(), snapshot);
   });
 });

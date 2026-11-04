@@ -206,6 +206,32 @@ export class OverviewStore {
   }
 
   /**
+   * Shared expanded-cluster restore (URL `ov=<type>[&cursor=...]`, card E3
+   * S3): fetch the typed first page (expand), then keep ingesting cursor
+   * pages until the store's next cursor equals `targetCursor` — the typed
+   * analogue of loadToCursor(). Stops early when the slice runs out (a
+   * shrunken dataset degrades to "everything the server has left").
+   * Aborted or failed restores return null (partial pages stay merged).
+   */
+  async restoreExpanded(
+    type: NodeType,
+    targetCursor: string | null,
+    signal?: AbortSignal
+  ): Promise<MergeResult | null> {
+    const first = await this.expand(type, signal);
+    if (first === null) return null;
+    if (targetCursor === null) return first;
+    while (this.graph.nextCursor !== null && this.graph.nextCursor !== targetCursor) {
+      if (signal?.aborted) return null;
+      const cursor = this.graph.nextCursor;
+      const slice = await this.client.subgraph({ cursor }, { signal });
+      if (signal?.aborted) return null;
+      this.graph.ingest(slice, cursor);
+    }
+    return first;
+  }
+
+  /**
    * Back to the cluster layer (keeps the fetched slice in the graph store).
    */
   collapse(): void {
@@ -216,9 +242,13 @@ export class OverviewStore {
     this.emit();
   }
 
-  /** Leave the cluster layer for a plain (untyped) slice (manual load). */
+  /**
+   * Leave the cluster layer (or the expanded typed slice) for a plain
+   * (untyped) slice: switches to the slice view and clears the active
+   * cluster, so a plain "Load slice" never leaves stale `ov` state behind.
+   */
   enterSlice(): void {
-    if (this.viewValue === "slice") return;
+    if (this.viewValue === "slice" && this.activeTypeValue === null) return;
     this.viewValue = "slice";
     this.activeTypeValue = null;
     this.emit();

@@ -6,7 +6,9 @@ import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
 import { useGraphData, graphStore, type SliceActions } from "../store/use-graph-store";
-import { useOverviewStore } from "../store/use-overview-store";
+import { useOverviewStore, overviewStore } from "../store/use-overview-store";
+import { pickLandingMode } from "../lib/aggregate-view";
+import type { NodeType } from "../api/types";
 import { initialViewState, updateSearchKeys } from "../view-state";
 
 interface SelectionsProps {
@@ -37,13 +39,49 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
   const overview = useOverviewStore();
   const data = overview.clusterData ?? sliceData;
 
-  // Initial fetch on mount. A URL with a `cursor` param re-fetches exactly
-  // the pages the shared view had (card C3); a plain URL loads the first
-  // page only.
+  // Card E3 S3: the first paint IS the aggregate overview (landing). URL
+  // deep links take precedence: `ov=<type>` restores a shared expanded
+  // cluster (typed first page + cursor pages up to the shared cursor); a
+  // plain `cursor`/`sel` restore the legacy C3 slice view without loading
+  // the overview. Stale restores are aborted on unmount.
   const { load: loadSlice } = actions;
+  const landing = pickLandingMode(initialViewState);
   useEffect(() => {
-    loadSlice(initialViewState.nextCursor);
-  }, [loadSlice]);
+    if (landing === "slice-restore") {
+      loadSlice(initialViewState.nextCursor);
+      return;
+    }
+    const controller = new AbortController();
+    // NOTE: read state off the store singleton, not the `overview` snapshot
+    // captured by this closure — the snapshot is frozen at the mount render
+    // and would still hold the pre-load (empty) cluster list here.
+    void (async () => {
+      await overviewStore.load(controller.signal);
+      if (controller.signal.aborted) return;
+      if (landing !== "ov-restore" || !initialViewState.ov) return;
+      const wanted = initialViewState.ov;
+      // A shrunken dataset may no longer carry the class: stay on the
+      // overview instead of erroring.
+      if (!overviewStore.clusters.some((c) => c.type === wanted)) return;
+      // Cluster ids come from validated /api/aggregate rows (B4 contract:
+      // types pinned to the NodeType union); the URL value is a string.
+      await overviewStore.restoreExpanded(
+        wanted as NodeType,
+        initialViewState.nextCursor,
+        controller.signal
+      );
+    })();
+    return () => controller.abort();
+  }, [landing, loadSlice]);
+
+  // Card E3 S3: keep the URL's `ov` key in step with the expanded cluster
+  // (present only while a cluster's typed slice is the active view).
+  useEffect(() => {
+    updateSearchKeys({
+      ov: overview.view === "slice" && overview.activeType ? overview.activeType : null,
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overview.version]);
 
   // Card C3: keep the URL's filter keys in step with the state. (A fresh
   // load via the "Load slice" button below clears the group filters — the
@@ -184,9 +222,11 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
           <>
             <Button
               disabled={actions.loading}
-              // A fresh load (replace) starts with no active group filters.
+              // A fresh load (replace) starts with no active group filters;
+              // it is a PLAIN slice, so any expanded cluster is cleared.
               onClick={() => {
                 setFilters(new Set<string>());
+                overview.enterSlice();
                 actions.load();
               }}
             >

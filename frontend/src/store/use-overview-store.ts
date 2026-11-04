@@ -35,6 +35,11 @@ export interface OverviewActions {
   isClusterView: boolean;
   load: (signal?: AbortSignal) => Promise<void>;
   expand: (type: NodeType, signal?: AbortSignal) => Promise<MergeResult | null>;
+  restoreExpanded: (
+    type: NodeType,
+    targetCursor: string | null,
+    signal?: AbortSignal
+  ) => Promise<MergeResult | null>;
   collapse: () => void;
   enterSlice: () => void;
 }
@@ -55,6 +60,7 @@ function readOverviewActions(version: number): OverviewActions {
     isClusterView: overviewStore.isClusterView,
     load: overviewStore.load,
     expand: overviewStore.expand,
+    restoreExpanded: overviewStore.restoreExpanded,
     collapse: overviewStore.collapse,
     enterSlice: overviewStore.enterSlice,
   };

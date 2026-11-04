@@ -11,6 +11,9 @@
 //   theme  "light"                    (dark is the default, omitted)
 //   cursor next-page cursor of the slice as shared (data state: which
 //          cursor pages were already ingested; null = first page only)
+//   ov     expanded aggregate cluster "Person" (card E3: the landing was a
+//          typed cluster slice, not the plain first page; `cursor` next to
+//          `ov` is that typed slice's cursor)
 //
 // A pasted URL therefore reproduces: the same data (pages re-fetched up to
 // the shared cursor), the same filtering, the same selection, the same
@@ -45,6 +48,8 @@ export interface ViewState {
    * first page only, or the slice was already complete).
    */
   nextCursor: string | null;
+  /** Expanded aggregate cluster type (card E3; null = not a cluster view). */
+  ov: string | null;
 }
 
 export const DEFAULT_VIEW_STATE: ViewState = {
@@ -55,6 +60,7 @@ export const DEFAULT_VIEW_STATE: ViewState = {
   showIsolated: false,
   theme: "dark",
   nextCursor: null,
+  ov: null,
 };
 
 // ----------------------------------------------------------------- parsing
@@ -88,6 +94,7 @@ export function parseViewState(search: string): ViewState {
     showIsolated: p.get("iso") === "1",
     theme: theme === "light" ? "light" : "dark",
     nextCursor: p.get("cursor") || null,
+    ov: p.get("ov") || null,
   };
 }
 
@@ -107,6 +114,7 @@ export function toSearch(state: ViewState): string {
   if (state.showIsolated) p.set("iso", "1");
   if (state.theme === "light") p.set("theme", "light");
   if (state.nextCursor) p.set("cursor", state.nextCursor);
+  if (state.ov) p.set("ov", state.ov);
   return p.toString();
 }
 

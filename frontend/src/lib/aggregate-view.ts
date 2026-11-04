@@ -155,10 +155,13 @@ export function clustersToGraphData(clusters: AggregateNode[]): ClusterGraphData
 /**
  * Which mode the landing lands in for a given opened URL (card E3 S3):
  *
- * - "slice-restore": the URL carries a slice deep link (cursor and/or
- *   selection) — legacy C3 restore wins, the overview is not loaded.
  * - "ov-restore": the URL carries `ov=<type>` (a shared expanded cluster) —
- *   load the aggregate, then auto-expand that type.
+ *   load the aggregate, expand that type, then continue its cursor pages up
+ *   to the shared cursor. Wins over "slice-restore": a typed slice deep link
+ *   is more specific than a plain one, and a plain `cursor` next to `ov`
+ *   belongs to that typed slice.
+ * - "slice-restore": the URL carries a plain slice deep link (cursor and/or
+ *   selection) — legacy C3 restore wins, the overview is not loaded.
  * - "overview": plain first paint — the aggregate overview is the landing.
  */
 export type LandingMode = "slice-restore" | "ov-restore" | "overview";
@@ -168,7 +171,7 @@ export function pickLandingMode(view: {
   selectedId: string | null;
   ov: string | null;
 }): LandingMode {
-  if (view.nextCursor !== null || view.selectedId !== null) return "slice-restore";
   if (view.ov !== null) return "ov-restore";
+  if (view.nextCursor !== null || view.selectedId !== null) return "slice-restore";
   return "overview";
 }
