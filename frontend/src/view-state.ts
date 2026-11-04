@@ -6,11 +6,16 @@
 //   cam    camera position            "x,y,z" (3 decimals)
 //   look   camera orbit target        "x,y,z" (3 decimals)
 //   sel    selected node IRI
-//   hide   excluded groups            "Person,Document" ("" = show all)
+//   type   class filter (card E4)     "Dataset" (absent = no filter / all)
 //   iso    "add not connected nodes"  "1"
 //   theme  "light"                    (dark is the default, omitted)
+//   engine renderer id                "cosmos" (the registry default is
+//          omitted; the Graph hook validates it against listRenderers())
 //   cursor next-page cursor of the slice as shared (data state: which
 //          cursor pages were already ingested; null = first page only)
+//   ov     expanded aggregate cluster "Person" (card E3: the landing was a
+//          typed cluster slice, not the plain first page; `cursor` next to
+//          `ov` is that typed slice's cursor)
 //
 // A pasted URL therefore reproduces: the same data (pages re-fetched up to
 // the shared cursor), the same filtering, the same selection, the same
@@ -36,15 +41,29 @@ export interface ViewState {
   selectedId: string | null;
   /** Group names excluded by the group filter (empty = show all). */
   hiddenGroups: string[];
+  /**
+   * Data-model class the slice is filtered to (card E4; null = all classes).
+   * Server-side filter — the slice itself is re-queried with `?type=`.
+   */
+  typeFilter: string | null;
   /** "Add not connected nodes" checkbox. */
   showIsolated: boolean;
   theme: "dark" | "light";
+  /**
+   * Renderer id chosen in the shared view (card D4), or null for the
+   * registry default. This module stays registry-free (adapters import it),
+   * so validation against listRenderers() happens in the Graph hook: an
+   * unknown id degrades to the default instead of crashing the app.
+   */
+  engine: string | null;
   /**
    * Token of the slice page that was still pending when the view was
    * shared — i.e. the store's `nextCursor` at that moment (null = the
    * first page only, or the slice was already complete).
    */
   nextCursor: string | null;
+  /** Expanded aggregate cluster type (card E3; null = not a cluster view). */
+  ov: string | null;
 }
 
 export const DEFAULT_VIEW_STATE: ViewState = {
@@ -52,9 +71,12 @@ export const DEFAULT_VIEW_STATE: ViewState = {
   look: null,
   selectedId: null,
   hiddenGroups: [],
+  typeFilter: null,
   showIsolated: false,
   theme: "dark",
+  engine: null,
   nextCursor: null,
+  ov: null,
 };
 
 // ----------------------------------------------------------------- parsing
@@ -85,9 +107,15 @@ export function parseViewState(search: string): ViewState {
       .split(",")
       .map((g) => g.trim())
       .filter(Boolean),
+    // Card E4: the class filter is a single server-side value. A legacy
+    // `hide=` key (pre-E4 client-side hide lists) is ignored: tolerant parse,
+    // the shared view degrades to "all classes" rather than crashing.
+    typeFilter: p.get("type") || null,
     showIsolated: p.get("iso") === "1",
     theme: theme === "light" ? "light" : "dark",
+    engine: p.get("engine") || null,
     nextCursor: p.get("cursor") || null,
+    ov: p.get("ov") || null,
   };
 }
 
@@ -103,10 +131,13 @@ export function toSearch(state: ViewState): string {
   if (state.camera) p.set("cam", formatVec3(state.camera));
   if (state.look) p.set("look", formatVec3(state.look));
   if (state.selectedId) p.set("sel", state.selectedId);
-  if (state.hiddenGroups.length > 0) p.set("hide", state.hiddenGroups.join(","));
+  if (state.typeFilter) p.set("type", state.typeFilter);
+  if (state.hiddenGroups.length) p.set("hide", state.hiddenGroups.join(","));
   if (state.showIsolated) p.set("iso", "1");
   if (state.theme === "light") p.set("theme", "light");
+  if (state.engine) p.set("engine", state.engine);
   if (state.nextCursor) p.set("cursor", state.nextCursor);
+  if (state.ov) p.set("ov", state.ov);
   return p.toString();
 }
 

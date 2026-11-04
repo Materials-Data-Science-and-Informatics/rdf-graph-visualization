@@ -1,20 +1,37 @@
-import { Box } from "@chakra-ui/react";
 import Graph from "./Graph";
 import Selections from "./Selections";
+import EntityPanel from "./EntityPanel";
 import { useState, useRef, useCallback, useEffect } from "react";
 import useResizeObserver from "@react-hook/resize-observer";
-import { NodeObject, GraphData } from "react-force-graph-3d";
+import type { RendererGraph } from "../render";
+import type { NodeType } from "../api/types";
+import { typeFilterFromUrl } from "../config";
 import { graphStore, useSliceActions, useGraphStoreVersion } from "../store/use-graph-store";
+import { useOverviewStore } from "../store/use-overview-store";
+import { clusterType } from "../lib/aggregate-view";
 import { initialViewState, updateSearchKeys } from "../view-state";
 
 // Debounce delay for resize observer to prevent excessive re-renders during window resize
 const DEBOUNCE_MS = 150;
 
 const Content = () => {
-  // Filtered graph data shown in the visualization (after applying filters)
-  const [filteredGraphData, setFilteredGraphData] = useState<GraphData>({ nodes: [], links: [] });
-  // Slice fetch orchestration (load / expand / abort), shared with Selections
-  const actions = useSliceActions();
+  // Filtered graph data shown in the visualization (after applying filters).
+  // Fresh copies per change — the mounted renderer OWNS what it is handed
+  // (CONTRACT.md §1.2) and may mutate it in place.
+  const [filteredGraphData, setFilteredGraphData] = useState<RendererGraph>({
+    nodes: [],
+    links: [],
+  });
+  // Class filter (card E4): null = all classes; a change re-queries the
+  // slice. The URL's `type` value is trusted only if it names a class of
+  // the live /api/config palette (see typeFilterFromUrl).
+  const [typeFilter, setTypeFilter] = useState<NodeType | null>(() =>
+    typeFilterFromUrl(initialViewState.typeFilter)
+  );
+  // Slice fetch orchestration (load / expand / abort), shared with Selections.
+  // The hook mirrors typeFilter so load/expand always carry the current
+  // class filter (a filter change and its reload land in one handler).
+  const actions = useSliceActions(typeFilter);
   // Reference to the graph container for resize observation
   const boxRef = useRef<HTMLDivElement | null>(null);
   // Current dimensions of the graph container
@@ -39,18 +56,30 @@ const Content = () => {
   });
 
   // Expand-on-click (card C2 DoD): clicking a node selects + focuses it and
-  // grows the store with the NEXT cursor page — no refetch-all.
+  // grows the store with the NEXT cursor page — no refetch-all. The renderer
+  // reports the id only (contract §4 S1); the clipboard copy keeps the
+  // legacy click behavior.
+  // Card E3: clicking a CLUSTER node (id "cluster:<type>") instead expands
+  // that class — the typed /api/subgraph slice replaces the graph store.
+  const overview = useOverviewStore();
   const handleNodeSelect = useCallback(
-    (node: NodeObject) => {
-      const id = typeof node.id === "string" ? node.id : String(node.id ?? "");
-      if (!id) return;
-      graphStore.select(id);
-      graphStore.focus(id);
+    (nodeId: string) => {
+      if (!nodeId) return;
+      const type = clusterType(nodeId);
+      if (type !== null) {
+        // Cluster ids are only minted from validated /api/aggregate rows,
+        // whose types are pinned to the NodeType union (card B4 contract).
+        void overview.expand(type as NodeType);
+        return;
+      }
+      navigator.clipboard.writeText(nodeId).catch(console.error);
+      graphStore.select(nodeId);
+      graphStore.focus(nodeId);
       if (graphStore.canExpand) {
         actions.expand();
       }
     },
-    [actions]
+    [actions, overview]
   );
 
   // Card C3: keep the URL's `sel` key in step with the store selection.
@@ -75,15 +104,16 @@ const Content = () => {
   }, [actions]);
 
   return (
-    <Box width="100%" flex="1" minH={0} display="flex" flexDirection="column" gap={4}>
-      <Selections setFilteredGraphData={setFilteredGraphData} actions={actions} />
-      <Box
+    <div className="flex w-full flex-1 min-h-0 flex-col gap-4">
+      <Selections
+        setFilteredGraphData={setFilteredGraphData}
+        actions={actions}
+        typeFilter={typeFilter}
+        setTypeFilter={setTypeFilter}
+      />
+      <div
         ref={boxRef}
-        width="100%"
-        flex="1"
-        minH={{ base: "360px", md: "480px" }}
-        overflow="hidden"
-        position="relative"
+        className="relative flex-1 w-full min-h-[360px] overflow-hidden md:min-h-[480px]"
       >
         <Graph
           graphData={filteredGraphData}
@@ -91,8 +121,10 @@ const Content = () => {
           height={size.height}
           onNodeSelect={handleNodeSelect}
         />
-      </Box>
-    </Box>
+        {/* Card E2: the selected node opens the detail drawer over the graph. */}
+        {selectedId && <EntityPanel iri={selectedId} onClose={() => graphStore.select(null)} />}
+      </div>
+    </div>
   );
 };
 

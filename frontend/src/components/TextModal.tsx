@@ -1,13 +1,4 @@
-import {
-  Modal,
-  ModalOverlay,
-  ModalContent,
-  ModalHeader,
-  ModalBody,
-  ModalCloseButton,
-  Text,
-  Box,
-} from "@chakra-ui/react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 type TextModalProps = {
   isOpen: boolean;
@@ -18,26 +9,16 @@ type TextModalProps = {
 
 const TextModal = ({ isOpen, onClose, text, title }: TextModalProps) => {
   return (
-    <Modal isOpen={isOpen} onClose={onClose} size="xl">
-      <ModalOverlay />
-      <ModalContent>
-        <ModalHeader>{title || "YAML Config File"}</ModalHeader>
-        <ModalCloseButton />
-        <ModalBody>
-          <Box
-            bg="gray.50"
-            p={4}
-            borderRadius="md"
-            whiteSpace="pre-wrap"
-            fontFamily="monospace"
-            overflow="auto"
-            maxH="75vh"
-          >
-            <Text>{text}</Text>
-          </Box>
-        </ModalBody>
-      </ModalContent>
-    </Modal>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="max-w-[35.5rem]">
+        <DialogHeader>
+          <DialogTitle>{title || "YAML Config File"}</DialogTitle>
+        </DialogHeader>
+        <div className="max-h-[75vh] overflow-auto rounded-[6px] bg-gray-50 p-4 font-mono whitespace-pre-wrap dark:bg-gray-950">
+          {text}
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 };
 

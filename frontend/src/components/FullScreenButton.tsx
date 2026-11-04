@@ -1,4 +1,4 @@
-import { Flex, IconButton } from "@chakra-ui/react";
+import { Button } from "@/components/ui/button";
 import * as React from "react";
 import { RiFullscreenLine } from "react-icons/ri";
 import { RiFullscreenExitLine } from "react-icons/ri";
@@ -10,13 +10,16 @@ interface FullScreenButtonProps {
 
 const FullScreenButton: React.FC<FullScreenButtonProps> = ({ isFullScreen, setIsFullScreen }) => {
   return (
-    <Flex position="absolute" top="10px" left="10px" padding="10px" flexDirection="column">
-      <IconButton
+    <div className="absolute top-[10px] left-[10px] p-[10px]">
+      <Button
+        variant="outline"
+        size="icon"
         aria-label="Toggle full screen"
-        icon={isFullScreen ? <RiFullscreenExitLine /> : <RiFullscreenLine />}
         onClick={() => setIsFullScreen(!isFullScreen)}
-      />
-    </Flex>
+      >
+        {isFullScreen ? <RiFullscreenExitLine /> : <RiFullscreenLine />}
+      </Button>
+    </div>
   );
 };
 

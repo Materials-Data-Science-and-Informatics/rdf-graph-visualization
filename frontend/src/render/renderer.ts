@@ -16,6 +16,10 @@ export interface RendererNode {
   /**
    * Optional so callers can hand the store's `toGraphData()` output through
    * unchanged. The store never emits positions; the renderer assigns them.
+   * The one sanctioned source of handed positions is an engine switch
+   * (CONTRACT.md §2 P5/P7): the outgoing renderer's `getPositions()` values
+   * carried into the incoming adapter's `set()`. Finite values are adopted
+   * verbatim for NEW nodes (P7); surviving nodes keep their own (P2).
    */
   x?: number;
   y?: number;
@@ -46,6 +50,16 @@ export interface NodePosition {
   x: number;
   y: number;
   z?: number;
+}
+
+/**
+ * The handed coordinate a NEW node adopts (CONTRACT.md §2 P7): `v` when it is
+ * a finite number, else `undefined` (the adapter falls back to its
+ * deterministic seed, P3). Non-finite values (NaN/±Infinity) are rejected so
+ * a corrupted handoff can never park a node at an unrenderable point.
+ */
+export function adoptedCoordinate(v: number | undefined): number | undefined {
+  return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
 
 /**

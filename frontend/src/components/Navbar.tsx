@@ -1,90 +1,60 @@
-import { Box, Flex, Text, Image, Link, Stack } from "@chakra-ui/react";
-import { ExternalLinkIcon } from "@chakra-ui/icons";
+import { ExternalLink } from "lucide-react";
+import SearchBox from "./SearchBox.tsx";
 
 interface NavbarProps {
   onInfoClick: () => void;
   onConfigClick: () => void;
 }
 
+const navLinkClasses =
+  "inline-flex items-center rounded-[6px] border border-white px-3 py-1 font-bold text-white " +
+  "text-base md:text-xl";
+
 const Navbar = ({ onInfoClick, onConfigClick }: NavbarProps) => {
   return (
-    <Box bg={"#3eb8fc"} px={{ base: 4, md: 8 }} py={3} mb={4}>
-      <Flex
-        alignItems={{ base: "flex-start", lg: "center" }}
-        justifyContent={"space-between"}
-        direction={{ base: "column", lg: "row" }}
-        gap={4}
-      >
-        <Image
+    <header className="mb-4 bg-[#3eb8fc] px-4 py-3 md:px-8">
+      <div className="flex flex-col items-start justify-between gap-4 lg:flex-row lg:items-center">
+        <img
           src="https://github.com/Materials-Data-Science-and-Informatics/Logos/blob/main/HelmholtzKG/Logo_HelmholtzKG_notext_brightback.png?raw=true"
           alt="Logo"
-          h={12}
-          cursor="pointer"
+          className="h-12 cursor-pointer"
           onClick={() => window.location.reload()}
         />
-        <Text fontSize={{ base: "lg", md: "xl" }} fontWeight="bold" color="whiteAlpha.900">
-          RDF Graph Visualization
-        </Text>
-        <Stack
-          direction={{ base: "column", sm: "row" }}
-          spacing={4}
-          align={{ base: "stretch", sm: "center" }}
-          width={{ base: "100%", lg: "auto" }}
-        >
-          <Link
+        <h1 className="text-lg font-bold text-white/90 md:text-xl">RDF Graph Visualization</h1>
+        {/* Card E1: autocomplete search → fly-to (GET /api/search, B5). */}
+        <SearchBox />
+        <nav className="flex w-full flex-col gap-4 items-stretch sm:flex-row sm:items-center lg:w-auto">
+          <a
             href="#info"
-            color={"white"}
-            fontSize={{ base: "md", md: "xl" }}
-            fontWeight={"bold"}
-            border="1px solid white"
-            px={3}
-            py={1}
-            borderRadius="md"
+            className={navLinkClasses}
             onClick={(e) => {
               e.preventDefault();
               onInfoClick();
             }}
-            display="inline-flex"
-            alignItems="center"
           >
             Info
-          </Link>
-          <Link
+          </a>
+          <a
             href="#config"
-            color={"white"}
-            fontSize={{ base: "md", md: "xl" }}
-            fontWeight={"bold"}
-            border="1px solid white"
-            px={3}
-            py={1}
-            borderRadius="md"
+            className={navLinkClasses}
             onClick={(e) => {
               e.preventDefault();
               onConfigClick();
             }}
-            display="inline-flex"
-            alignItems="center"
           >
             Config
-          </Link>
-          <Link
+          </a>
+          <a
             href="https://www.helmholtz.de/en/"
-            color={"white"}
-            fontSize={{ base: "md", md: "xl" }}
-            fontWeight={"bold"}
-            border="1px solid white"
-            px={3}
-            py={1}
-            borderRadius="md"
-            isExternal
-            display="inline-flex"
-            alignItems="center"
+            target="_blank"
+            rel="noreferrer"
+            className={navLinkClasses}
           >
-            HMC <ExternalLinkIcon mx="2px" />
-          </Link>
-        </Stack>
-      </Flex>
-    </Box>
+            HMC <ExternalLink aria-hidden className="ml-0.5" />
+          </a>
+        </nav>
+      </div>
+    </header>
   );
 };
 

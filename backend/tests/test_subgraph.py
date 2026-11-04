@@ -601,9 +601,9 @@ def test_node_type_mapping():
         subgraph._type_iris("Unknown")
 
 
-def test_local_name():
-    from app import subgraph
+def test_edge_label():
+    from app import contract
 
-    assert subgraph._local_name("https://schema.org/author") == "author"
-    assert subgraph._local_name("http://x/y#partOf") == "partOf"
-    assert subgraph._local_name("opaque") == "opaque"
+    assert contract.edge_label("https://schema.org/author") == "author"
+    assert contract.edge_label("http://x/y#partOf") == "partOf"
+    assert contract.edge_label("opaque") == "opaque"

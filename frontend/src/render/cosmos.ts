@@ -49,6 +49,7 @@ import { getRgbaColor, Graph, PointShape } from "@cosmos.gl/graph";
 import type { GraphConfig } from "@cosmos.gl/graph";
 import { FALLBACK_COLOR, getGroupColor } from "../config";
 import { initialViewState } from "../view-state";
+import { adoptedCoordinate } from "./renderer";
 import type { GraphRenderer, NodePosition, RendererNode, RendererGraph } from "./renderer";
 
 /** A 2D point position (x, y) — the adapter's authoritative per-node layout. */
@@ -158,8 +159,11 @@ function isDomElement(container: unknown): container is HTMLElement {
   return typeof container === "object" && container !== null && "nodeType" in container;
 }
 
+/** The registry id the app registers this factory under (engines.ts). */
+export const COSMOS_RENDERER_ID = "cosmos";
+
 export function createCosmosRenderer(
-  id = "cosmos",
+  id = COSMOS_RENDERER_ID,
   options: CosmosRendererOptions = {}
 ): CosmosRenderer {
   let mounted = false;
@@ -375,9 +379,13 @@ export function createCosmosRenderer(
       for (const gone of [...positions.keys()]) {
         if (!present.has(gone)) positions.delete(gone);
       }
-      // P2/P3: survivors keep their exact position; new ids get a seeded one.
+      // P2/P3/P7: survivors keep their exact position; new ids take the
+      // handed finite coordinates when present (the D4 engine-switch
+      // handoff, CONTRACT.md §2 P7), else a deterministic seed.
       for (const node of graph.nodes) {
-        if (!positions.has(node.id)) positions.set(node.id, seedPosition(node.id));
+        if (positions.has(node.id)) continue;
+        const [sx, sy] = seedPosition(node.id);
+        positions.set(node.id, [adoptedCoordinate(node.x) ?? sx, adoptedCoordinate(node.y) ?? sy]);
       }
 
       nodeIds = graph.nodes.map((node) => node.id);
