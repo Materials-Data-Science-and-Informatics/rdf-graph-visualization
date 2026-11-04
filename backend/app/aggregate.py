@@ -21,12 +21,10 @@ penalty ladder — see ``app.qlever``):
 
 from __future__ import annotations
 
-import math
-
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from app import contract, presets, qlever, templates
+from app import contract, errors, presets, qlever, templates
 from app.qlever import Binding
 
 router = APIRouter(prefix="/api")
@@ -83,16 +81,6 @@ def aggregate() -> contract.AggregateResponse | JSONResponse:
     """Node counts per data-model class — one unbounded QLever call."""
     try:
         result = qlever.get_client().select(templates.aggregate_query())
-    except qlever.QleverRateLimited as exc:
-        return JSONResponse(
-            status_code=429,
-            content={"detail": str(exc)},
-            headers={"Retry-After": str(math.ceil(exc.wait_s))},
-        )
-    except qlever.QleverQueryError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except qlever.QleverUnavailable as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
-    except qlever.QleverServerError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except qlever.QleverError as exc:
+        return errors.qlever_error_response(exc)
     return _fold(result.rows)
