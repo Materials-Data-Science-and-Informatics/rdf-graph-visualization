@@ -91,23 +91,18 @@ export const ROOT_ENTITY_IRI = import.meta.env?.VITE_ROOT_IRI ?? "https://ror.or
 
 /**
  * Relation allow-list for the ROOT only (short names resolved against the
- * pinned data model server-side; unknown names are dropped by the backend
- * only if at least one resolves — keep this list to stable organizational
- * properties so one hub's page is dense but not flooded by provenance).
+ * pinned data model server-side). Only names the pinned model defines are
+ * listed: member, memberOf, funding, funder and sponsor are NOT in it and
+ * the backend would silently drop them.
  */
 export const ROOT_RELATION_NAMES = [
   "affiliation",
   "author",
   "creator",
-  "member",
-  "memberOf",
   "publisher",
   "parentOrganization",
   "subOrganization",
   "isPartOf",
-  "funding",
-  "funder",
-  "sponsor",
 ];
 
 /** Neighbors fetched per page around the root / any expand center. */
