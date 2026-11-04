@@ -23,5 +23,14 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
     },
+  },
+  {
+    // shadcn/ui components (CLI-generated, regenerated on `shadcn add/update`):
+    // they export variant helpers (cva) alongside components, which the
+    // react-refresh rule cannot classify as constants.
+    files: ["src/components/ui/**"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
   }
 );
