@@ -4,17 +4,20 @@
 
 Only the health probe and the config probe live here; endpoint cards (B2-B7)
 mount their own routers under /api. The QLever client (B1) is the single
-SPARQL gateway.
+SPARQL gateway. The B7 guard middleware (TTL cache + rate limit) wraps all
+/api traffic, excluding the health probe.
 """
 
 from fastapi import FastAPI
 
 from app import contract, presets, subgraph
 from app.api_b2 import router as b2_router
+from app.middleware import ApiGuardMiddleware
 from app.settings import Settings
 
 app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0")
 
+app.add_middleware(ApiGuardMiddleware)
 app.include_router(subgraph.router)
 app.include_router(b2_router, prefix="/api")
 
