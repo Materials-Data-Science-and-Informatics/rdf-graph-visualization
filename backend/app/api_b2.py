@@ -25,6 +25,7 @@ would 404 every real IRI. ``assert_valid_iri`` validates the decoded value.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from functools import lru_cache
 from typing import Any, get_args
@@ -94,10 +95,38 @@ def _vocab() -> tuple[tuple[str, ...], tuple[str, ...]]:
     """(relation IRIs, label IRIs) of the pinned data model.
 
     Memoized: the pin is static for the process lifetime, and reflecting the
-    model on every request would burn the p95 budget for nothing.
+    model would burn the p95 budget for nothing.
     """
     cfg = presets.build_config()
     return tuple(cfg.relation_properties), tuple(cfg.label_properties)
+
+
+def _resolve_relations(spec: str) -> tuple[str, ...]:
+    """Resolve a comma-separated relation allow-list against the data model.
+
+    Entries are either full property IRIs (kept when they are in the pinned
+    vocabulary) or short names, matched against the vocabulary by local-name
+    suffix (``…/name`` / ``…#name``, plus the schema.org convention). Input
+    order wins; duplicates collapse. Raises ``ValueError`` when a non-empty
+    spec resolves to nothing (a typo should surface, not silently widen).
+    """
+    vocab = _vocab()[0]
+    by_iri = set(vocab)
+    by_name: dict[str, str] = {}
+    for iri in vocab:
+        local = re.split(r"[/#]", iri)[-1]
+        by_name.setdefault(local.lower(), iri)
+    resolved: list[str] = []
+    for raw in spec.split(","):
+        entry = raw.strip()
+        if not entry:
+            continue
+        iri = entry if entry in by_iri else by_name.get(entry.lower(), "")
+        if iri and iri not in resolved:
+            resolved.append(iri)
+    if not resolved:
+        raise ValueError(f"relations filter {spec!r} matches no data-model property")
+    return tuple(resolved)
 
 
 def _choose_type_iri(type_iris: set[str]) -> str:
@@ -191,8 +220,15 @@ def _fold_expand_rows(
 def expand(
     iri: str,
     limit: int | None = Query(default=None),
+    offset: int = Query(default=0, ge=0),
+    relations: str | None = Query(default=None),
 ) -> contract.SubgraphResponse | JSONResponse:
-    """One entity plus its 1-hop in/out neighbours — one QLever call."""
+    """One entity plus its 1-hop in/out neighbours — one QLever call.
+
+    ``offset`` pages the deterministic neighbour stream (the root landing's
+    "load more around this center" flow); ``relations`` is an allow-list of
+    property names / IRIs restricting the traversed predicates.
+    """
     try:
         templates.assert_valid_iri(iri)
     except ValueError as exc:
@@ -201,9 +237,20 @@ def expand(
     page_limit = templates.clamp_limit(
         limit, default=settings.default_limit, max_=settings.max_limit
     )
-    relations, labels = _vocab()
+    all_relations, labels = _vocab()
+    if relations:
+        try:
+            relation_iris = _resolve_relations(relations)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+    else:
+        relation_iris = all_relations
     query = templates.expand_query(
-        iri=iri, relation_iris=relations, label_iris=labels, limit=page_limit + 1
+        iri=iri,
+        relation_iris=relation_iris,
+        label_iris=labels,
+        limit=page_limit + 1,
+        offset=offset,
     )
     try:
         result = qlever.get_client().select(query)

@@ -241,6 +241,7 @@ def expand_query(
     relation_iris: Sequence[str],
     label_iris: Sequence[str],
     limit: int,
+    offset: int = 0,
 ) -> str:
     """One entity plus its in/out 1-hop neighbours — one call (B2).
 
@@ -250,6 +251,12 @@ def expand_query(
     keeps the row stream deterministic under ``LIMIT`` (truncation is stable).
     Edge rows carry ``?pred`` so the endpoint can build contract Edges; the
     center row carries ``?pred = ""``.
+
+    ``offset`` pages past the deterministic stream (``LIMIT … OFFSET …``):
+    the total ORDER BY makes OFFSET pages stable, which is what the
+    "load more around this center" flow uses (expand has no cursor; the
+    client counts rows). At ``offset > 0`` the center row is outside the
+    window — callers already hold the center from the first page.
 
     QLever parser constraints (verified live against the dev endpoint):
     - ``FILTER(?pred IN ?p)`` with a *variable* list is rejected — the
@@ -265,7 +272,10 @@ def expand_query(
     """
     if not isinstance(limit, int) or isinstance(limit, bool):
         raise TypeError(f"limit must be an int, got {limit!r}")
+    if not isinstance(offset, int) or isinstance(offset, bool):
+        raise TypeError(f"offset must be an int, got {offset!r}")
     limit = max(1, limit)
+    offset = max(0, offset)
     center = iri_ref(iri)
     relations = iri_list(relation_iris)
     labels = iri_list(label_iris)
@@ -307,7 +317,7 @@ def expand_query(
   }}
 }}
 ORDER BY ?dir ?node ?pred
-LIMIT {limit}"""
+LIMIT {limit} OFFSET {offset}"""
 
 
 def search_query(

@@ -209,6 +209,66 @@ def test_expand_uses_pinned_vocabulary_iris(mock_qlever, client):
     assert "ORDER BY ?dir ?node ?pred" in query
 
 
+def test_expand_offset_pages_the_deterministic_stream(mock_qlever, client):
+    """`offset` + the ORDER BY give stable neighbor pages (root landing)."""
+    mock_qlever["responses"] = [
+        sparql_response(
+            expand_row("edge", NEIGHBOR_A, "out", TYPE_PERSON, "Ann", PRED_AUTHOR)
+        )
+    ]
+    client.get(f"/api/expand/{enc(CENTER)}?limit=10&offset=30")
+    query = sent_query(mock_qlever["requests"][0])
+    assert "LIMIT 11 OFFSET 30" in query  # +1 truncation probe carries the window
+
+
+def test_expand_offset_negative_is_rejected(mock_qlever, client):
+    mock_qlever["responses"] = []
+    resp = client.get(f"/api/expand/{enc(CENTER)}?offset=-1")
+    assert resp.status_code == 422
+
+
+def test_expand_relations_allowlist_resolves_short_names(mock_qlever, client):
+    mock_qlever["responses"] = [
+        sparql_response(expand_row("node", CENTER, "", TYPE_DATASET, "D", ""))
+    ]
+    client.get(f"/api/expand/{enc(CENTER)}?relations=author,parentOrganization")
+    query = sent_query(mock_qlever["requests"][0])
+    assert "<https://schema.org/author>" in query
+    assert "<https://schema.org/parentOrganization>" in query
+    # NOT the full vocabulary: an unrelated pinned property stays out.
+    assert "<https://schema.org/affiliation>" not in query
+
+
+def test_expand_relations_dedups_full_iri_and_name(mock_qlever, client):
+    mock_qlever["responses"] = [
+        sparql_response(expand_row("node", CENTER, "", TYPE_DATASET, "D", ""))
+    ]
+    client.get(
+        f"/api/expand/{enc(CENTER)}?relations={quote(PRED_AUTHOR)},{quote(PRED_AUTHOR)},author"
+    )
+    query = sent_query(mock_qlever["requests"][0])
+    assert (
+        query.count("<https://schema.org/author>") == 2
+    )  # one VALUES block per branch
+
+
+def test_expand_relations_with_nothing_resolvable_is_a_422(mock_qlever, client):
+    mock_qlever["responses"] = []
+    resp = client.get(f"/api/expand/{enc(CENTER)}?relations=notAProperty")
+    assert resp.status_code == 422
+    assert "notAProperty" in resp.json()["detail"]
+
+
+def test_expand_query_offset_defaults_to_zero():
+    q = templates.expand_query(
+        iri=CENTER,
+        relation_iris=[PRED_AUTHOR],
+        label_iris=["https://schema.org/name"],
+        limit=10,
+    )
+    assert "LIMIT 10 OFFSET 0" in q
+
+
 def test_expand_template_selects_pred_and_orders():
     q = templates.expand_query(
         iri=CENTER,
