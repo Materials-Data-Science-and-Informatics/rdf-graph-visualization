@@ -16,7 +16,7 @@
 //   - getConfigSnapshot(): Layout.tsx ("Config" modal).
 
 import { getConfig } from "./api/client";
-import type { ConfigResponse } from "./api/types";
+import type { ConfigResponse, NodeType } from "./api/types";
 
 /**
  * Code-side fallback colour for groups missing from /api/config. "Unknown"
@@ -26,7 +26,7 @@ import type { ConfigResponse } from "./api/types";
 export const FALLBACK_COLOR = "gray";
 
 let palette = new Map<string, string>();
-let entries: { group: string; color: string }[] = [];
+let entries: { group: string; type: NodeType; color: string }[] = [];
 let snapshot: ConfigResponse | null = null;
 
 /**
@@ -40,7 +40,11 @@ export async function loadConfig(signal?: AbortSignal): Promise<ConfigResponse> 
     if (!next.has(preset.group)) next.set(preset.group, preset.color);
   }
   palette = next;
-  entries = [...next.entries()].map(([group, color]) => ({ group, color }));
+  entries = [...config.types].map((preset) => ({
+    group: preset.group,
+    type: preset.type,
+    color: preset.color,
+  }));
   snapshot = config;
   return config;
 }
@@ -50,9 +54,25 @@ export function getGroupColor(group: string): string {
   return palette.get(group) ?? FALLBACK_COLOR;
 }
 
-/** Distinct group→colour palette entries in /api/config order (legend). */
-export function getPaletteEntries(): { group: string; color: string }[] {
+/**
+ * Distinct group→colour palette entries in /api/config order. `group` is
+ * the display label (legend), `type` the contract NodeType for filtering
+ * (card E4 — they are equal for every preset the backend emits).
+ */
+export function getPaletteEntries(): { group: string; type: NodeType; color: string }[] {
   return entries;
+}
+
+/**
+ * Card E4: normalize a raw URL `type` value to a contract NodeType. Only a
+ * value that names a live palette group passes through — a stale shared
+ * URL (model bump, typo) degrades to "all classes" (null) instead of a 422
+ * on the very first slice. Must run after loadConfig() (App gates the UI
+ * on the config load).
+ */
+export function typeFilterFromUrl(raw: string | null): NodeType | null {
+  const match = entries.find((entry) => entry.group === raw);
+  return match ? match.type : null;
 }
 
 /** The raw /api/config response, once loaded (null before loadConfig()). */

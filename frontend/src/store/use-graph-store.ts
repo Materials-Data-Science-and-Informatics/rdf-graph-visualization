@@ -12,7 +12,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, getSubgraph } from "../api/client";
-import type { SubgraphResponse } from "../api/types";
+import type { NodeType, SubgraphResponse } from "../api/types";
 import type { GraphData } from "react-force-graph-3d";
 import { updateSearchKeys } from "../view-state";
 import { GraphStore, type MergeResult } from "./graph-store";
@@ -40,10 +40,14 @@ function describe(err: unknown): string {
 
 /**
  * Fetch the first page (no cursor) and REPLACE the store. Pure, abortable —
- * the hook and tests share this path.
+ * the hook and tests share this path. `type` (card E4) restricts the slice
+ * to one data-model class server-side; null/omitted = all classes.
  */
-export async function loadFirstPage(signal?: AbortSignal): Promise<SubgraphResponse> {
-  const slice = await getSubgraph({}, { signal });
+export async function loadFirstPage(
+  type: NodeType | null = null,
+  signal?: AbortSignal
+): Promise<SubgraphResponse> {
+  const slice = await getSubgraph(type ? { type } : {}, { signal });
   graphStore.replaceSlice(slice);
   return slice;
 }
@@ -52,12 +56,17 @@ export async function loadFirstPage(signal?: AbortSignal): Promise<SubgraphRespo
  * Expand-on-click core (card C2 DoD): fetch the NEXT cursor page and MERGE
  * it — the store grows without a refetch-all. Returns null (no request made)
  * when the current slice is complete, so callers can fire it unconditionally
- * from a node click.
+ * from a node click. Card E4: the page continues the CURRENT class filter
+ * (the cursor and the `type` param travel together, or "Load more" would
+ * silently drop the filter from the second page on).
  */
-export async function expandNextPage(signal?: AbortSignal): Promise<MergeResult | null> {
+export async function expandNextPage(
+  type: NodeType | null = null,
+  signal?: AbortSignal
+): Promise<MergeResult | null> {
   const cursor = graphStore.nextCursor;
   if (cursor === null) return null;
-  const slice = await getSubgraph({ cursor }, { signal });
+  const slice = await getSubgraph({ cursor, ...(type ? { type } : {}) }, { signal });
   return graphStore.ingest(slice, cursor);
 }
 
@@ -66,16 +75,18 @@ export async function expandNextPage(signal?: AbortSignal): Promise<MergeResult 
  * store's next-page cursor equals `targetCursor` — i.e. until the store
  * holds exactly the pages the shared view had when its URL was copied.
  * Returns as soon as the slice runs out (a shrunken dataset degrades to
- * "everything the server has left" instead of looping).
+ * "everything the server has left" instead of looping). Card E4: every page of
+ * the restore chain carries the class filter.
  */
 export async function loadToCursor(
   targetCursor: string | null,
+  type: NodeType | null = null,
   signal?: AbortSignal
 ): Promise<void> {
-  await loadFirstPage(signal);
+  await loadFirstPage(type, signal);
   if (targetCursor === null) return;
   while (graphStore.nextCursor !== null && graphStore.nextCursor !== targetCursor) {
-    await expandNextPage(signal);
+    await expandNextPage(type, signal);
   }
 }
 
@@ -91,17 +102,32 @@ export interface SliceActions {
   expanding: boolean;
   error: string | null;
   /**
-   * Load the first page and replace the store (initial load, reload button).
-   * With a `targetCursor` (C3 URL restore) keep expanding until the shared
-   * view's data state is reached; without one, a plain fresh first page.
+   * Load the first page and replace the store (initial load, reload button,
+   * class-filter change — card E4). With a `targetCursor` (C3 URL restore)
+   * keep expanding until the shared view's data state is reached; without
+   * one, a plain fresh first page. Carries the class filter: an explicit
+   * `type` argument (a filter change and its reload happen in one handler,
+   * before the state update has re-rendered) wins, otherwise the current
+   * filter. A fresh load aborts an in-flight expand (its cursor chain is
+   * invalidated by the replace).
    */
-  load: (targetCursor?: string | null) => void;
-  /** Fetch the next cursor page and merge it; no-op when complete/blocked. */
+  load: (targetCursor?: string | null, type?: NodeType | null) => void;
+  /** Fetch the next cursor page (with the current class filter) and merge
+   *  it; no-op when complete/blocked. */
   expand: () => void;
   clearError: () => void;
 }
 
-export function useSliceActions(): SliceActions {
+/**
+ * `typeFilter` (card E4): the data-model class the slice is filtered to
+ * (null = all). The hook mirrors it into a ref during render — the
+ * standard "latest value" pattern — so the stable callbacks always read
+ * the current filter; `load` additionally accepts an explicit override
+ * for the same-handler filter-change case (see SliceActions.load).
+ */
+export function useSliceActions(typeFilter: NodeType | null = null): SliceActions {
+  const typeFilterRef = useRef<NodeType | null>(typeFilter);
+  typeFilterRef.current = typeFilter;
   const [loading, setLoading] = useState(false);
   const [expanding, setExpanding] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,14 +135,23 @@ export function useSliceActions(): SliceActions {
   const expandAbortRef = useRef<AbortController | null>(null);
   const expandInFlightRef = useRef(false);
 
-  const load = useCallback((targetCursor: string | null = null) => {
+  const load = useCallback((targetCursor: string | null = null, type: NodeType | null = null) => {
+    const effectiveType = type ?? typeFilterRef.current;
+    // A fresh replace invalidates the current cursor chain: an in-flight
+    // expand would merge a page from the OLD slice into the new store.
+    if (expandInFlightRef.current) {
+      expandAbortRef.current?.abort();
+      expandAbortRef.current = null;
+      expandInFlightRef.current = false;
+      setExpanding(false);
+    }
     loadAbortRef.current?.abort();
     const controller = new AbortController();
     loadAbortRef.current = controller;
     setLoading(true);
     void (async () => {
       try {
-        await loadToCursor(targetCursor, controller.signal);
+        await loadToCursor(targetCursor, effectiveType, controller.signal);
         if (controller.signal.aborted) return;
         setError(null);
         syncCursorToUrl();
@@ -139,7 +174,7 @@ export function useSliceActions(): SliceActions {
     setExpanding(true);
     void (async () => {
       try {
-        await expandNextPage(controller.signal);
+        await expandNextPage(typeFilterRef.current, controller.signal);
         if (controller.signal.aborted) return;
         setError(null);
         syncCursorToUrl();

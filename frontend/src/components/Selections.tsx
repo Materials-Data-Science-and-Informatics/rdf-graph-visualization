@@ -4,49 +4,60 @@ import { Checkbox } from "@/components/ui/checkbox";
 import * as React from "react";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { GraphData, LinkObject } from "react-force-graph-3d";
+import FilterPanel from "./FilterPanel.tsx";
 import LoadingSpinner from "./LoadingSpinner.tsx";
+import type { NodeType } from "../api/types";
 import { useGraphData, graphStore, type SliceActions } from "../store/use-graph-store";
 import { initialViewState, updateSearchKeys } from "../view-state";
 
 interface SelectionsProps {
   actions: SliceActions;
   setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
+  /** Data-model class the slice is filtered to (null = all; card E4). */
+  typeFilter: NodeType | null;
+  setTypeFilter: (type: NodeType | null) => void;
 }
 
 /**
- * Slice controls (card C2): loads the first bounded, cursor-paginated slice
- * into the graph store, and grows it further via cursor-continued "expand"
- * (Load more / click a node) WITHOUT a refetch-all. Stale requests are
- * aborted on re-fetch and on unmount (see useSliceActions).
+ * Slice controls (cards C2/E4): loads the first bounded, cursor-paginated
+ * slice into the graph store, grows it via cursor-continued "expand"
+ * (Load more / click a node) WITHOUT a refetch-all, and offers the class
+ * filter panel (card E4) — picking a class RE-QUERIES the slice with
+ * `?type=` (a fresh slice, cursor chain reset), it does not hide nodes
+ * client-side. Stale requests are aborted on re-fetch and on unmount (see
+ * useSliceActions).
  */
-const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }) => {
+const Selections: React.FC<SelectionsProps> = ({
+  actions,
+  setFilteredGraphData,
+  typeFilter,
+  setTypeFilter,
+}) => {
   // Card C3: initial view state is read from the opened URL (one-time
   // capture); every change below writes its keys back (replaceState).
   const [isChecked, setIsChecked] = useState<boolean>(initialViewState.showIsolated);
-  const [filters, setFilters] = useState<Set<string>>(() => new Set(initialViewState.hiddenGroups));
   // Current store contents (re-renders on every merged slice).
   const graphData = useGraphData();
 
-  // Initial fetch on mount. A URL with a `cursor` param re-fetches exactly
-  // the pages the shared view had (card C3); a plain URL loads the first
-  // page only.
+  // Initial fetch on mount. A URL with a `cursor` + `type` param re-fetches
+  // exactly the pages the shared view had (card C3, class filter card E4);
+  // a plain URL loads the first page of all classes.
   const { load: loadSlice } = actions;
   useEffect(() => {
     loadSlice(initialViewState.nextCursor);
   }, [loadSlice]);
 
-  // Card C3: keep the URL's filter keys in step with the state. (A fresh
-  // load via the "Load slice" button below clears the group filters — the
-  // previous load-completion effect is gone so a restored filter survives
-  // the initial load.)
+  // Card C3: keep the URL's class-filter key in step with the state.
   useEffect(() => {
-    updateSearchKeys({ hide: filters.size > 0 ? [...filters].join(",") : null });
-  }, [filters]);
+    updateSearchKeys({ type: typeFilter });
+  }, [typeFilter]);
   useEffect(() => {
     updateSearchKeys({ iso: isChecked ? "1" : null });
   }, [isChecked]);
 
-  // Filter graph data based on selected groups and optionally remove unconnected nodes
+  // "Add not connected nodes" (C2/C3 display option): when off, drop nodes
+  // without a connection in the current slice. The class filter itself is
+  // server-side (card E4) — nothing is hidden here any more.
   useEffect(() => {
     if (graphData.nodes.length === 0) {
       setFilteredGraphData({ nodes: [], links: [] });
@@ -60,32 +71,17 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
         return;
       }
 
-      // Filter nodes by selected groups; if no filters, show all nodes
-      const filteredNodes =
-        filters.size === 0
-          ? graphData.nodes
-          : graphData.nodes.filter((node) => {
-              const tempFilters = new Set(filters);
-              if (filters.has("Default")) {
-                tempFilters.delete("Default");
-                tempFilters.add("");
-              }
-              return !tempFilters.has(node.group);
-            });
-
-      // Create a Set of node IDs for O(1) lookup
-      const filteredNodeIds = new Set(filteredNodes.map((node) => node.id));
-
-      // Filter links to only include those connecting filtered nodes
+      // Keep only links whose endpoints are both present in the slice.
+      const nodeIds = new Set(graphData.nodes.map((node) => node.id));
       const filteredLinks = graphData.links.filter((link: LinkObject) => {
         const sourceId = typeof link.source === "object" ? link.source?.id : link.source;
         const targetId = typeof link.target === "object" ? link.target?.id : link.target;
-        return filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId);
+        return nodeIds.has(sourceId) && nodeIds.has(targetId);
       });
 
       let newGraphData: GraphData;
       if (!isChecked) {
-        // Remove nodes that have no connections in the filtered view
+        // Remove nodes that have no connections in the current view
         const connectedNodeIds = new Set(
           filteredLinks.flatMap((link) => {
             const sourceId = typeof link.source === "object" ? link.source?.id : link.source;
@@ -93,11 +89,11 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
             return [sourceId, targetId];
           })
         );
-        const connectedNodes = filteredNodes.filter((node) => connectedNodeIds.has(node.id));
+        const connectedNodes = graphData.nodes.filter((node) => connectedNodeIds.has(node.id));
         newGraphData = { nodes: connectedNodes, links: filteredLinks };
       } else {
-        // Show all filtered nodes with all their links
-        newGraphData = { nodes: filteredNodes, links: filteredLinks };
+        // Show all nodes with all their links
+        newGraphData = { nodes: graphData.nodes, links: filteredLinks };
       }
 
       // ForceGraph mutates graph objects in place, so pass fresh copies on every UI-driven update.
@@ -126,7 +122,7 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
     return () => {
       cancelled = true;
     };
-  }, [isChecked, filters, graphData, setFilteredGraphData]);
+  }, [isChecked, graphData, setFilteredGraphData]);
 
   const page = graphStore.page;
 
@@ -137,38 +133,54 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
 
   return (
     <div className="mx-auto w-full p-4">
-      <div className="flex flex-wrap items-center gap-4">
-        <Button
-          disabled={actions.loading}
-          // A fresh load (replace) starts with no active group filters.
-          onClick={() => {
-            setFilters(new Set<string>());
-            actions.load();
-          }}
-        >
-          {actions.loading && <Loader2 aria-hidden className="animate-spin" />}
-          Load slice
-        </Button>
-        {graphStore.canExpand && (
-          <Button variant="outline" disabled={actions.expanding} onClick={actions.expand}>
-            {actions.expanding && <Loader2 aria-hidden className="animate-spin" />}
-            Load more
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <Button
+            disabled={actions.loading}
+            // A fresh load (replace) starts with no class filter.
+            onClick={() => {
+              setTypeFilter(null);
+              loadSlice(null, null);
+            }}
+          >
+            {actions.loading && <Loader2 aria-hidden className="animate-spin" />}
+            Load slice
           </Button>
-        )}
-        <p className="mt-2 text-sm text-gray-500">
+          {graphStore.canExpand && (
+            <Button variant="outline" disabled={actions.expanding} onClick={actions.expand}>
+              {actions.expanding && <Loader2 aria-hidden className="animate-spin" />}
+              Load more
+            </Button>
+          )}
+          <label className="flex items-center gap-2">
+            <Checkbox
+              checked={isChecked}
+              onCheckedChange={(checked) => setIsChecked(checked === true)}
+            />
+            Add not connected nodes
+          </label>
+        </div>
+        <div className="flex flex-wrap items-center gap-3">
+          <span className="text-sm font-medium">Filter by class</span>
+          <FilterPanel
+            value={typeFilter}
+            disabled={actions.loading}
+            onChange={(group) => {
+              setTypeFilter(group);
+              // Card E4 DoD: a filter change re-queries the slice — a fresh
+              // load with the new class (cursor chain resets). The explicit
+              // `group` argument is the not-yet-rendered state (same handler).
+              loadSlice(null, group);
+            }}
+          />
+        </div>
+        <p className="text-sm text-gray-500">
           {page
-            ? `${graphStore.nodeCount} nodes, ${graphStore.edgeCount} edges in store (limit ${page.limit}${
+            ? `${typeFilter ?? "All classes"}: ${graphStore.nodeCount} nodes, ${graphStore.edgeCount} edges in store (limit ${page.limit}${
                 page.truncated ? ", truncated — click a node or Load more to expand" : ", complete"
               })`
             : "No slice loaded yet"}
         </p>
-        <label className="flex items-center gap-2">
-          <Checkbox
-            checked={isChecked}
-            onCheckedChange={(checked) => setIsChecked(checked === true)}
-          />
-          Add not connected nodes
-        </label>
       </div>
       {actions.error && (
         <div

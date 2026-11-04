@@ -6,7 +6,7 @@
 //   cam    camera position            "x,y,z" (3 decimals)
 //   look   camera orbit target        "x,y,z" (3 decimals)
 //   sel    selected node IRI
-//   hide   excluded groups            "Person,Document" ("" = show all)
+//   type   class filter (card E4)     "Dataset" (absent = no filter / all)
 //   iso    "add not connected nodes"  "1"
 //   theme  "light"                    (dark is the default, omitted)
 //   cursor next-page cursor of the slice as shared (data state: which
@@ -34,8 +34,11 @@ export interface ViewState {
   look: ViewVec3 | null;
   /** Selected node IRI (null = nothing selected). */
   selectedId: string | null;
-  /** Group names excluded by the group filter (empty = show all). */
-  hiddenGroups: string[];
+  /**
+   * Data-model class the slice is filtered to (card E4; null = all classes).
+   * Server-side filter — the slice itself is re-queried with `?type=`.
+   */
+  typeFilter: string | null;
   /** "Add not connected nodes" checkbox. */
   showIsolated: boolean;
   theme: "dark" | "light";
@@ -51,7 +54,7 @@ export const DEFAULT_VIEW_STATE: ViewState = {
   camera: null,
   look: null,
   selectedId: null,
-  hiddenGroups: [],
+  typeFilter: null,
   showIsolated: false,
   theme: "dark",
   nextCursor: null,
@@ -81,10 +84,10 @@ export function parseViewState(search: string): ViewState {
     camera: parseVec3(p.get("cam")),
     look: parseVec3(p.get("look")),
     selectedId: p.get("sel") || null,
-    hiddenGroups: (p.get("hide") ?? "")
-      .split(",")
-      .map((g) => g.trim())
-      .filter(Boolean),
+    // Card E4: the class filter is a single server-side value. A legacy
+    // `hide=` key (pre-E4 client-side hide lists) is ignored: tolerant parse,
+    // the shared view degrades to "all classes" rather than crashing.
+    typeFilter: p.get("type") || null,
     showIsolated: p.get("iso") === "1",
     theme: theme === "light" ? "light" : "dark",
     nextCursor: p.get("cursor") || null,
@@ -103,7 +106,7 @@ export function toSearch(state: ViewState): string {
   if (state.camera) p.set("cam", formatVec3(state.camera));
   if (state.look) p.set("look", formatVec3(state.look));
   if (state.selectedId) p.set("sel", state.selectedId);
-  if (state.hiddenGroups.length > 0) p.set("hide", state.hiddenGroups.join(","));
+  if (state.typeFilter) p.set("type", state.typeFilter);
   if (state.showIsolated) p.set("iso", "1");
   if (state.theme === "light") p.set("theme", "light");
   if (state.nextCursor) p.set("cursor", state.nextCursor);
