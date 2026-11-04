@@ -9,9 +9,12 @@ routers under /api; the QLever client (B1) is the single SPARQL gateway.
 from fastapi import FastAPI
 
 from app import contract, presets
+from app.search import router as search_router
 from app.settings import Settings
 
 app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0")
+
+app.include_router(search_router)
 
 
 @app.get("/api/health")

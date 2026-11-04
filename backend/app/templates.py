@@ -47,8 +47,12 @@ def iri_ref(iri: str) -> str:
 
 
 def iri_list(iris: list[str] | tuple[str, ...]) -> str:
-    """IRIs for a VALUES / IN list."""
-    return ", ".join(iri_ref(i) for i in iris)
+    """IRIs for a VALUES / IN list.
+
+    Whitespace-separated on purpose: the QLever parser (unlike the SPARQL
+    1.1 grammar) rejects comma separators inside VALUES blocks.
+    """
+    return " ".join(iri_ref(i) for i in iris)
 
 
 def clamp_limit(limit: int | None, default: int = 500, max_: int = 5000) -> int:
@@ -215,12 +219,18 @@ def search_query(
     ``text`` is matched case-insensitively as a *prefix* of the label
     (``regex(label, "^" + text, "i")``); all pattern metacharacters in the
     user text are escaped, so it is treated as data, not a pattern.
+    ``?lbl`` is projected so the endpoint can fold a node's several matched
+    rows (multiple label properties / values / rdf:types) deterministically
+    (label-property priority, B2's primary-type rule).
+
+    QLever dialect note (verified live against the dev endpoint): the
+    VALUES block is whitespace-separated (see :func:`iri_list`).
     """
     limit = clamp_limit(limit)
     if not text.strip():
         raise ValueError("search text must be non-empty")
     pattern = _regex_escape(text.strip())
-    return f"""SELECT ?node ?nodeType ?label WHERE {{
+    return f"""SELECT ?node ?nodeType ?label ?lbl WHERE {{
   VALUES ?lbl {{ {iri_list(label_iris)} }}
   ?node a ?nodeType .
   ?node ?lbl ?label .
