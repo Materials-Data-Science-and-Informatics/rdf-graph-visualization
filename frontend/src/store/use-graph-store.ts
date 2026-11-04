@@ -13,7 +13,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ApiError, getSubgraph } from "../api/client";
 import type { SubgraphResponse } from "../api/types";
-import type { GraphData } from "react-force-graph-3d";
+import type { RendererGraph } from "../render/renderer";
 import { updateSearchKeys } from "../view-state";
 import { GraphStore, type MergeResult } from "./graph-store";
 
@@ -24,8 +24,8 @@ export function useGraphStoreVersion(): number {
   return useSyncExternalStore(graphStore.subscribe, graphStore.getSnapshot, graphStore.getSnapshot);
 }
 
-/** Current store contents as force-graph data; re-renders on store changes. */
-export function useGraphData(): GraphData {
+/** Current store contents as renderer data; re-renders on store changes. */
+export function useGraphData(): RendererGraph {
   const version = useGraphStoreVersion();
   // `version` is the store's change token; the memo recomputes on every bump.
   // eslint-disable-next-line react-hooks/exhaustive-deps

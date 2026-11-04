@@ -32,6 +32,7 @@ import Sigma from "sigma";
 import { getGroupColor } from "../config";
 import type { LayoutWorkerClient, LayoutRequest } from "./layout-worker";
 import { createLayoutWorker } from "./layout-worker";
+import { adoptedCoordinate } from "./renderer";
 import type { GraphRenderer, NodePosition, RendererGraph } from "./renderer";
 import { seedPosition2D } from "./seeding";
 import type { ForceAtlas2Settings } from "./forceatlas2";
@@ -397,8 +398,10 @@ export function createSigmaRenderer(
         if (!wanted.has(gone)) graph.dropNode(gone);
       }
 
-      // P2/P3: survivors keep their exact x/y (the attributes are left
-      // alone); new nodes get deterministic, finite seed positions.
+      // P2/P3/P7: survivors keep their exact x/y (the attributes are left
+      // alone); new nodes take the handed finite coordinates when present
+      // (the D4 engine-switch handoff, CONTRACT.md §2 P7), else a
+      // deterministic seed.
       for (const node of g.nodes) {
         if (graph.hasNode(node.id)) {
           graph.mergeNodeAttributes(node.id, {
@@ -408,8 +411,8 @@ export function createSigmaRenderer(
         } else {
           const seed = seedPosition2D(node.id);
           graph.addNode(node.id, {
-            x: seed.x,
-            y: seed.y,
+            x: adoptedCoordinate(node.x) ?? seed.x,
+            y: adoptedCoordinate(node.y) ?? seed.y,
             label: node.label ?? null,
             group: node.group ?? null,
           });

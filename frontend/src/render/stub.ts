@@ -12,6 +12,7 @@
 //   - lifecycle: data methods throw before mount, no-op after dispose;
 //   - events: onNodeSelect delivers synchronously, stops after dispose.
 
+import { adoptedCoordinate } from "./renderer";
 import type { GraphRenderer, NodePosition, RendererGraph } from "./renderer";
 
 /** Test hooks beyond the contract — a real adapter has none of these. */
@@ -116,9 +117,16 @@ export function createStubRenderer(id = "stub"): StubRenderer {
       for (const gone of [...positions.keys()]) {
         if (!graph.nodes.some((n) => n.id === gone)) positions.delete(gone);
       }
-      // P2/P3: survivors keep their positions; new ones get seeded positions.
+      // P2/P3/P7: survivors keep their positions; new ones get the handed
+      // finite coordinates when present (the D4 engine-switch handoff),
+      // else a deterministic seed.
       for (const node of graph.nodes) {
-        if (!positions.has(node.id)) positions.set(node.id, seedPosition(node.id));
+        if (positions.has(node.id)) continue;
+        const pos = seedPosition(node.id);
+        pos.x = adoptedCoordinate(node.x) ?? pos.x;
+        pos.y = adoptedCoordinate(node.y) ?? pos.y;
+        pos.z = adoptedCoordinate(node.z) ?? pos.z;
+        positions.set(node.id, pos);
       }
     },
 

@@ -3,14 +3,14 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as React from "react";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
-import { GraphData, LinkObject } from "react-force-graph-3d";
 import LoadingSpinner from "./LoadingSpinner.tsx";
 import { useGraphData, graphStore, type SliceActions } from "../store/use-graph-store";
+import type { RendererGraph } from "../render";
 import { initialViewState, updateSearchKeys } from "../view-state";
 
 interface SelectionsProps {
   actions: SliceActions;
-  setFilteredGraphData: Dispatch<SetStateAction<GraphData>>;
+  setFilteredGraphData: Dispatch<SetStateAction<RendererGraph>>;
 }
 
 /**
@@ -70,28 +70,23 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
                 tempFilters.delete("Default");
                 tempFilters.add("");
               }
-              return !tempFilters.has(node.group);
+              return !tempFilters.has(node.group ?? "");
             });
 
       // Create a Set of node IDs for O(1) lookup
       const filteredNodeIds = new Set(filteredNodes.map((node) => node.id));
 
       // Filter links to only include those connecting filtered nodes
-      const filteredLinks = graphData.links.filter((link: LinkObject) => {
-        const sourceId = typeof link.source === "object" ? link.source?.id : link.source;
-        const targetId = typeof link.target === "object" ? link.target?.id : link.target;
-        return filteredNodeIds.has(sourceId) && filteredNodeIds.has(targetId);
+      // (contract RendererLink: source/target are always id strings).
+      const filteredLinks = graphData.links.filter((link) => {
+        return filteredNodeIds.has(link.source) && filteredNodeIds.has(link.target);
       });
 
-      let newGraphData: GraphData;
+      let newGraphData: RendererGraph;
       if (!isChecked) {
         // Remove nodes that have no connections in the filtered view
         const connectedNodeIds = new Set(
-          filteredLinks.flatMap((link) => {
-            const sourceId = typeof link.source === "object" ? link.source?.id : link.source;
-            const targetId = typeof link.target === "object" ? link.target?.id : link.target;
-            return [sourceId, targetId];
-          })
+          filteredLinks.flatMap((link) => [link.source, link.target])
         );
         const connectedNodes = filteredNodes.filter((node) => connectedNodeIds.has(node.id));
         newGraphData = { nodes: connectedNodes, links: filteredLinks };
@@ -100,14 +95,12 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
         newGraphData = { nodes: filteredNodes, links: filteredLinks };
       }
 
-      // ForceGraph mutates graph objects in place, so pass fresh copies on every UI-driven update.
-      const graphSnapshot: GraphData = {
+      // The mounted renderer OWNS the objects it is handed and may mutate
+      // them in place (CONTRACT.md §1.2), so pass fresh copies on every
+      // UI-driven update.
+      const graphSnapshot: RendererGraph = {
         nodes: newGraphData.nodes.map((node) => ({ ...node })),
-        links: newGraphData.links.map((link) => ({
-          ...link,
-          source: typeof link.source === "object" ? link.source?.id : link.source,
-          target: typeof link.target === "object" ? link.target?.id : link.target,
-        })),
+        links: newGraphData.links.map((link) => ({ ...link })),
       };
 
       setFilteredGraphData(graphSnapshot);
