@@ -133,18 +133,21 @@ export async function focusEntity(iri: string, signal?: AbortSignal): Promise<Me
 
 /**
  * Root landing (owner directive): replace the store with the REAL subgraph
- * around ROOT_ENTITY_IRI (center + 1 hop, relation allow-list) and arm the
+ * around `rootIri` (default ROOT_ENTITY_IRI) (center + 1 hop, relation allow-list) and arm the
  * offset-paged "Load more" continuation for its truncated stream.
  */
-export async function loadRootSlice(signal?: AbortSignal): Promise<SubgraphResponse> {
-  const slice = await getExpand(ROOT_ENTITY_IRI, {
+export async function loadRootSlice(
+  signal?: AbortSignal,
+  rootIri: string = ROOT_ENTITY_IRI
+): Promise<SubgraphResponse> {
+  const slice = await getExpand(rootIri, {
     limit: ROOT_EXPAND_LIMIT,
     relations: ROOT_RELATION_NAMES,
     signal,
   });
   graphStore.replaceSlice(slice);
   if (!slice.page.cursor) {
-    graphStore.trackCenterExpansion(ROOT_ENTITY_IRI, slice.page, ROOT_RELATION_NAMES);
+    graphStore.trackCenterExpansion(rootIri, slice.page, ROOT_RELATION_NAMES);
   }
   return slice;
 }
@@ -195,7 +198,7 @@ export interface SliceActions {
   expand: () => void;
   /** Root landing: replace the store with the real subgraph around the
    *  root entity (see loadRootSlice). Abortable like `load`. */
-  loadRoot: () => void;
+  loadRoot: (rootIri?: string) => void;
   clearError: () => void;
 }
 
@@ -252,14 +255,14 @@ export function useSliceActions(typeFilter: NodeType | null = null): SliceAction
     })();
   }, []);
 
-  const loadRoot = useCallback(() => {
+  const loadRoot = useCallback((rootIri: string = ROOT_ENTITY_IRI) => {
     loadAbortRef.current?.abort();
     const controller = new AbortController();
     loadAbortRef.current = controller;
     setLoading(true);
     void (async () => {
       try {
-        await loadRootSlice(controller.signal);
+        await loadRootSlice(controller.signal, rootIri);
         if (controller.signal.aborted) return;
         setError(null);
         syncCursorToUrl();

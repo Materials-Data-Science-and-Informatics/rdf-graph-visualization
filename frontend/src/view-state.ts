@@ -7,7 +7,7 @@
 //   look   camera orbit target        "x,y,z" (3 decimals)
 //   sel    selected node IRI
 //   type   class filter (card E4)     "Dataset" (absent = no filter / all)
-//   iso    "add not connected nodes"  "1"
+//   root   root entity IRI of the landing (absent = config default)
 //   theme  "light"                    (dark is the default, omitted)
 //   engine renderer id                "cosmos" (the registry default is
 //          omitted; the Graph hook validates it against listRenderers())
@@ -25,6 +25,8 @@
 //
 // Pure module: no React, no DOM side effects except updateSearchKeys()
 // (guarded for non-browser environments), so it bundles into tests as-is.
+
+import { ROOT_ENTITY_IRI } from "./config";
 
 export interface ViewVec3 {
   x: number;
@@ -46,8 +48,8 @@ export interface ViewState {
    * Server-side filter — the slice itself is re-queried with `?type=`.
    */
   typeFilter: string | null;
-  /** "Add not connected nodes" checkbox. */
-  showIsolated: boolean;
+  /** Root entity IRI the landing was loaded for (null = config default). */
+  root: string | null;
   theme: "dark" | "light";
   /**
    * Renderer id chosen in the shared view (card D4), or null for the
@@ -72,7 +74,7 @@ export const DEFAULT_VIEW_STATE: ViewState = {
   selectedId: null,
   hiddenGroups: [],
   typeFilter: null,
-  showIsolated: false,
+  root: null,
   theme: "dark",
   engine: null,
   nextCursor: null,
@@ -111,7 +113,7 @@ export function parseViewState(search: string): ViewState {
     // `hide=` key (pre-E4 client-side hide lists) is ignored: tolerant parse,
     // the shared view degrades to "all classes" rather than crashing.
     typeFilter: p.get("type") || null,
-    showIsolated: p.get("iso") === "1",
+    root: p.get("root") || null,
     theme: theme === "light" ? "light" : "dark",
     engine: p.get("engine") || null,
     nextCursor: p.get("cursor") || null,
@@ -133,7 +135,7 @@ export function toSearch(state: ViewState): string {
   if (state.selectedId) p.set("sel", state.selectedId);
   if (state.typeFilter) p.set("type", state.typeFilter);
   if (state.hiddenGroups.length) p.set("hide", state.hiddenGroups.join(","));
-  if (state.showIsolated) p.set("iso", "1");
+  if (state.root && state.root !== ROOT_ENTITY_IRI) p.set("root", state.root);
   if (state.theme === "light") p.set("theme", "light");
   if (state.engine) p.set("engine", state.engine);
   if (state.nextCursor) p.set("cursor", state.nextCursor);

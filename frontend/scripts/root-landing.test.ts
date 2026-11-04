@@ -19,7 +19,7 @@ import { getExpand, setApiBase } from "../src/api/client";
 import { ROOT_ENTITY_IRI, ROOT_EXPAND_LIMIT, ROOT_RELATION_NAMES } from "../src/config";
 import { GraphStore } from "../src/store/graph-store";
 import { expandCenterPage, graphStore, loadRootSlice } from "../src/store/use-graph-store";
-import { pickLandingMode } from "../src/lib/aggregate-view";
+import { normalizeRootIri, pickLandingMode } from "../src/lib/aggregate-view";
 
 // ------------------------------------------------------------------ fixtures
 
@@ -176,4 +176,26 @@ test("pickLandingMode: plain first paint = root subgraph (not the ring)", () => 
   assert.equal(pickLandingMode({ nextCursor: null, selectedId: null, ov: null }), "root");
   assert.equal(pickLandingMode({ nextCursor: null, selectedId: "s", ov: null }), "slice-restore");
   assert.equal(pickLandingMode({ nextCursor: null, selectedId: null, ov: "Person" }), "ov-restore");
+});
+
+test("loadRootSlice: custom root IRI is fetched and tracked for paging", async () => {
+  const stub = installFetchStub();
+  try {
+    setApiBase("http://stub.local/api");
+    const custom = "https://ror.org/custom1";
+    stub.route("/expand/", centerSlice(2, true));
+    await loadRootSlice(undefined, custom);
+    assert.ok(decodeURIComponent(stub.calls[0]).includes(custom), stub.calls[0]);
+    assert.equal(graphStore.pendingCenterPage?.iri, custom);
+  } finally {
+    stub.restore();
+  }
+});
+
+test("normalizeRootIri: trims, requires absolute http(s) IRI", () => {
+  assert.equal(normalizeRootIri("  https://ror.org/x  "), "https://ror.org/x");
+  assert.equal(normalizeRootIri("http://a.b/c"), "http://a.b/c");
+  for (const bad of ["", "   ", "ror.org/x", "ftp://a/b", "https://", "https://a b"]) {
+    assert.equal(normalizeRootIri(bad), null, bad);
+  }
 });

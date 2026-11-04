@@ -39,6 +39,7 @@ import {
   loadConfig,
   typeFilterFromUrl,
 } from "../src/config";
+import { ROOT_ENTITY_IRI } from "../src/config";
 import { parseViewState, toSearch } from "../src/view-state";
 import {
   expandNextPage,
@@ -422,20 +423,19 @@ test("toSearch: type serialized when set, omitted when null, other keys kept", (
     selectedId: "http://x/p1",
     hiddenGroups: [],
     typeFilter: "Person",
-    showIsolated: true,
+    root: null,
     theme: "dark",
     nextCursor: null,
   });
   assert.ok(withFilter.includes("type=Person"));
   assert.ok(withFilter.includes("sel=http"));
-  assert.ok(withFilter.includes("iso=1"));
   const noFilter = toSearch({
     camera: null,
     look: null,
     selectedId: null,
     hiddenGroups: [],
     typeFilter: null,
-    showIsolated: false,
+    root: null,
     theme: "dark",
     nextCursor: null,
   });
@@ -511,4 +511,15 @@ test("hook: same-handler reset load(null, null) clears the filter, not the stale
   } finally {
     stub.restore();
   }
+});
+
+test("root key: default omitted, custom preserved, iso no longer handled", () => {
+  const base = parseViewState("");
+  assert.equal(base.root, null);
+  assert.equal(toSearch({ ...base, root: ROOT_ENTITY_IRI }), "");
+  const custom = toSearch({ ...base, root: "https://ror.org/abc" });
+  assert.equal(parseViewState(custom).root, "https://ror.org/abc");
+  assert.equal(parseViewState("?iso=1").root, null);
+  assert.equal("showIsolated" in parseViewState("?iso=1"), false);
+  assert.equal(toSearch(parseViewState("?iso=1")), "");
 });

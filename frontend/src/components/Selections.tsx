@@ -1,6 +1,5 @@
 import { AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import * as React from "react";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import FilterPanel from "./FilterPanel.tsx";
@@ -9,7 +8,8 @@ import type { NodeType } from "../api/types";
 import { useGraphData, graphStore, type SliceActions } from "../store/use-graph-store";
 import type { RendererGraph } from "../render";
 import { useOverviewStore, overviewStore } from "../store/use-overview-store";
-import { pickLandingMode } from "../lib/aggregate-view";
+import { normalizeRootIri, pickLandingMode } from "../lib/aggregate-view";
+import { ROOT_ENTITY_IRI } from "../config";
 import { initialViewState, updateSearchKeys } from "../view-state";
 
 interface SelectionsProps {
@@ -43,7 +43,8 @@ const Selections: React.FC<SelectionsProps> = ({
 }) => {
   // Card C3: initial view state is read from the opened URL (one-time
   // capture); every change below writes its keys back (replaceState).
-  const [isChecked, setIsChecked] = useState<boolean>(initialViewState.showIsolated);
+  const [rootInput, setRootInput] = useState<string>(initialViewState.root ?? ROOT_ENTITY_IRI);
+  const [rootError, setRootError] = useState<string | null>(null);
   // Legend group filters (client-side, current view only; the class filter
   // is server-side — card E4).
   const [filters, setFilters] = useState<Set<string>>(() => new Set(initialViewState.hiddenGroups));
@@ -69,7 +70,7 @@ const Selections: React.FC<SelectionsProps> = ({
       return;
     }
     if (landing === "root") {
-      loadRoot();
+      loadRoot(initialViewState.root ?? ROOT_ENTITY_IRI);
       return;
     }
     const controller = new AbortController();
@@ -108,13 +109,30 @@ const Selections: React.FC<SelectionsProps> = ({
   useEffect(() => {
     updateSearchKeys({ type: typeFilter });
   }, [typeFilter]);
-  useEffect(() => {
-    updateSearchKeys({ iso: isChecked ? "1" : null });
-  }, [isChecked]);
 
-  // "Add not connected nodes" (C2/C3 display option): when off, drop nodes
-  // without a connection in the current slice. The class filter itself is
-  // server-side (card E4) — nothing is hidden here any more.
+  // Re-run the root landing for the typed IRI (validated; no fetch if bad).
+  const submitRoot = () => {
+    const iri = normalizeRootIri(rootInput);
+    if (!iri) {
+      setRootError("Enter an absolute http(s) IRI, e.g. https://ror.org/0281dp749");
+      return;
+    }
+    setRootError(null);
+    setRootInput(iri);
+    setFilters(new Set<string>());
+    setTypeFilter(null);
+    overview.enterSlice();
+    updateSearchKeys({
+      root: iri === ROOT_ENTITY_IRI ? null : iri,
+      sel: null,
+      cursor: null,
+      ov: null,
+    });
+    loadRoot(iri);
+  };
+
+  // The class filter is server-side (card E4); only legend groups are
+  // hidden client-side here.
   useEffect(() => {
     if (data.nodes.length === 0) {
       setFilteredGraphData({ nodes: [], links: [] });
@@ -150,18 +168,7 @@ const Selections: React.FC<SelectionsProps> = ({
         return filteredNodeIds.has(link.source) && filteredNodeIds.has(link.target);
       });
 
-      let newGraphData: RendererGraph;
-      if (!isChecked) {
-        // Remove nodes that have no connections in the current view
-        const connectedNodeIds = new Set(
-          filteredLinks.flatMap((link) => [link.source, link.target])
-        );
-        const connectedNodes = data.nodes.filter((node) => connectedNodeIds.has(node.id));
-        newGraphData = { nodes: connectedNodes, links: filteredLinks };
-      } else {
-        // Show all nodes with all their links
-        newGraphData = { nodes: data.nodes, links: filteredLinks };
-      }
+      const newGraphData: RendererGraph = { nodes: data.nodes, links: filteredLinks };
 
       // The mounted renderer OWNS the objects it is handed and may mutate
       // them in place (CONTRACT.md §1.2), so pass fresh copies on every
@@ -187,7 +194,7 @@ const Selections: React.FC<SelectionsProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [isChecked, filters, data, setFilteredGraphData]);
+  }, [filters, data, setFilteredGraphData]);
 
   const page = graphStore.page;
   const inClusters = overview.isClusterView;
@@ -271,16 +278,39 @@ const Selections: React.FC<SelectionsProps> = ({
               Load more
             </Button>
           )}
-          {!inClusters && (
-            <label className="flex items-center gap-2">
-              <Checkbox
-                checked={isChecked}
-                onCheckedChange={(checked) => setIsChecked(checked === true)}
-              />
-              Add not connected nodes
-            </label>
-          )}
         </div>
+        <form
+          className="flex flex-wrap items-center gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            submitRoot();
+          }}
+        >
+          <label htmlFor="root-iri" className="text-sm font-medium">
+            Root entity
+          </label>
+          <input
+            id="root-iri"
+            type="text"
+            value={rootInput}
+            onChange={(e) => setRootInput(e.target.value)}
+            aria-invalid={rootError !== null}
+            aria-describedby={rootError ? "root-iri-error" : undefined}
+            placeholder={ROOT_ENTITY_IRI}
+            autoComplete="off"
+            spellCheck={false}
+            className="h-9 min-w-64 flex-1 rounded-md border border-neutral-300 bg-transparent px-3 text-sm outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 dark:border-neutral-700"
+          />
+          <Button type="submit" variant="outline" disabled={actions.loading}>
+            {actions.loading && <Loader2 aria-hidden className="animate-spin" />}
+            Load root
+          </Button>
+          {rootError && (
+            <span id="root-iri-error" role="alert" className="w-full text-sm text-red-600">
+              {rootError}
+            </span>
+          )}
+        </form>
         {!inClusters && (
           <div className="flex flex-wrap items-center gap-3">
             <span className="text-sm font-medium">Filter by class</span>

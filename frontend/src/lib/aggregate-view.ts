@@ -153,6 +153,18 @@ export function clustersToGraphData(clusters: AggregateNode[]): ClusterGraphData
 }
 
 /**
+ * Root-entity input validation: trimmed absolute http(s) IRI without
+ * whitespace. Returns the trimmed IRI, or null when invalid.
+ */
+export function normalizeRootIri(raw: string): string | null {
+  const v = raw.trim();
+  if (!/^https?:\/\/[^\s/]+\S*$/i.test(v)) return null;
+  return v;
+}
+
+export type LandingMode = "slice-restore" | "ov-restore" | "root";
+
+/**
  * Which mode the landing lands in for a given opened URL (card E3 S3):
  *
  * - "ov-restore": the URL carries `ov=<type>` (a shared expanded cluster) —
@@ -166,8 +178,6 @@ export function clustersToGraphData(clusters: AggregateNode[]): ClusterGraphData
  *   lands (/api/expand; owner directive). The aggregate overview is
  *   on-demand only, behind the "Show overview" button.
  */
-export type LandingMode = "slice-restore" | "ov-restore" | "root";
-
 export function pickLandingMode(view: {
   nextCursor: string | null;
   selectedId: string | null;
