@@ -11,7 +11,7 @@
 // refetch-all.
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
-import { ApiError, getSubgraph } from "../api/client";
+import { ApiError, getExpand, getSubgraph } from "../api/client";
 import type { NodeType, SubgraphResponse } from "../api/types";
 import type { RendererGraph } from "../render/renderer";
 import { updateSearchKeys } from "../view-state";
@@ -93,6 +93,38 @@ export async function loadToCursor(
 /** Keep the URL's `cursor` key in step with the store (C3 data-state sync). */
 function syncCursorToUrl(): void {
   updateSearchKeys({ cursor: graphStore.nextCursor });
+}
+
+/**
+ * Search → fly-to core (card E1): make `iri` visible and focus it.
+ *
+ * - In-slice: pure store mutation (select + focus) — zero network, so the
+ *   fly-to trigger (focusSequence bump) lands in the same tick.
+ * - Out-of-slice: fetch the entity's /api/expand/{iri} slice (center + 1 hop,
+ *   card B2) and merge it with ingestEntity() — WITHOUT cursor bookkeeping,
+ *   so the in-flight /api/subgraph continuation survives the jump.
+ *
+ * Returns the merge result (null when nothing was fetched). Throws when the
+ * expand slice does not contain the center (data vanished between search and
+ * jump, or a malformed slice) — callers surface the message. A caller-side
+ * abort surfaces as the original AbortError, like every other client call.
+ *
+ * Known TOCTOU (same class as the store's expand-on-click note): a concurrent
+ * replaceSlice() (reload) may clear the merged node before select/focus run;
+ * both are no-ops for unknown ids, so the jump is skipped, never wrong.
+ */
+export async function focusEntity(iri: string, signal?: AbortSignal): Promise<MergeResult | null> {
+  let merged: MergeResult | null = null;
+  if (!graphStore.hasNode(iri)) {
+    const slice = await getExpand(iri, { signal });
+    merged = graphStore.ingestEntity(slice);
+    if (!graphStore.hasNode(iri)) {
+      throw new Error(`Entity ${iri} was not present in its expand slice`);
+    }
+  }
+  graphStore.select(iri);
+  graphStore.focus(iri);
+  return merged;
 }
 
 export interface SliceActions {

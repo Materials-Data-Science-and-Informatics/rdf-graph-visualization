@@ -10,9 +10,11 @@
 // Entries today: render-*.test.ts (D1 headless stub reference, D2 sigma
 // adapter + FA2 engine/worker, D2 S3 label LOD, D2 S3 10k check) and
 // filter-e4.test.ts (E4 class filter: slice re-query with ?type=, cursor
-// chain carries the filter, legend/config palette consistency, URL keys).
-// The cosmos suite (cosmos-contract.test.ts) has its own runner
-// (run-cosmos-tests.mjs) and is excluded here.
+// chain carries the filter, legend/config palette consistency, URL keys) and
+// search-e1.test.ts (E1 autocomplete core: suggest state machine,
+// focusEntity store path, fly-to camera math). The cosmos suite
+// (cosmos-contract.test.ts) has its own runner (run-cosmos-tests.mjs) and is
+// excluded here.
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";

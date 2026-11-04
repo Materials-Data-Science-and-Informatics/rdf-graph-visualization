@@ -62,6 +62,7 @@ const TIMEOUTS = {
   config: 10_000,
   search: 10_000,
   entity: 15_000,
+  expand: 15_000,
   aggregate: 20_000,
   subgraph: 30_000,
 } as const;
@@ -176,6 +177,20 @@ export function searchEntities(query: string, options: FetchOptions = {}): Promi
 /** GET /api/entity/{iri} — node + properties for one entity. */
 export function getEntity(iri: string, options: FetchOptions = {}): Promise<EntityResponse> {
   return fetchJson<EntityResponse>(`/entity/${encodeURIComponent(iri)}`, TIMEOUTS.entity, options);
+}
+
+/**
+ * GET /api/expand/{iri} — one entity plus its 1-hop in/out neighbours
+ * (card B2; one QLever call). The response IS the frozen SubgraphResponse,
+ * so the store's slice merge path can ingest it — card E1 does that via
+ * GraphStore.ingestEntity() (no cursor bookkeeping).
+ */
+export function getExpand(iri: string, options: FetchOptions = {}): Promise<SubgraphResponse> {
+  return fetchJson<SubgraphResponse>(
+    `/expand/${encodeURIComponent(iri)}`,
+    TIMEOUTS.expand,
+    options
+  );
 }
 
 /** GET /api/config — palette/label/relation presets from the pinned data model. */
