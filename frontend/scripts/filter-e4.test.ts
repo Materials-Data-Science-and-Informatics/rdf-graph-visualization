@@ -15,6 +15,12 @@
 //      and resets the cursor chain, stale loads abort.
 //   4. view-state.ts — the URL `type` key parse/serialize contract
 //      (legacy `hide=` keys are ignored: tolerant by design).
+//   5. store/use-graph-store.ts hook level — useSliceActions' same-handler
+//      reset: the "All" chip / "Load slice" sequence `setTypeFilter(null);
+//      load(null, null)` must CLEAR the filter (no `type` param), not
+//      re-query the stale class from the ref (E4 review, round 1). Rendered
+//      headlessly with react-dom/server's renderToString (the owner
+//      directive bans browsers; this is a static React render, no DOM).
 //
 // Run: pnpm test (esbuild-bundled here, executed via node --test by
 // run-contract-tests.mjs).
@@ -22,7 +28,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { ConfigResponse, SubgraphResponse } from "../src/api/types";
+import * as React from "react";
+import { renderToString } from "react-dom/server";
+import type { ConfigResponse, NodeType, SubgraphResponse } from "../src/api/types";
 import { setApiBase, getSubgraph } from "../src/api/client";
 import {
   FALLBACK_COLOR,
@@ -37,6 +45,8 @@ import {
   graphStore,
   loadFirstPage,
   loadToCursor,
+  useSliceActions,
+  type SliceActions,
 } from "../src/store/use-graph-store";
 
 // ----------------------------------------------------------------- helpers
@@ -442,4 +452,61 @@ test("URL round-trip keeps the filter, camera and cursor together", () => {
     { type: reparsed.typeFilter, sel: reparsed.selectedId, cursor: reparsed.nextCursor },
     { type: "Dataset", sel: "http://x/d1", cursor: "zz" }
   );
+});
+
+// ------------------------------------- 5. hook level: same-handler reset (R1)
+
+test("hook: same-handler reset load(null, null) clears the filter, not the stale ref", async () => {
+  const stub = installFetchStub();
+  // Hold every first-page fetch (gated, never released): the stub records
+  // the request URL synchronously, so the assertions below run without any
+  // response — the async tail of the hook (setState after the fetch) never
+  // executes against this static render. Specific gates first: gates are
+  // matched by URL substring, and each abort below marks its gate done.
+  stub.gate("/subgraph?type=Dataset");
+  stub.gate("/subgraph?type=Person");
+  stub.gate("/subgraph");
+  try {
+    resetStore();
+    const captured: SliceActions[] = [];
+    const Probe = ({ tf }: { tf: NodeType | null }) => {
+      captured.push(useSliceActions(tf));
+      return null;
+    };
+    // The user has picked "Dataset": the hook is now rendered with
+    // typeFilter = "Dataset", so typeFilterRef.current === "Dataset" — the
+    // exact ref state at the moment a reset handler runs (the reset's
+    // setTypeFilter(null) only re-renders AFTER the handler returns).
+    renderToString(React.createElement(Probe, { tf: "Dataset" }));
+    const actions = captured[0];
+    if (!actions) throw new Error("probe failed: hook did not run during static render");
+    // 1) The "All" chip / "Load slice" handler, verbatim (Selections.tsx):
+    //    setTypeFilter(null); loadSlice(null, null). The explicit null must
+    //    CLEAR the filter — pre-fix, `type ?? ref` re-queried ?type=Dataset.
+    actions.load(null, null);
+    assert.equal(stub.calls.length, 1);
+    assert.ok(
+      !stub.calls[0].url.includes("type="),
+      `'All' reset must not re-query the stale class: ${stub.calls[0].url}`
+    );
+    assert.ok(!stub.calls[0].url.includes("cursor="), "the reset is a fresh first page");
+    // 2) Omitted argument (the initial-load path, Selections.tsx's mount
+    //    effect): keeps the current filter from the ref.
+    actions.load();
+    assert.equal(stub.calls.length, 2);
+    assert.ok(
+      stub.calls[1].url.includes("type=Dataset"),
+      `omitted type keeps the current filter: ${stub.calls[1].url}`
+    );
+    // 3) Control: an explicit class selection still overrides (the normal
+    //    same-handler filter change).
+    actions.load(null, "Person");
+    assert.equal(stub.calls.length, 3);
+    assert.ok(
+      stub.calls[2].url.includes("type=Person"),
+      `explicit class wins over the ref: ${stub.calls[2].url}`
+    );
+  } finally {
+    stub.restore();
+  }
 });

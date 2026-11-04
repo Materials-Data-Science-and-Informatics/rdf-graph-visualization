@@ -107,7 +107,10 @@ export interface SliceActions {
    * keep expanding until the shared view's data state is reached; without
    * one, a plain fresh first page. Carries the class filter: an explicit
    * `type` argument (a filter change and its reload happen in one handler,
-   * before the state update has re-rendered) wins, otherwise the current
+   * before the state update has re-rendered) wins, an explicit `null`
+   * clears the filter (the "All" chip / "Load slice" reset — the ref still
+   * holds the old class during the same handler, so `null` must mean
+   * "clear", not "keep current"), and an omitted argument uses the current
    * filter. A fresh load aborts an in-flight expand (its cursor chain is
    * invalidated by the replace).
    */
@@ -135,8 +138,13 @@ export function useSliceActions(typeFilter: NodeType | null = null): SliceAction
   const expandAbortRef = useRef<AbortController | null>(null);
   const expandInFlightRef = useRef(false);
 
-  const load = useCallback((targetCursor: string | null = null, type: NodeType | null = null) => {
-    const effectiveType = type ?? typeFilterRef.current;
+  const load = useCallback((targetCursor: string | null = null, type?: NodeType | null) => {
+    // `undefined` (omitted) → the current filter; an explicit `null` →
+    // "clear the filter". The two must stay distinguishable: the reset
+    // handler calls load(null, null) while typeFilterRef.current still
+    // holds the previous class (the setState has not re-rendered yet), so
+    // `type ?? ref` would re-query the stale class (E4 review, round 1).
+    const effectiveType = type === undefined ? typeFilterRef.current : type;
     // A fresh replace invalidates the current cursor chain: an in-flight
     // expand would merge a page from the OLD slice into the new store.
     if (expandInFlightRef.current) {

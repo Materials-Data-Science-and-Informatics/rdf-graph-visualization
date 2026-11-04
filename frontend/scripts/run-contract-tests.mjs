@@ -61,6 +61,12 @@ try {
       format: "esm",
       target: "node20",
       logLevel: "warning",
+      // Bundled CJS deps (react-dom/server in filter-e4.test.ts) keep a
+      // `__require` shim for Node builtins; in ESM output the shim only
+      // works when a real `require` is in scope — provide one.
+      banner: {
+        js: "import { createRequire as __cjsRequire } from 'node:module'; const require = __cjsRequire(import.meta.url);",
+      },
       outfile: bundles[i],
     });
   }
