@@ -8,6 +8,10 @@
 //     attributes are last-write-wins per IRI; edges are de-duplicated per
 //     (source, target) pair, and edges referencing unknown nodes are dropped
 //     defensively (the backend only emits intra-slice edges).
+//   - ingestEntity(slice): merge a /api/expand/{iri} slice (card E1 search
+//     jump) with the same node/edge semantics but WITHOUT cursor
+//     bookkeeping — an expand page must not clobber the main slice's
+//     nextCursor.
 //
 // "Expand" on the frozen contract means cursor continuation: the most recent
 // slice's page.cursor drives the next fetch, so expand-on-click grows the
@@ -152,18 +156,47 @@ export class GraphStore {
   /**
    * Merge a typed slice into the store. Idempotent: re-ingesting an already
    * merged page changes nothing. `sourceCursor` is the cursor used to fetch
-   * the slice ("" for the first page).
+   * the slice ("" for the first page). The slice's page becomes the
+   * continuation state (nextCursor / URL `cursor` key).
    */
   ingest(slice: SubgraphResponse, sourceCursor: string = FIRST_PAGE_CURSOR): MergeResult {
-    const result: MergeResult = {
+    const merged = this.mergeSlice(slice);
+    this.lastPage = slice.page;
+    this.consumedCursors.add(sourceCursor);
+    if (merged.changed) this.emit();
+    return { ...merged, nodeCount: this.graph.order, edgeCount: this.graph.size };
+  }
+
+  /**
+   * Merge a slice WITHOUT touching the /api/subgraph cursor bookkeeping
+   * (card E1). Used for /api/expand/{iri} slices, which bring an out-of-slice
+   * entity (search hit) into the store as center + 1 hop: their page carries
+   * no cursor, and recording it would clobber the in-flight main slice —
+   * dropping nextCursor, the "Load more" chain and the URL `cursor` key.
+   * Node/edge semantics (last-write-wins, dedup, dangling drop) are the same
+   * as ingest(); the merge is idempotent as well.
+   */
+  ingestEntity(slice: SubgraphResponse): MergeResult {
+    const merged = this.mergeSlice(slice);
+    if (merged.changed) this.emit();
+    return { ...merged, nodeCount: this.graph.order, edgeCount: this.graph.size };
+  }
+
+  /**
+   * Node/edge merge shared by ingest() and ingestEntity(). Pure graph state:
+   * last-write-wins nodes, (source,target)-deduped edges, dangling edges
+   * dropped defensively. Returns per-merge counts plus `changed`.
+   */
+  private mergeSlice(slice: SubgraphResponse): MergeResult & { changed: boolean } {
+    const result: MergeResult & { changed: boolean } = {
       addedNodes: 0,
       updatedNodes: 0,
       addedEdges: 0,
       droppedEdges: 0,
       nodeCount: 0,
       edgeCount: 0,
+      changed: false,
     };
-    let changed = false;
 
     for (const node of slice.nodes) {
       if (this.graph.hasNode(node.id)) {
@@ -174,7 +207,7 @@ export class GraphStore {
         this.graph.addNode(node.id, { node });
         result.addedNodes += 1;
       }
-      changed = true;
+      result.changed = true;
     }
 
     for (const edge of slice.edges) {
@@ -187,14 +220,9 @@ export class GraphStore {
       if (this.graph.hasEdge(edge.source, edge.target)) continue;
       this.graph.addEdge(edge.source, edge.target, { edge });
       result.addedEdges += 1;
-      changed = true;
+      result.changed = true;
     }
 
-    this.lastPage = slice.page;
-    this.consumedCursors.add(sourceCursor);
-    if (changed) this.emit();
-    result.nodeCount = this.graph.order;
-    result.edgeCount = this.graph.size;
     return result;
   }
 

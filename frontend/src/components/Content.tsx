@@ -85,6 +85,8 @@ const Content = () => {
           width={size.width}
           height={size.height}
           onNodeSelect={handleNodeSelect}
+          // Card E1: monotonic focus token — a change triggers the fly-to.
+          focusSeq={graphStore.focusSequence}
         />
       </div>
     </div>

@@ -1,4 +1,5 @@
 import { ExternalLink } from "lucide-react";
+import SearchBox from "./SearchBox.tsx";
 
 interface NavbarProps {
   onInfoClick: () => void;
@@ -20,6 +21,8 @@ const Navbar = ({ onInfoClick, onConfigClick }: NavbarProps) => {
           onClick={() => window.location.reload()}
         />
         <h1 className="text-lg font-bold text-white/90 md:text-xl">RDF Graph Visualization</h1>
+        {/* Card E1: autocomplete search → fly-to (GET /api/search, B5). */}
+        <SearchBox />
         <nav className="flex w-full flex-col gap-4 items-stretch sm:flex-row sm:items-center lg:w-auto">
           <a
             href="#info"
