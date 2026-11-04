@@ -4,6 +4,9 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import useResizeObserver from "@react-hook/resize-observer";
 import { NodeObject, GraphData } from "react-force-graph-3d";
 import { graphStore, useSliceActions, useGraphStoreVersion } from "../store/use-graph-store";
+import { useOverviewStore } from "../store/use-overview-store";
+import { clusterType } from "../lib/aggregate-view";
+import type { NodeType } from "../api/types";
 import { initialViewState, updateSearchKeys } from "../view-state";
 
 // Debounce delay for resize observer to prevent excessive re-renders during window resize
@@ -39,17 +42,27 @@ const Content = () => {
 
   // Expand-on-click (card C2 DoD): clicking a node selects + focuses it and
   // grows the store with the NEXT cursor page — no refetch-all.
+  // Card E3: clicking a CLUSTER node (id "cluster:<type>") instead expands
+  // that class — the typed /api/subgraph slice replaces the graph store.
+  const overview = useOverviewStore();
   const handleNodeSelect = useCallback(
     (node: NodeObject) => {
       const id = typeof node.id === "string" ? node.id : String(node.id ?? "");
       if (!id) return;
+      const type = clusterType(id);
+      if (type !== null) {
+        // Cluster ids are only minted from validated /api/aggregate rows,
+        // whose types are pinned to the NodeType union (card B4 contract).
+        void overview.expand(type as NodeType);
+        return;
+      }
       graphStore.select(id);
       graphStore.focus(id);
       if (graphStore.canExpand) {
         actions.expand();
       }
     },
-    [actions]
+    [actions, overview]
   );
 
   // Card C3: keep the URL's `sel` key in step with the store selection.

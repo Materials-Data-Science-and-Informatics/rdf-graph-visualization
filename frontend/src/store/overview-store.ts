@@ -21,7 +21,11 @@
 import type { AggregateNode, NodeType, AggregateResponse, SubgraphResponse } from "../api/types";
 import { getAggregate, getSubgraph } from "../api/client";
 import type { GraphStore, MergeResult } from "./graph-store";
-import { validateAggregate } from "../lib/aggregate-view";
+import {
+  clustersToGraphData,
+  validateAggregate,
+  type ClusterGraphData,
+} from "../lib/aggregate-view";
 
 /** Injectable fetch seam (defaults to the typed API client). */
 export interface OverviewClient {
@@ -52,8 +56,12 @@ export class OverviewStore {
   private statusValue: OverviewStatus = "idle";
   private errorValue: string | null = null;
   private clustersValue: AggregateNode[] = [];
+  /** Renderer data for the cluster ring; stable identity until the next
+   *  load, so the React filter pipeline can use it as an effect dep. */
+  private clusterDataValue: ClusterGraphData | null = null;
   private viewValue: OverviewView = "clusters";
   private activeTypeValue: NodeType | null = null;
+  private lastExpandValue: NodeType | null = null;
   private expandingValue = false;
   private expandErrorValue: string | null = null;
   /** Load sequence token; a superseded load never writes state. */
@@ -105,6 +113,20 @@ export class OverviewStore {
     return this.activeTypeValue;
   }
 
+  /** The type of the last expand() attempt (retry target after a failure). */
+  get lastExpandType(): NodeType | null {
+    return this.lastExpandValue;
+  }
+
+  /**
+   * Renderer data for the cluster ring, or null when the ring is not on
+   * screen. The reference is stable until the next load, so consumers can
+   * feed it straight into memoized render pipelines.
+   */
+  get clusterData(): ClusterGraphData | null {
+    return this.isClusterView ? this.clusterDataValue : null;
+  }
+
   /** A typed-slice fetch for expand-on-click is in flight. */
   get expanding(): boolean {
     return this.expandingValue;
@@ -129,6 +151,7 @@ export class OverviewStore {
   async load(signal?: AbortSignal): Promise<void> {
     const seq = ++this.loadSeq;
     this.clustersValue = [];
+    this.clusterDataValue = null;
     this.errorValue = null;
     this.statusValue = "loading";
     this.emit();
@@ -136,6 +159,7 @@ export class OverviewStore {
       const response = await this.client.aggregate({ signal });
       if (seq !== this.loadSeq) return; // superseded by a newer load
       this.clustersValue = validateAggregate(response);
+      this.clusterDataValue = clustersToGraphData(this.clustersValue);
       this.statusValue = "ready";
       this.emit();
     } catch (err) {
@@ -160,6 +184,7 @@ export class OverviewStore {
    */
   async expand(type: NodeType, signal?: AbortSignal): Promise<MergeResult | null> {
     if (this.expandingValue) return null;
+    this.lastExpandValue = type;
     this.expandingValue = true;
     this.expandErrorValue = null;
     this.emit();
@@ -202,10 +227,12 @@ export class OverviewStore {
   /** Tests only: back to the initial state. */
   reset(): void {
     this.clustersValue = [];
+    this.clusterDataValue = null;
     this.statusValue = "idle";
     this.errorValue = null;
     this.viewValue = "clusters";
     this.activeTypeValue = null;
+    this.lastExpandValue = null;
     this.expandingValue = false;
     this.expandErrorValue = null;
     this.emit();

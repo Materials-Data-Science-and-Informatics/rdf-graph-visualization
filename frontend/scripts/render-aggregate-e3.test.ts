@@ -372,6 +372,39 @@ describe("OverviewStore.expand (expand-on-click)", () => {
   });
 });
 
+describe("OverviewStore cluster data (S2 wiring contract)", () => {
+  it("exposes a stable clusterData reference while the ring is on screen", async () => {
+    const fake = makeFakeClient();
+    const store = new OverviewStore(new GraphStore(), fake.client);
+    assert.equal(store.clusterData, null);
+    await store.load();
+    const first = store.clusterData;
+    assert.ok(first !== null);
+    assert.equal(store.clusterData, first); // stable across reads
+    assert.equal(first!.nodes.length, LIVE_AGGREGATE.length);
+    assert.equal(first!.links.length, LIVE_AGGREGATE.length); // ring
+    // leaving the ring hides the data without losing the cached copy
+    store.enterSlice();
+    assert.equal(store.clusterData, null);
+    // back to the ring: same cached reference (no rebuild)
+    store.collapse();
+    assert.equal(store.clusterData, first);
+  });
+
+  it("lastExpandType records the attempt so a failure is retryable", async () => {
+    const fake = makeFakeClient();
+    fake.client.subgraph = async () => {
+      throw new Error("subgraph exploded");
+    };
+    const store = new OverviewStore(new GraphStore(), fake.client);
+    await store.load();
+    assert.equal(store.lastExpandType, null);
+    await store.expand("Event");
+    assert.equal(store.lastExpandType, "Event");
+    assert.match(store.expandError ?? "", /subgraph exploded/);
+  });
+});
+
 describe("OverviewStore view transitions", () => {
   it("collapse returns to the cluster layer and clears the active type", async () => {
     const fake = makeFakeClient();

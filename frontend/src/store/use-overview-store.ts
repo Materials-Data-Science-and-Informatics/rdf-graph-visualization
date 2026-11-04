@@ -7,6 +7,7 @@
 
 import { useMemo, useSyncExternalStore } from "react";
 import type { AggregateNode, NodeType } from "../api/types";
+import type { ClusterGraphData } from "../lib/aggregate-view";
 import { graphStore } from "./use-graph-store";
 import type { MergeResult } from "./graph-store";
 import { OverviewStore, type OverviewStatus, type OverviewView } from "./overview-store";
@@ -15,13 +16,19 @@ import { OverviewStore, type OverviewStatus, type OverviewView } from "./overvie
 export const overviewStore = new OverviewStore(graphStore);
 
 export interface OverviewActions {
+  /** Store change token (stable between bumps; memoization key). */
+  version: number;
   status: OverviewStatus;
   /** /api/aggregate fetch failure (null on success/abort). */
   error: string | null;
   /** Cluster list (count-descending). */
   clusters: AggregateNode[];
+  /** Cluster ring renderer data, stable ref, null when not on screen. */
+  clusterData: ClusterGraphData | null;
   view: OverviewView;
   activeType: NodeType | null;
+  /** Type of the last expand() attempt (retry target after a failure). */
+  lastExpandType: NodeType | null;
   expanding: boolean;
   /** Typed-slice fetch for expand-on-click failed (null otherwise). */
   expandError: string | null;
@@ -33,13 +40,16 @@ export interface OverviewActions {
 }
 
 /** The store's current state + actions as a plain object (fresh per read). */
-function readOverviewActions(): OverviewActions {
+function readOverviewActions(version: number): OverviewActions {
   return {
+    version,
     status: overviewStore.status,
     error: overviewStore.error,
     clusters: overviewStore.clusters,
+    clusterData: overviewStore.clusterData,
     view: overviewStore.view,
     activeType: overviewStore.activeType,
+    lastExpandType: overviewStore.lastExpandType,
     expanding: overviewStore.expanding,
     expandError: overviewStore.expandError,
     isClusterView: overviewStore.isClusterView,
@@ -57,5 +67,5 @@ export function useOverviewStore(): OverviewActions {
     overviewStore.getSnapshot
   );
   // `version` is the store's change token; the memo recomputes on every bump.
-  return useMemo(readOverviewActions, [version]);
+  return useMemo(() => readOverviewActions(version), [version]);
 }

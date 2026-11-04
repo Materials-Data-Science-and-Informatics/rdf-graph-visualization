@@ -9,6 +9,7 @@ import ForceGraph3D, {
 import * as THREE from "three";
 import Legend from "./Legend.tsx";
 import { getGroupColor } from "../config";
+import { CLUSTER_ID_PREFIX, clusterRadius } from "../lib/aggregate-view";
 import FullScreenButton from "./FullScreenButton.tsx";
 import ResetViewButton from "./ResetViewButton.tsx";
 import ThemeSwitch from "./ThemeSwitch.tsx";
@@ -46,6 +47,8 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height, onNodeSelect })
   const fgRef = useRef<ForceGraphMethods | undefined>(undefined);
   // Cache materials by color to avoid recreating same materials on each render
   const materialCacheRef = useRef<Map<string, THREE.Material>>(new Map());
+  // Card E3: cluster spheres are per-radius (log-scaled by count) — cache them too
+  const clusterGeometryCacheRef = useRef<Map<number, THREE.SphereGeometry>>(new Map());
   // Label color changes based on theme: black on white background, white on dark
   const labelColor = switchOn ? "#000000" : "#ffffff";
 
@@ -155,7 +158,23 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height, onNodeSelect })
 
     return (node: NodeObject) => {
       const group = (node as NodeObject<{ group?: string }>).group ?? "";
-      const geometry = group === "" ? boxGeometry : sphereGeometry;
+      let geometry: THREE.BufferGeometry;
+      // Card E3: cluster nodes ("cluster:<type>") render as spheres sized by
+      // their /api/aggregate count (log scale); entity nodes keep 8u boxes /
+      // 5u spheres.
+      if (typeof node.id === "string" && node.id.startsWith(CLUSTER_ID_PREFIX)) {
+        const count = (node as NodeObject<{ count?: number }>).count ?? 0;
+        const radius = clusterRadius(count);
+        geometry =
+          clusterGeometryCacheRef.current.get(radius) ??
+          (() => {
+            const g = new THREE.SphereGeometry(radius);
+            clusterGeometryCacheRef.current.set(radius, g);
+            return g;
+          })();
+      } else {
+        geometry = group === "" ? boxGeometry : sphereGeometry;
+      }
       const color = getGroupColor(group);
 
       // Check cache for existing material of this color
