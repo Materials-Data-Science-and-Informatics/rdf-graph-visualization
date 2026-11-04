@@ -1,4 +1,3 @@
-import { Box } from "@chakra-ui/react";
 import Graph from "./Graph";
 import Selections from "./Selections";
 import { useState, useRef, useCallback, useEffect } from "react";
@@ -75,15 +74,11 @@ const Content = () => {
   }, [actions]);
 
   return (
-    <Box width="100%" flex="1" minH={0} display="flex" flexDirection="column" gap={4}>
+    <div className="flex w-full flex-1 min-h-0 flex-col gap-4">
       <Selections setFilteredGraphData={setFilteredGraphData} actions={actions} />
-      <Box
+      <div
         ref={boxRef}
-        width="100%"
-        flex="1"
-        minH={{ base: "360px", md: "480px" }}
-        overflow="hidden"
-        position="relative"
+        className="relative flex-1 w-full min-h-[360px] overflow-hidden md:min-h-[480px]"
       >
         <Graph
           graphData={filteredGraphData}
@@ -91,8 +86,8 @@ const Content = () => {
           height={size.height}
           onNodeSelect={handleNodeSelect}
         />
-      </Box>
-    </Box>
+      </div>
+    </div>
   );
 };
 

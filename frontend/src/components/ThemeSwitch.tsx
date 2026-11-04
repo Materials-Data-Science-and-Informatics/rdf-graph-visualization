@@ -1,5 +1,4 @@
-import { Switch, Flex } from "@chakra-ui/react";
-import * as React from "react";
+import { Switch } from "@/components/ui/switch";
 
 type ThemeSwitchProps = {
   switchOn: boolean;
@@ -7,17 +6,14 @@ type ThemeSwitchProps = {
 };
 
 const ThemeSwitch = ({ switchOn, setSwitchOn }: ThemeSwitchProps) => {
-  const handleSwitchChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (event.target.checked) {
-      setSwitchOn(true);
-    } else {
-      setSwitchOn(false);
-    }
-  };
   return (
-    <Flex position="absolute" left="10px" top="110px" padding="10px" flexDirection="column">
-      <Switch isChecked={switchOn} onChange={handleSwitchChange} size="lg" />
-    </Flex>
+    <div className="absolute left-[10px] top-[110px] p-[10px]">
+      <Switch
+        checked={switchOn}
+        onCheckedChange={(checked) => setSwitchOn(checked)}
+        aria-label="Toggle light theme"
+      />
+    </div>
   );
 };
 

@@ -1,4 +1,4 @@
-import { Flex, IconButton } from "@chakra-ui/react";
+import { Button } from "@/components/ui/button";
 import * as React from "react";
 import { GrPowerReset } from "react-icons/gr";
 
@@ -8,9 +8,11 @@ interface ResetViewButtonProps {
 
 const ResetViewButton: React.FC<ResetViewButtonProps> = ({ resetView }) => {
   return (
-    <Flex position="absolute" top="60px" left="10px" padding="10px" flexDirection="column">
-      <IconButton aria-label="Toggle full screen" icon={<GrPowerReset />} onClick={resetView} />
-    </Flex>
+    <div className="absolute top-[60px] left-[10px] p-[10px]">
+      <Button variant="outline" size="icon" aria-label="Reset view" onClick={resetView}>
+        <GrPowerReset />
+      </Button>
+    </div>
   );
 };
 

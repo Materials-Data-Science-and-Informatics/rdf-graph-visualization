@@ -1,4 +1,3 @@
-import { Flex, Box, Text } from "@chakra-ui/react";
 import * as React from "react";
 import { FALLBACK_COLOR, getPaletteEntries } from "../config";
 
@@ -9,32 +8,21 @@ import { FALLBACK_COLOR, getPaletteEntries } from "../config";
  * config (e.g. "Unknown").
  */
 const Legend: React.FC = () => {
+  const row = "mb-[5px] flex items-center";
+  const swatch = "mr-2 size-3";
   return (
-    <Flex
-      position="absolute"
-      top="10px"
-      right="10px"
-      backgroundColor="white"
-      padding="10px"
-      borderRadius="8px"
-      boxShadow="md"
-      flexDirection="column"
-    >
+    <div className="absolute top-[10px] right-[10px] rounded-[8px] bg-card p-[10px] text-card-foreground shadow-md">
       {getPaletteEntries().map(({ group, color }) => (
-        <Flex key={group} alignItems="center" marginBottom="5px" flexDirection="row">
-          <Box width="12px" height="12px" backgroundColor={color} marginRight="8px" />
-          <Text fontSize="sm" textTransform="capitalize">
-            {group}
-          </Text>
-        </Flex>
+        <div key={group} className={row}>
+          <span className={swatch} style={{ backgroundColor: color }} />
+          <span className="text-sm capitalize">{group}</span>
+        </div>
       ))}
-      <Flex alignItems="center" marginBottom="5px" flexDirection="row">
-        <Box width="12px" height="12px" backgroundColor={FALLBACK_COLOR} marginRight="8px" />
-        <Text fontSize="sm" textTransform="capitalize">
-          Default
-        </Text>
-      </Flex>
-    </Flex>
+      <div className={row}>
+        <span className={swatch} style={{ backgroundColor: FALLBACK_COLOR }} />
+        <span className="text-sm capitalize">Default</span>
+      </div>
+    </div>
   );
 };
 

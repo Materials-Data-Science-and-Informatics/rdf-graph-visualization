@@ -1,7 +1,15 @@
-# pnpm v10: allow only the build scripts we need (pnpm blocks postinstall by default).
-onlyBuiltDependencies:
-  - husky
-  - "@lmdb/lmdb-linux-x64"
-  - "@lmdb/lmdb-win32-x64"
-  - "@rollup/rollup-linux-x64-gnu"
-  - "@rollup/rollup-win32-x64-msvc"
+# pnpm v10+ config (pnpm reads these from pnpm-workspace.yaml; the `pnpm` key in
+# package.json is ignored by pnpm v10+, so the `three` override now lives here).
+overrides:
+  three: 0.187.0
+
+# pnpm v10+ blocks dependency build/postinstall scripts by default.
+# Explicitly allow the ones we need: esbuild + husky tooling, and the
+# platform-native binaries (lmdb, rollup) that ship prebuilt executables.
+allowBuilds:
+  esbuild: true
+  husky: true
+  "@lmdb/lmdb-linux-x64": true
+  "@lmdb/lmdb-win32-x64": true
+  "@rollup/rollup-linux-x64-gnu": true
+  "@rollup/rollup-win32-x64-msvc": true
