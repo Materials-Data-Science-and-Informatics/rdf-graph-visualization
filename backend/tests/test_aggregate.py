@@ -233,3 +233,9 @@ def test_group_of_maps_exact_known_classes_only():
     assert (
         aggregate._group_of("https://schema.org/pErson") == "Unknown"
     )  # exact match only
+
+
+def test_group_of_maps_pinned_subtypes():
+    assert aggregate._group_of("https://schema.org/FundingAgency") == "Institution"
+    assert aggregate._group_of("https://schema.org/ScholarlyArticle") == "Document"
+    assert aggregate._group_of("https://schema.org/SoftwareApplication") == "Software"

@@ -4,8 +4,8 @@
 
 One unbounded QLever call (``templates.aggregate_query``) counts the
 instances of *every* ``rdf:type`` in the dataset. The endpoint groups the
-rows by the pinned data model's classes: an exact ``schema.org/<group>``
-match maps to that class, and every other type IRI is folded into a single
+rows by the pinned data model's classes: a ``schema.org`` class or subtype
+of the pinned model (``presets.type_iri_groups``) maps to that class, and every other type IRI is folded into a single
 ``Unknown`` bucket. The response is therefore small and bounded (<= 9
 rows) regardless of how many type IRIs the dataset carries — counts, not
 rows, are what the legend/cluster landing renders.
@@ -29,20 +29,14 @@ from app.qlever import Binding
 
 router = APIRouter(prefix="/api")
 
-_SCHEMA_ORG = "https://schema.org/"
-
-#: Pinned data-model classes (no ``Unknown``), once per process.
-_KNOWN_GROUPS = frozenset(presets.known_groups())
+#: schema.org type IRI -> contract class (incl. subtypes), once per process.
+_GROUP_BY_TYPE_IRI = presets.type_iri_groups()
 
 
 def _group_of(type_iri: str) -> contract.NodeType:
-    """Contract class for a type IRI: exact known ``schema.org`` class, else
-    the ``Unknown`` fallback."""
-    if type_iri.startswith(_SCHEMA_ORG):
-        local = type_iri[len(_SCHEMA_ORG) :]
-        if local in _KNOWN_GROUPS:
-            return local  # type: ignore[return-value]
-    return "Unknown"
+    """Contract class for a type IRI (a pinned class or one of its schema.org
+    subtypes), else the ``Unknown`` fallback."""
+    return _GROUP_BY_TYPE_IRI.get(type_iri, "Unknown")
 
 
 def _fold(rows: list[dict[str, Binding]]) -> contract.AggregateResponse:

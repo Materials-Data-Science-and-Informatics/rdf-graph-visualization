@@ -100,6 +100,28 @@ def known_groups() -> tuple[contract.NodeType, ...]:
     )
 
 
+def type_iri_groups() -> dict[str, contract.NodeType]:
+    """schema.org type IRI -> contract group, from the pinned TypeExtension sets.
+
+    Each contract group's wrapper model contributes its own TypeExtension set
+    plus BASE_TYPE (e.g. InstitutionModel -> Organization, FundingAgency,
+    GovernmentOrganization, ...; DocumentModel -> ScholarlyArticle, Book, ...)
+    — never the MRO-wide union, which would drag in ``Thing``. The group's own
+    name is always mapped too. Shared by /api/expand and /api/aggregate.
+    """
+    mapping: dict[str, contract.NodeType] = {}
+    for group in known_groups():
+        model = WRAPPER_BY_NODE_TYPE[group].hkg_model
+        names = (
+            TypeExtension.get_for_model(model)
+            | set(getattr(model, "BASE_TYPE", set()))
+            | {group}
+        )
+        for name in names:
+            mapping.setdefault(f"{SCHEMA_ORG}{name}", group)
+    return mapping
+
+
 def _contains_linked(tp: object) -> bool:
     """True if ``tp`` (or any union/list member) is an hkg entity or URL type."""
     origin = typing.get_origin(tp)

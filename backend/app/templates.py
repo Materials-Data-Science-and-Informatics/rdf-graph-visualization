@@ -246,8 +246,11 @@ def expand_query(
     """One entity plus its in/out 1-hop neighbours — one call (B2).
 
     Center row first (``?dir = ""``), then ``in``/``out`` neighbour rows.
-    Each branch aggregates (``GROUP BY`` + ``MIN``) so an entity with several
-    types/labels yields exactly one row, and ``ORDER BY ?dir ?node ?pred``
+    Each branch aggregates (``GROUP BY``) so an entity with several types/labels
+    yields exactly one row: ``?nodeType`` is a space-separated
+    ``GROUP_CONCAT`` of all types (the endpoint picks the contract group), and
+    ``?label`` is ``COALESCE(MIN(?l0), MIN(?l1), …)`` over one OPTIONAL per
+    label predicate (priority order), and ``ORDER BY ?dir ?node ?pred``
     keeps the row stream deterministic under ``LIMIT`` (truncation is stable).
     Edge rows carry ``?pred`` so the endpoint can build contract Edges; the
     center row carries ``?pred = ""``.
@@ -262,7 +265,7 @@ def expand_query(
     - ``FILTER(?pred IN ?p)`` with a *variable* list is rejected — the
       relation set is a ``VALUES ?pred`` inside each branch's WHERE instead.
     - an AS projection may not shadow a body variable — aggregations use
-      fresh ``?nt``/``?lblval`` variables.
+      fresh ``?nt``/``?l<i>`` variables.
 
     The caller owns the limit policy: it clamps the page size to the
     configured max and passes ``page_size + 1`` so the endpoint can detect
@@ -278,40 +281,52 @@ def expand_query(
     offset = max(0, offset)
     center = iri_ref(iri)
     relations = iri_list(relation_iris)
-    labels = iri_list(label_iris)
+    # One OPTIONAL per label predicate (priority order) + COALESCE of the MINs.
+    # An outer ``VALUES ?lbl`` + ``?node ?lbl ?v`` returns unbound labels and
+    # is slow on QLever (verified live); per-predicate OPTIONALs are fast.
+    label_vars = [f"?l{i}" for i in range(len(label_iris))]
+    label_opts = "\n".join(
+        f"      OPTIONAL {{ ?node {iri_ref(iri)} {var} }}"
+        for iri, var in zip(label_iris, label_vars)
+    )
+    label_agg = (
+        f"COALESCE({', '.join(f'MIN({v})' for v in label_vars)})"
+        if label_vars
+        else '""'
+    )
     return f"""SELECT ?kind ?dir ?node ?nodeType ?label ?pred WHERE {{
   {{
     SELECT ?node (STR("node") AS ?kind) (STR("") AS ?dir)
-           (MIN(?nt) AS ?nodeType) (MIN(?lblval) AS ?label) (STR("") AS ?pred)
+           (GROUP_CONCAT(DISTINCT STR(?nt); separator=" ") AS ?nodeType)
+           ({label_agg} AS ?label) (STR("") AS ?pred)
     WHERE {{
       VALUES ?node {{ {center} }}
-      VALUES ?lbl {{ {labels} }}
       OPTIONAL {{ ?node a ?nt }}
-      OPTIONAL {{ ?node ?lbl ?lblval }}
+{label_opts}
     }}
     GROUP BY ?node
   }}
   UNION {{
     SELECT ?node (STR("out") AS ?dir) (STR("edge") AS ?kind)
-           (MIN(?nt) AS ?nodeType) (MIN(?lblval) AS ?label) ?pred
+           (GROUP_CONCAT(DISTINCT STR(?nt); separator=" ") AS ?nodeType)
+           ({label_agg} AS ?label) ?pred
     WHERE {{
       {center} ?pred ?node .
       VALUES ?pred {{ {relations} }}
-      VALUES ?lbl {{ {labels} }}
       OPTIONAL {{ ?node a ?nt }}
-      OPTIONAL {{ ?node ?lbl ?lblval }}
+{label_opts}
     }}
     GROUP BY ?node ?pred
   }}
   UNION {{
     SELECT ?node (STR("in") AS ?dir) (STR("edge") AS ?kind)
-           (MIN(?nt) AS ?nodeType) (MIN(?lblval) AS ?label) ?pred
+           (GROUP_CONCAT(DISTINCT STR(?nt); separator=" ") AS ?nodeType)
+           ({label_agg} AS ?label) ?pred
     WHERE {{
       ?node ?pred {center} .
       VALUES ?pred {{ {relations} }}
-      VALUES ?lbl {{ {labels} }}
       OPTIONAL {{ ?node a ?nt }}
-      OPTIONAL {{ ?node ?lbl ?lblval }}
+{label_opts}
     }}
     GROUP BY ?node ?pred
   }}

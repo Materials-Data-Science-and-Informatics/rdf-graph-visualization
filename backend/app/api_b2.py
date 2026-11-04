@@ -44,12 +44,9 @@ router = APIRouter()
 RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 SCHEMA_ORG = "https://schema.org/"
 
-#: Exact-IRI -> contract group for the pinned data-model classes (same
-#: convention as scripts/generate-qllever-fixtures.py); any other type IRI
-#: renders as "Unknown".
-_KNOWN_TYPE_IRIS: dict[str, contract.NodeType] = {
-    f"{SCHEMA_ORG}{group}": group for group in presets.known_groups()
-}
+#: schema.org type IRI (class or subtype) -> contract group, from the pinned
+#: data model; any other type IRI renders as "Unknown".
+_KNOWN_TYPE_IRIS: dict[str, contract.NodeType] = presets.type_iri_groups()
 
 #: Contract declaration order (DataCatalog..Person) — used to pick the
 #: deterministic primary type of a multiply-typed entity.
@@ -57,9 +54,19 @@ _CONTRACT_ORDER: tuple[contract.NodeType, ...] = get_args(contract.NodeType)
 
 
 def _type_of(type_iri: str | None) -> contract.NodeType:
-    """Contract NodeType for a type IRI (exact match, else Unknown)."""
+    """Contract NodeType for one type IRI (known class/subtype, else Unknown)."""
     if type_iri and type_iri in _KNOWN_TYPE_IRIS:
         return _KNOWN_TYPE_IRIS[type_iri]
+    return "Unknown"
+
+
+def _group_of_types(type_iris: str | None) -> contract.NodeType:
+    """Primary contract group of a space-separated type-IRI list (the
+    ``GROUP_CONCAT`` cell): first mapped group in contract order, else Unknown."""
+    found = {_type_of(iri) for iri in (type_iris or "").split()}
+    for group in _CONTRACT_ORDER:
+        if group in found and group != "Unknown":
+            return group
     return "Unknown"
 
 
@@ -79,8 +86,8 @@ def _local_name(iri: str) -> str:
     return iri.rsplit("/", 1)[-1]
 
 
-def _node(node_iri: str, type_iri: str | None, label: str | None) -> contract.Node:
-    group = _type_of(type_iri)
+def _node(node_iri: str, type_iris: str | None, label: str | None) -> contract.Node:
+    group = _group_of_types(type_iris)
     return contract.Node(id=node_iri, label=label or node_iri, type=group, group=group)
 
 

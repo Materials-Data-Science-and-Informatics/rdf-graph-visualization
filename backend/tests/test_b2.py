@@ -128,8 +128,8 @@ def test_expand_folds_center_and_neighbours(mock_qlever, client):
         "group": "Dataset",
         "purl": None,
     }
-    # unknown type (Organization) falls back to Unknown; missing label -> IRI
-    assert body["nodes"][2]["type"] == "Unknown"
+    # Organization is an Institution subtype; missing label -> IRI
+    assert body["nodes"][2]["type"] == "Institution"
     assert body["nodes"][2]["label"] == NEIGHBOR_B
     # directions: out = center -> neighbour, in = neighbour -> center
     assert [e["source"] for e in body["edges"]] == [CENTER, NEIGHBOR_B]
@@ -280,6 +280,33 @@ def test_expand_template_selects_pred_and_orders():
     assert "ORDER BY ?dir ?node ?pred" in q
     assert "GROUP BY ?node ?pred" in q
     assert "GROUP BY ?node" in q  # center branch: one row even with multiple types
+
+
+def test_expand_template_label_shape_is_fast_form():
+    q = templates.expand_query(
+        iri=CENTER,
+        relation_iris=[PRED_AUTHOR],
+        label_iris=["https://schema.org/prefName", "https://schema.org/name"],
+        limit=10,
+    )
+    assert "VALUES ?lbl" not in q
+    assert "?lblval" not in q
+    assert q.count("OPTIONAL { ?node <https://schema.org/prefName> ?l0 }") == 3
+    assert q.count("OPTIONAL { ?node <https://schema.org/name> ?l1 }") == 3
+    assert q.count("COALESCE(MIN(?l0), MIN(?l1)) AS ?label") == 3
+    assert q.count('GROUP_CONCAT(DISTINCT STR(?nt); separator=" ") AS ?nodeType') == 3
+    assert "MIN(?nt)" not in q
+
+
+SCHEMA = "https://schema.org/"
+
+
+def test_expand_folds_group_concat_types(mock_qlever, client):
+    row = expand_row("node", CENTER, "", None, "Root", "")
+    row["nodeType"] = lit(f"{SCHEMA}Thing {SCHEMA}FundingAgency")
+    mock_qlever["responses"] = [sparql_response(row)]
+    body = client.get(f"/api/expand/{enc(CENTER)}").json()
+    assert body["nodes"][0]["type"] == "Institution"
 
 
 def test_expand_invalid_iri_422(mock_qlever, client):
@@ -457,6 +484,25 @@ def test_type_map_is_exact_iri_match():
     assert api_b2._type_of(TYPE_PERSON) == "Person"
     assert api_b2._type_of("http://xmlns.com/foaf/0.1#Person") == "Unknown"
     assert api_b2._type_of(None) == "Unknown"
+
+
+def test_type_map_covers_pinned_subtypes():
+    assert api_b2._type_of("https://schema.org/FundingAgency") == "Institution"
+    assert api_b2._type_of("https://schema.org/GovernmentOrganization") == "Institution"
+    assert api_b2._type_of("https://schema.org/ScholarlyArticle") == "Document"
+    assert api_b2._type_of("https://schema.org/SoftwareSourceCode") == "Software"
+    assert api_b2._type_of("https://schema.org/PhysicalInstrument") == "Instrument"
+    assert api_b2._type_of("https://schema.org/Thing") == "Unknown"
+
+
+def test_group_of_types_picks_contract_order_else_unknown():
+    s = "https://schema.org/"
+    # Institution precedes Person in contract order regardless of cell order.
+    assert api_b2._group_of_types(f"{s}Person {s}Organization") == "Institution"
+    assert api_b2._group_of_types(f"{s}Thing {s}Article") == "Document"
+    assert api_b2._group_of_types(f"{s}Thing http://xmlns.com/foaf/0.1#X") == "Unknown"
+    assert api_b2._group_of_types("") == "Unknown"
+    assert api_b2._group_of_types(None) == "Unknown"
 
 
 def test_local_name_prefers_fragment():
