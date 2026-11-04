@@ -1,8 +1,8 @@
 .git
-node_modules
-dist
+**/node_modules
+**/dist
 backend/.venv
-__pycache__
+**/__pycache__
 *.pyc
 .pytest_cache
 .mypy_cache
