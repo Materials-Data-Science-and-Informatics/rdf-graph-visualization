@@ -2,18 +2,21 @@
 # SPDX-License-Identifier: MIT
 """FastAPI entrypoint for the HKG graph-explorer backend.
 
-Only the health probe lives here at F2. Endpoint cards (B2-B7) mount their own
-routers under /api; the QLever client (B1) is the single SPARQL gateway.
+Only the health probe and the config probe live here; endpoint cards (B2-B7)
+mount their own routers under /api. The QLever client (B1) is the single
+SPARQL gateway.
 """
 
 from fastapi import FastAPI
 
 from app import contract, presets, subgraph
+from app.api_b2 import router as b2_router
 from app.settings import Settings
 
 app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0")
 
 app.include_router(subgraph.router)
+app.include_router(b2_router, prefix="/api")
 
 
 @app.get("/api/health")
