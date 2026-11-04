@@ -128,9 +128,17 @@ export function useGraphRenderer(options: UseGraphRendererOptions): UseGraphRend
   // snapshot into pendingPositionsRef BEFORE disposing, and the next effect
   // run consumes it. An empty pending snapshot (initial mount, StrictMode
   // remount of a renderer that never received data) means "cold".
+  // Real pixel size only exists after Content's first ResizeObserver
+  // callback (the size state starts at 0×0). sigma throws in its
+  // constructor on a 0-width container, so creation is DEFERRED until the
+  // box is measurable — the mount below replays lastGraphRef, so no data is
+  // lost in the meantime. A container that collapses to 0 disposes and
+  // re-creates on restore (positions survive via the carried snapshot).
+  const hasSize = width > 0 && height > 0;
+
   useEffect(() => {
     const container = containerRef.current;
-    if (!container || !listRenderers().includes(engineId)) return;
+    if (!container || !hasSize || !listRenderers().includes(engineId)) return;
 
     const carried = pendingPositionsRef.current;
     pendingPositionsRef.current = null;
@@ -182,16 +190,19 @@ export function useGraphRenderer(options: UseGraphRendererOptions): UseGraphRend
       // lastGraphRef is kept on purpose: the next effect run (StrictMode
       // remount) or a later switch derives its own fresh copies from it.
     };
-  }, [engineId]);
+  }, [engineId, hasSize]);
 
   // ------------------------------------------------------------------ data
   // Feed the filtered graph to the mounted renderer; start a layout run only
   // when the data gains NEW node ids (initial load / cursor-page expand).
   useEffect(() => {
     const renderer = rendererRef.current;
-    if (!renderer) return;
+    // Always snapshot: while the renderer is unmounted (deferred first
+    // mount until the container has a size — see the engine effect) the
+    // mount effect replays this ref, so data that arrives early is not lost.
     const fresh = snapshotGraph(graph);
     lastGraphRef.current = fresh;
+    if (!renderer) return;
     renderer.set(fresh);
 
     const ids = new Set(fresh.nodes.map((node) => node.id));
