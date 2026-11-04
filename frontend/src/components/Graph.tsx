@@ -7,7 +7,6 @@ import ForceGraph3D, {
   ForceGraphMethods,
 } from "react-force-graph-3d";
 import * as THREE from "three";
-import { Box } from "@chakra-ui/react";
 import Legend from "./Legend.tsx";
 import { getGroupColor } from "../config";
 import FullScreenButton from "./FullScreenButton.tsx";
@@ -35,6 +34,12 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height, onNodeSelect })
 
   useEffect(() => {
     updateSearchKeys({ theme: switchOn ? "light" : null });
+  }, [switchOn]);
+
+  // Card C0 S4: drive the Tailwind dark variant from the same state — the
+  // CSS-variable theme in index.css (:root vs .dark) follows the toggle.
+  useEffect(() => {
+    document.documentElement.classList.toggle("dark", !switchOn);
   }, [switchOn]);
 
   // Reference to ForceGraph3D instance for camera control
@@ -181,13 +186,9 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height, onNodeSelect })
   const setSwitchOnCallback = useCallback((val: boolean) => setSwitchOn(val), []);
 
   return (
-    <Box
-      width={isFullScreen ? "100vw" : width}
-      height={isFullScreen ? "100vh" : height}
-      position={isFullScreen ? "fixed" : "relative"}
-      top={isFullScreen ? 0 : "unset"}
-      left={isFullScreen ? 0 : "unset"}
-      zIndex={isFullScreen ? 9999 : "auto"}
+    <div
+      style={{ width: isFullScreen ? "100vw" : width, height: isFullScreen ? "100vh" : height }}
+      className={isFullScreen ? "fixed inset-0 z-[9999]" : "relative"}
     >
       <ForceGraph3D
         ref={fgRef}
@@ -214,7 +215,7 @@ const Graph: React.FC<GraphProps> = ({ graphData, width, height, onNodeSelect })
       <ResetViewButton resetView={handleResetView} />
       <ThemeSwitch switchOn={switchOn} setSwitchOn={setSwitchOnCallback} />
       <Legend />
-    </Box>
+    </div>
   );
 };
 

@@ -1,14 +1,6 @@
-import {
-  Box,
-  Checkbox,
-  HStack,
-  Button,
-  Text,
-  Alert,
-  AlertIcon,
-  AlertTitle,
-  AlertDescription,
-} from "@chakra-ui/react";
+import { AlertCircle, Loader2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import * as React from "react";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
 import { GraphData, LinkObject } from "react-force-graph-3d";
@@ -136,10 +128,6 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
     };
   }, [isChecked, filters, graphData, setFilteredGraphData]);
 
-  const handleCheckboxChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    setIsChecked(event.target.checked);
-  };
-
   const page = graphStore.page;
 
   // First load only: no slice yet, spinner while the first page is fetched.
@@ -148,50 +136,58 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
   }
 
   return (
-    <Box p={4} width="100%" mx="auto">
-      <HStack spacing={4} alignItems="center">
+    <div className="mx-auto w-full p-4">
+      <div className="flex flex-wrap items-center gap-4">
         <Button
-          colorScheme="blue"
+          disabled={actions.loading}
           // A fresh load (replace) starts with no active group filters.
           onClick={() => {
             setFilters(new Set<string>());
             actions.load();
           }}
-          isLoading={actions.loading}
         >
+          {actions.loading && <Loader2 aria-hidden className="animate-spin" />}
           Load slice
         </Button>
         {graphStore.canExpand && (
-          <Button
-            colorScheme="teal"
-            variant="outline"
-            onClick={actions.expand}
-            isLoading={actions.expanding}
-          >
+          <Button variant="outline" disabled={actions.expanding} onClick={actions.expand}>
+            {actions.expanding && <Loader2 aria-hidden className="animate-spin" />}
             Load more
           </Button>
         )}
-        <Text mt={2} color="gray.500" fontSize="sm">
+        <p className="mt-2 text-sm text-gray-500">
           {page
             ? `${graphStore.nodeCount} nodes, ${graphStore.edgeCount} edges in store (limit ${page.limit}${
                 page.truncated ? ", truncated — click a node or Load more to expand" : ", complete"
               })`
             : "No slice loaded yet"}
-        </Text>
-        <Checkbox isChecked={isChecked} onChange={handleCheckboxChange}>
+        </p>
+        <label className="flex items-center gap-2">
+          <Checkbox
+            checked={isChecked}
+            onCheckedChange={(checked) => setIsChecked(checked === true)}
+          />
           Add not connected nodes
-        </Checkbox>
-      </HStack>
+        </label>
+      </div>
       {actions.error && (
-        <Alert status="error" borderRadius="md" width="100%" mt={3} mb={3} mx="auto">
-          <AlertIcon />
-          <AlertTitle as="span">Could not load graph slice</AlertTitle>
-          <AlertDescription as="span" data-testid="slice-error">
-            {actions.error}
-          </AlertDescription>
-        </Alert>
+        <div
+          role="alert"
+          className="mx-auto mt-3 mb-3 flex w-full items-start gap-3 rounded-[6px] border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950"
+        >
+          <AlertCircle
+            aria-hidden
+            className="mt-0.5 size-5 shrink-0 text-red-600 dark:text-red-400"
+          />
+          <div>
+            <span className="font-bold">Could not load graph slice</span>
+            <span className="mt-1 block text-sm" data-testid="slice-error">
+              {actions.error}
+            </span>
+          </div>
+        </div>
       )}
-    </Box>
+    </div>
   );
 };
 

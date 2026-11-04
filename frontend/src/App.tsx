@@ -1,4 +1,5 @@
-import { Alert, AlertDescription, AlertIcon, Button, Box, Text } from "@chakra-ui/react";
+import { AlertCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useEffect, useState } from "react";
 import Content from "./components/Content.tsx";
 import Layout from "./components/Layout.tsx";
@@ -38,20 +39,29 @@ function App() {
 
   if (configState.status === "error") {
     return (
-      <Box p={8} maxW="640px" mx="auto" mt={12}>
-        <Alert status="error" borderRadius="md">
-          <AlertIcon />
-          <Box flex="1">
-            <Text fontWeight="bold">Could not load graph configuration</Text>
-            <AlertDescription as="span" fontSize="sm" mt={1} data-testid="config-error">
+      <div className="mx-auto mt-12 max-w-[40rem] p-8">
+        <div
+          role="alert"
+          className="flex items-start gap-3 rounded-[6px] border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950"
+        >
+          <AlertCircle
+            aria-hidden
+            className="mt-0.5 size-5 shrink-0 text-red-600 dark:text-red-400"
+          />
+          <div className="flex-1">
+            <p className="font-bold">Could not load graph configuration</p>
+            <span
+              className="mt-1 block text-sm text-red-700 dark:text-red-300"
+              data-testid="config-error"
+            >
               {configState.message}
-            </AlertDescription>
-          </Box>
-        </Alert>
-        <Button mt={4} colorScheme="blue" onClick={() => window.location.reload()}>
+            </span>
+          </div>
+        </div>
+        <Button className="mt-4" onClick={() => window.location.reload()}>
           Retry
         </Button>
-      </Box>
+      </div>
     );
   }
 
