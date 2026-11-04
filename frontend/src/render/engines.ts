@@ -1,4 +1,7 @@
 // Card D2 — app-level renderer registration (D1 registry, CONTRACT.md §6/§7).
+// Card D4 — the second engine (cosmos.gl) joins the registry so the app can
+// toggle between them (CONTRACT.md §2 P5/P7 handoff; the toggle UI lives in
+// components/Graph.tsx + components/EngineToggle.tsx).
 //
 // The registry stores factories, not instances; the app registers the
 // available engines once at startup, then asks for renderers through
@@ -11,12 +14,15 @@
 // the lockfile carries the 3.x line and not the 4.x maintenance line.
 
 import { listRenderers, registerRenderer } from "./registry";
+import { createCosmosRenderer, COSMOS_RENDERER_ID } from "./cosmos";
 import { createSigmaRenderer, SIGMA_RENDERER_ID } from "./sigma";
 
 /**
  * Register every engine the app ships. Idempotent: the registry throws on
  * duplicate ids, so already-registered ones are skipped. The sigma 2D
- * adapter is the first REAL adapter, so it opts into the default (R3).
+ * adapter is the first REAL adapter, so it opts into the default (R3); the
+ * cosmos 2D-GPU adapter registers AFTER it and does NOT steal the default —
+ * it is an explicit opt-in of the renderer toggle (R3).
  */
 export function registerEngines(): void {
   const registered = new Set(listRenderers());
@@ -25,6 +31,7 @@ export function registerEngines(): void {
       isDefault: true,
     });
   }
-  // D3 will add the cosmos.gl 3D adapter here (it will NOT steal the
-  // default — R3: the first registered renderer keeps it).
+  if (!registered.has(COSMOS_RENDERER_ID)) {
+    registerRenderer(COSMOS_RENDERER_ID, () => createCosmosRenderer(COSMOS_RENDERER_ID));
+  }
 }

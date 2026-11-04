@@ -2,7 +2,7 @@ import Graph from "./Graph";
 import Selections from "./Selections";
 import { useState, useRef, useCallback, useEffect } from "react";
 import useResizeObserver from "@react-hook/resize-observer";
-import { NodeObject, GraphData } from "react-force-graph-3d";
+import type { RendererGraph } from "../render";
 import { graphStore, useSliceActions, useGraphStoreVersion } from "../store/use-graph-store";
 import { initialViewState, updateSearchKeys } from "../view-state";
 
@@ -10,8 +10,13 @@ import { initialViewState, updateSearchKeys } from "../view-state";
 const DEBOUNCE_MS = 150;
 
 const Content = () => {
-  // Filtered graph data shown in the visualization (after applying filters)
-  const [filteredGraphData, setFilteredGraphData] = useState<GraphData>({ nodes: [], links: [] });
+  // Filtered graph data shown in the visualization (after applying filters).
+  // Fresh copies per change — the mounted renderer OWNS what it is handed
+  // (CONTRACT.md §1.2) and may mutate it in place.
+  const [filteredGraphData, setFilteredGraphData] = useState<RendererGraph>({
+    nodes: [],
+    links: [],
+  });
   // Slice fetch orchestration (load / expand / abort), shared with Selections
   const actions = useSliceActions();
   // Reference to the graph container for resize observation
@@ -38,13 +43,15 @@ const Content = () => {
   });
 
   // Expand-on-click (card C2 DoD): clicking a node selects + focuses it and
-  // grows the store with the NEXT cursor page — no refetch-all.
+  // grows the store with the NEXT cursor page — no refetch-all. The renderer
+  // reports the id only (contract §4 S1); the clipboard copy keeps the
+  // legacy click behavior.
   const handleNodeSelect = useCallback(
-    (node: NodeObject) => {
-      const id = typeof node.id === "string" ? node.id : String(node.id ?? "");
-      if (!id) return;
-      graphStore.select(id);
-      graphStore.focus(id);
+    (nodeId: string) => {
+      if (!nodeId) return;
+      navigator.clipboard.writeText(nodeId).catch(console.error);
+      graphStore.select(nodeId);
+      graphStore.focus(nodeId);
       if (graphStore.canExpand) {
         actions.expand();
       }

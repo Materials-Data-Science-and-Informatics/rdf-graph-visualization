@@ -9,6 +9,7 @@ export type {
   RendererLink,
   RendererNode,
 } from "./renderer";
+export { adoptedCoordinate } from "./renderer";
 export {
   createDefaultRenderer,
   createRenderer,
@@ -21,8 +22,10 @@ export {
 export { createStubRenderer, seedPosition } from "./stub";
 export type { StubRenderer } from "./stub";
 // Card D3 — cosmos.gl (`@cosmos.gl/graph`) adapter + its inspection surface.
-export { createCosmosRenderer } from "./cosmos";
+export { createCosmosRenderer, COSMOS_RENDERER_ID } from "./cosmos";
 export type { CosmosRenderer } from "./cosmos";
+// Card D4 — the engine-switch core (CONTRACT.md §2 P5/P7 handoff helpers).
+export { snapshotGraph, withCarriedPositions } from "./engine-switch";
 // Card D2 — sigma 2D adapter, deterministic position seeding, engine
 // registration (CONTRACT.md §7).
 export { djb2, mulberry32, POSITION_SPAN, seedPosition2D } from "./seeding";

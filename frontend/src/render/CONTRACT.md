@@ -70,6 +70,15 @@ P6. **Dimensionality.** 2D adapters (sigma) omit `z` in `NodePosition`;
 3D adapters must fill it. `getPositions()` on a 2D adapter returns
 2D positions and callers must not read `z`.
 
+P7. **Position handoff (the receiving side of P5).** When a node arrives in
+`set()` with finite `x/y` (and `z`, on a 3D adapter) coordinates, the
+adapter MUST adopt those values verbatim — no reseeding. This is how D4's
+engine switch carries the outgoing renderer's `getPositions()` snapshot
+into the incoming one: a switch becomes a no-refetch / no-relayout /
+no-lost-selection operation. Nodes without finite coordinates fall back to
+the adapter's deterministic seed (P3). Surviving nodes are unaffected:
+P2 still wins over the handed values.
+
 ## 3. View (camera) state contract
 
 V1. **Ownership.** Camera position, zoom, and animation state belong to the
@@ -136,8 +145,9 @@ registry throw with a message listing what IS available.
 - [ ] Implement every `GraphRenderer` method; register via
       `registerRenderer("<id>", factory, { isDefault: true })` for the
       first real adapter.
-- [ ] `set()`: copy/adopt nodes, keep surviving positions (P2), seed new
-      ones deterministically (P3), release removed (P4).
+- [ ] `set()`: copy/adopt nodes, keep surviving positions (P2), adopt
+      handed finite x/y(/z) on new nodes (P7) else seed them
+      deterministically (P3), release removed (P4).
 - [ ] `focus()`: strictly-increasing-sequence gate + unknown-id no-op (V2).
 - [ ] `getPositions()`: full snapshot incl. brand-new nodes after `set()` (P5).
 - [ ] `dispose()`: cancel animation/layout loops, remove listeners, free GL

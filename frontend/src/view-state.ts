@@ -9,6 +9,8 @@
 //   hide   excluded groups            "Person,Document" ("" = show all)
 //   iso    "add not connected nodes"  "1"
 //   theme  "light"                    (dark is the default, omitted)
+//   engine renderer id                "cosmos" (the registry default is
+//          omitted; the Graph hook validates it against listRenderers())
 //   cursor next-page cursor of the slice as shared (data state: which
 //          cursor pages were already ingested; null = first page only)
 //
@@ -40,6 +42,13 @@ export interface ViewState {
   showIsolated: boolean;
   theme: "dark" | "light";
   /**
+   * Renderer id chosen in the shared view (card D4), or null for the
+   * registry default. This module stays registry-free (adapters import it),
+   * so validation against listRenderers() happens in the Graph hook: an
+   * unknown id degrades to the default instead of crashing the app.
+   */
+  engine: string | null;
+  /**
    * Token of the slice page that was still pending when the view was
    * shared — i.e. the store's `nextCursor` at that moment (null = the
    * first page only, or the slice was already complete).
@@ -54,6 +63,7 @@ export const DEFAULT_VIEW_STATE: ViewState = {
   hiddenGroups: [],
   showIsolated: false,
   theme: "dark",
+  engine: null,
   nextCursor: null,
 };
 
@@ -87,6 +97,7 @@ export function parseViewState(search: string): ViewState {
       .filter(Boolean),
     showIsolated: p.get("iso") === "1",
     theme: theme === "light" ? "light" : "dark",
+    engine: p.get("engine") || null,
     nextCursor: p.get("cursor") || null,
   };
 }
@@ -106,6 +117,7 @@ export function toSearch(state: ViewState): string {
   if (state.hiddenGroups.length > 0) p.set("hide", state.hiddenGroups.join(","));
   if (state.showIsolated) p.set("iso", "1");
   if (state.theme === "light") p.set("theme", "light");
+  if (state.engine) p.set("engine", state.engine);
   if (state.nextCursor) p.set("cursor", state.nextCursor);
   return p.toString();
 }
