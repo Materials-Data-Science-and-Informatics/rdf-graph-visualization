@@ -86,13 +86,7 @@ def _node(node_iri: str, type_iri: str | None, label: str | None) -> contract.No
 def _edge(center: str, direction: str, neighbor: str, pred: str) -> contract.Edge:
     """Directed edge; source->target encodes direction (in vs out)."""
     source, target = (center, neighbor) if direction == "out" else (neighbor, center)
-    return contract.Edge(
-        id=f"{source}|{pred}|{target}",
-        source=source,
-        target=target,
-        predicate=pred,
-        label=_local_name(pred),
-    )
+    return contract.build_edge(source, pred, target)
 
 
 @lru_cache(maxsize=1)

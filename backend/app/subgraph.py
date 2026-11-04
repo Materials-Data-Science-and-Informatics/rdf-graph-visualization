@@ -81,12 +81,6 @@ def _node_type(iri: str | None) -> contract.NodeType:
     return "Unknown"
 
 
-def _local_name(iri: str) -> str:
-    """Display name of a predicate IRI (last ``/``- or ``#``-segment)."""
-    tail = iri.rsplit("/", 1)[-1]
-    return tail.rsplit("#", 1)[-1] or iri
-
-
 def _uri(row: dict[str, Binding], var: str) -> str | None:
     cell = row.get(var)
     if cell is None or cell.type != "uri" or not cell.value:
@@ -156,13 +150,7 @@ def _fold(
         key = (source, target)
         if key in edges:
             continue  # first predicate in sort order wins (store is non-multi)
-        edges[key] = contract.Edge(
-            id=f"{source}|{pred}|{target}",
-            source=source,
-            target=target,
-            predicate=pred,
-            label=_local_name(pred),
-        )
+        edges[key] = contract.build_edge(source, pred, target)
     edge_rows = len(rows) - node_rows
     return contract.SubgraphResponse(
         nodes=list(nodes.values()),

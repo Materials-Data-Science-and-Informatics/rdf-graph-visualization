@@ -52,6 +52,25 @@ class Edge(BaseModel):
     label: str
 
 
+def edge_label(predicate_iri: str) -> str:
+    """Display name of a predicate IRI (last ``#``- or ``/``-segment)."""
+    tail = predicate_iri.rsplit("/", 1)[-1]
+    return tail.rsplit("#", 1)[-1] or predicate_iri
+
+
+def build_edge(source: str, predicate: str, target: str) -> Edge:
+    """Canonical Edge: id ``source|predicate|target``, label the predicate's
+    local name. Every endpoint folds SPARQL rows through this single factory
+    so the edge identity/label convention has exactly one definition."""
+    return Edge(
+        id=f"{source}|{predicate}|{target}",
+        source=source,
+        target=target,
+        predicate=predicate,
+        label=edge_label(predicate),
+    )
+
+
 class Page(BaseModel):
     """Pagination envelope for bounded, cursor-paginated slices."""
 

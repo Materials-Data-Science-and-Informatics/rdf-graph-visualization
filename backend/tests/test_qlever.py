@@ -147,6 +147,28 @@ def test_429_retry_after_http_date_is_parsed():
     assert 80.0 <= excinfo.value.wait_s <= 90.0  # clamped, ~90s
 
 
+def test_429_retry_after_naive_http_date_assumed_utc():
+    """An HTTP-date without a zone is treated as UTC (not local time)."""
+    from datetime import UTC, datetime, timedelta
+
+    naive_future = (datetime.now(UTC) + timedelta(seconds=90)).strftime(
+        "%a, %d %b %Y %H:%M:%S"
+    )
+    resp = httpx.Response(429, headers={"retry-after": naive_future})
+    client, _ = mock_client(resp)
+    with pytest.raises(QleverRateLimited) as excinfo:
+        client.ask("ASK { ?s ?p ?o }")
+    assert 70.0 <= excinfo.value.wait_s <= 90.0
+
+
+def test_429_retry_after_garbage_uses_ladder_floor():
+    resp = httpx.Response(429, headers={"retry-after": "not-a-date-or-number"})
+    client, _ = mock_client(resp)
+    with pytest.raises(QleverRateLimited) as excinfo:
+        client.ask("ASK { ?s ?p ?o }")
+    assert excinfo.value.wait_s == qlever.RATE_LIMIT_WAIT_FLOOR_S  # 60s
+
+
 def test_429_wait_clamped_to_ladder_ceiling():
     resp = httpx.Response(429, headers={"retry-after": "999999"})
     client, _ = mock_client(resp)
@@ -167,6 +189,42 @@ def test_200_non_json_raises_server_error():
     with pytest.raises(QleverServerError) as excinfo:
         client.select("SELECT * WHERE { ?s ?p ?o }")
     assert excinfo.value.status == 200
+
+
+def test_200_json_array_raises_unexpected_shape():
+    """A 200 with a JSON body that is not an object (e.g. a bare list)."""
+    resp = httpx.Response(200, json=["not", "an", "object"])
+    client, _ = mock_client(resp)
+    with pytest.raises(QleverServerError) as excinfo:
+        client.select("SELECT * WHERE { ?s ?p ?o }")
+    assert "unexpected JSON shape" in str(excinfo.value)
+    assert excinfo.value.status == 200
+
+
+def test_4xx_error_text_falls_back_to_body_when_not_json():
+    resp = httpx.Response(400, text="parser boom (no JSON here)")
+    client, _ = mock_client(resp)
+    with pytest.raises(QleverQueryError) as excinfo:
+        client.select("SELEC WHERE { }")
+    assert "parser boom" in str(excinfo.value)
+
+
+def test_4xx_error_text_falls_back_to_body_without_exception_field():
+    """JSON error bodies without a string ``exception`` field surface raw."""
+    resp = httpx.Response(400, json={"error": "bad query", "code": 13})
+    client, _ = mock_client(resp)
+    with pytest.raises(QleverQueryError) as excinfo:
+        client.select("SELEC WHERE { }")
+    assert "bad query" in str(excinfo.value)
+
+
+def test_client_is_a_context_manager_that_closes():
+    client, _ = mock_client(httpx.Response(200, json={"head": {}, "results": {}}))
+    with client as opened:
+        assert opened is client
+    # __exit__ closed the underlying httpx client (send-after-close raises)
+    with pytest.raises(RuntimeError, match="closed"):
+        client._client.post(client.url)  # pylint: disable=protected-access
 
 
 def test_connection_error_raises_unavailable():
