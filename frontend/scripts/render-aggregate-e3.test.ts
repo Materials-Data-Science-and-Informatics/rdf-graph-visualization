@@ -252,7 +252,9 @@ describe("pickLandingMode", () => {
       pickLandingMode({ nextCursor: null, selectedId: "http://x/1", ov: null }),
       "slice-restore"
     );
-    assert.equal(pickLandingMode({ nextCursor: null, selectedId: null, ov: null }), "overview");
+    // Owner directive: a plain first paint lands on the ROOT subgraph,
+    // not the aggregate ring.
+    assert.equal(pickLandingMode({ nextCursor: null, selectedId: null, ov: null }), "root");
   });
 });
 

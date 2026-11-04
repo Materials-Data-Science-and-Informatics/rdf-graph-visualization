@@ -28,6 +28,7 @@ import { createSigmaRenderer, SIGMA_RENDERER_ID } from "../src/render/sigma";
 import type { SigmaRenderer } from "../src/render/sigma";
 import { createCosmosRenderer, COSMOS_RENDERER_ID } from "../src/render/cosmos";
 import type { CosmosRenderer } from "../src/render/cosmos";
+import { COSMOS3D_RENDERER_ID } from "../src/render/cosmos3d";
 import {
   createRenderer,
   defaultRendererId,
@@ -181,17 +182,18 @@ test("D4/P5: snapshotGraph deep-copies nodes and links", () => {
 
 // ------------------------------------------- registry: both engines in
 
-test("D4/R3: registerEngines() registers sigma (default) AND cosmos (non-default)", () => {
+test("registerEngines(): sigma + cosmos + cosmos3d; cosmos 3D holds the default", () => {
   resetRendererRegistry();
   registerEngines();
   registerEngines(); // idempotent
-  assert.deepEqual(listRenderers().sort(), [COSMOS_RENDERER_ID, SIGMA_RENDERER_ID].sort());
-  assert.equal(
-    defaultRendererId(),
-    SIGMA_RENDERER_ID,
-    "later registration must not steal the default"
+  assert.deepEqual(
+    listRenderers().sort(),
+    [COSMOS_RENDERER_ID, COSMOS3D_RENDERER_ID, SIGMA_RENDERER_ID].sort()
   );
+  // Owner directive: the SHOWCASE default is the 3D live-simulation cosmos.
+  assert.equal(defaultRendererId(), COSMOS3D_RENDERER_ID);
   assert.equal(createRenderer(COSMOS_RENDERER_ID).id, COSMOS_RENDERER_ID);
+  assert.equal(createRenderer(COSMOS3D_RENDERER_ID).id, COSMOS3D_RENDERER_ID);
   resetRendererRegistry();
 });
 

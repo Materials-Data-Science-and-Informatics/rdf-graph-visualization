@@ -185,11 +185,30 @@ export function getEntity(iri: string, options: FetchOptions = {}): Promise<Enti
  * so the store's slice merge path can ingest it — card E1 does that via
  * GraphStore.ingestEntity() (no cursor bookkeeping).
  */
-export function getExpand(iri: string, options: FetchOptions = {}): Promise<SubgraphResponse> {
+export interface ExpandQuery {
+  /** Neighbors per page (server clamps to its max). */
+  limit?: number;
+  /** Row offset into the deterministic neighbor stream (paging "more"). */
+  offset?: number;
+  /** Relation allow-list (short names or full IRIs; server-resolved). */
+  relations?: string[];
+}
+
+export function getExpand(
+  iri: string,
+  query: ExpandQuery & FetchOptions = {}
+): Promise<SubgraphResponse> {
+  const params = new URLSearchParams();
+  if (query.limit != null) params.set("limit", String(query.limit));
+  if (query.offset != null && query.offset > 0) params.set("offset", String(query.offset));
+  if (query.relations && query.relations.length > 0) {
+    params.set("relations", query.relations.join(","));
+  }
+  const qs = params.toString();
   return fetchJson<SubgraphResponse>(
-    `/expand/${encodeURIComponent(iri)}`,
+    `/expand/${encodeURIComponent(iri)}${qs ? `?${qs}` : ""}`,
     TIMEOUTS.expand,
-    options
+    query
   );
 }
 

@@ -6,7 +6,12 @@ import useResizeObserver from "@react-hook/resize-observer";
 import type { RendererGraph } from "../render";
 import type { NodeType } from "../api/types";
 import { typeFilterFromUrl } from "../config";
-import { graphStore, useSliceActions, useGraphStoreVersion } from "../store/use-graph-store";
+import {
+  focusEntity,
+  graphStore,
+  useSliceActions,
+  useGraphStoreVersion,
+} from "../store/use-graph-store";
 import { useOverviewStore } from "../store/use-overview-store";
 import { clusterType } from "../lib/aggregate-view";
 import { initialViewState, updateSearchKeys } from "../view-state";
@@ -73,11 +78,25 @@ const Content = () => {
         return;
       }
       navigator.clipboard.writeText(nodeId).catch(console.error);
-      graphStore.select(nodeId);
-      graphStore.focus(nodeId);
-      if (graphStore.canExpand) {
-        actions.expand();
+      if (graphStore.hasNode(nodeId)) {
+        // Already on screen: select + focus; a live cursor chain grows the
+        // slice (C2). A center-expand chain is NOT auto-fetched here — the
+        // neighborhood of a VISIBLE node arrives via click on NEW nodes or
+        // via "Load more", so one click never triggers two fetches.
+        graphStore.select(nodeId);
+        graphStore.focus(nodeId);
+        if (graphStore.nextCursor !== null) {
+          actions.expand();
+        }
+        return;
       }
+      // A node NOT yet in the store: explore it — fetch its neighborhood
+      // (B2 expand, center + 1 hop) and arm it as the "Load more" center.
+      void focusEntity(nodeId).catch((err: unknown) => {
+        // The entity vanished between render and click (or the fetch
+        // failed): never an unhandled rejection.
+        console.warn("expand-on-click failed", err);
+      });
     },
     [actions, overview]
   );

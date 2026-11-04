@@ -24,7 +24,7 @@ import { FakeElement, fakeDom, flushRaf, glCounts } from "./fake-dom";
 import type { FakeDomHandle } from "./fake-dom";
 import { makeTwoThousandNodeGraph } from "./fixtures/cosmos-two-thousand";
 import {
-  createDefaultRenderer,
+  createRenderer,
   createSigmaRenderer,
   defaultRendererId,
   registerEngines,
@@ -160,13 +160,15 @@ test("D2-S1: sigma renders the 2k-node fixture through the GraphRenderer contrac
   }
 });
 
-test("D2-S1: registry — registerEngines() makes sigma the default renderer", () => {
+test("D2-S1: registry — registerEngines() registers sigma; createRenderer works", () => {
   resetRendererRegistry();
   assert.equal(defaultRendererId(), null);
   registerEngines();
   registerEngines(); // idempotent
-  assert.equal(defaultRendererId(), "sigma");
-  const renderer = createDefaultRenderer();
+  // Default moved to cosmos 3D (owner directive); this suite drives sigma
+  // explicitly, so it no longer relies on the default.
+  assert.equal(defaultRendererId(), "cosmos3d");
+  const renderer = createRenderer("sigma");
   assert.equal(renderer.id, "sigma");
   assert.equal(renderer.mount(makeContainer()), undefined);
   renderer.set({ nodes: [{ id: "a", label: "a", group: "Document" }], links: [] });

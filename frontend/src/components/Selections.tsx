@@ -54,17 +54,22 @@ const Selections: React.FC<SelectionsProps> = ({
   const overview = useOverviewStore();
   const data = overview.clusterData ?? sliceData;
 
-  // Card E3 S3: the first paint IS the aggregate overview (landing). URL
-  // deep links take precedence: `ov=<type>` restores a shared expanded
-  // cluster (typed first page + cursor pages up to the shared cursor); a
-  // plain `cursor`/`sel` restore the legacy C3 slice view without loading
-  // the overview. A `type` param carries the class filter (card E4).
-  // Stale restores are aborted on unmount.
-  const { load: loadSlice } = actions;
+  // Landing (owner directive, post-E3): the first paint is the REAL
+  // subgraph around the root entity (/api/expand, offset-paged) — NOT the
+  // aggregate ring, which is now on-demand behind "Show overview". URL deep
+  // links still take precedence: `ov=<type>` restores a shared expanded
+  // cluster (aggregate + typed slice + cursor pages); a plain
+  // `cursor`/`sel` restores the legacy C3 slice view. A `type` param
+  // carries the class filter (card E4). Stale restores are aborted.
+  const { load: loadSlice, loadRoot } = actions;
   const landing = pickLandingMode(initialViewState);
   useEffect(() => {
     if (landing === "slice-restore") {
       loadSlice(initialViewState.nextCursor);
+      return;
+    }
+    if (landing === "root") {
+      loadRoot();
       return;
     }
     const controller = new AbortController();
@@ -88,7 +93,7 @@ const Selections: React.FC<SelectionsProps> = ({
       );
     })();
     return () => controller.abort();
-  }, [landing, loadSlice]);
+  }, [landing, loadSlice, loadRoot]);
 
   // Card E3 S3: keep the URL's `ov` key in step with the expanded cluster
   // (present only while a cluster's typed slice is the active view).

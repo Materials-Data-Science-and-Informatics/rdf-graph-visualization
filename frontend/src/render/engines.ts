@@ -15,6 +15,7 @@
 
 import { listRenderers, registerRenderer } from "./registry";
 import { createCosmosRenderer, COSMOS_RENDERER_ID } from "./cosmos";
+import { createCosmos3dRenderer, COSMOS3D_RENDERER_ID } from "./cosmos3d";
 import { createSigmaRenderer, SIGMA_RENDERER_ID } from "./sigma";
 
 /**
@@ -33,5 +34,13 @@ export function registerEngines(): void {
   }
   if (!registered.has(COSMOS_RENDERER_ID)) {
     registerRenderer(COSMOS_RENDERER_ID, () => createCosmosRenderer(COSMOS_RENDERER_ID));
+  }
+  // Owner directive: the SHOWCASE default is cosmos.gl in its native 3D
+  // (live GPU forces, orbit camera). Registered last with isDefault so it
+  // takes the default from sigma without disturbing the others.
+  if (!registered.has(COSMOS3D_RENDERER_ID)) {
+    registerRenderer(COSMOS3D_RENDERER_ID, () => createCosmos3dRenderer(COSMOS3D_RENDERER_ID), {
+      isDefault: true,
+    });
   }
 }

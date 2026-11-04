@@ -20,6 +20,7 @@ interface EngineToggleProps {
 const ENGINE_LABELS: Record<string, string> = {
   sigma: "sigma 2D",
   cosmos: "cosmos 2D",
+  cosmos3d: "cosmos 3D",
 };
 
 const EngineToggle: React.FC<EngineToggleProps> = ({ engines, activeId, onSelect }) => {

@@ -60,6 +60,19 @@ export class GraphStore {
   private lastPage: Page | null = null;
   /** Cursors whose pages were already merged ("" = first page). */
   private consumedCursors: Set<string> = new Set();
+  /**
+   * Center-expand continuation (root landing + focusEntity jumps): the
+   * entity whose /api/expand stream is still truncated, plus how far the
+   * offset has advanced. Expand has no cursor — the row stream is totally
+   * ordered, so the client counts rows.
+   */
+  private centerIri: string | null = null;
+  private centerOffset = 0;
+  private centerLimit = 0;
+  private centerTruncated = false;
+  /** Relation allow-list of the FIRST center page — later windows must
+   *  page the SAME filtered stream or offsets describe different rows. */
+  private centerRelations: string[] | null = null;
   private selectedNodeId: string | null = null;
   private focusedNodeId: string | null = null;
   /** Monotonic token; a click on the same node bumps it, so consumers
@@ -105,9 +118,59 @@ export class GraphStore {
     return this.lastPage?.truncated && cursor ? cursor : null;
   }
 
-  /** True when a cursor-continued fetch would grow the store. */
+  /** True when some continuation fetch (cursor page OR center-expand
+   *  offset page) would grow the store. */
   get canExpand(): boolean {
-    return this.nextCursor !== null;
+    return this.nextCursor !== null || this.centerTruncated;
+  }
+
+  /**
+   * The pending center-expand page (null when none): fetch this entity's
+   * expand stream at `offset` with `limit` rows to grow around the center.
+   */
+  get pendingCenterPage(): {
+    iri: string;
+    offset: number;
+    limit: number;
+    relations: string[] | null;
+  } | null {
+    if (!this.centerIri || !this.centerTruncated || this.centerLimit <= 0) return null;
+    return {
+      iri: this.centerIri,
+      offset: this.centerOffset,
+      limit: this.centerLimit,
+      relations: this.centerRelations,
+    };
+  }
+
+  /**
+   * Start (or re-target) center-expand continuation after an expand fetch:
+   * `page` is the response's pagination envelope. Only an expand response
+   * WITHOUT a cursor may drive this (the row-offset window is meaningless
+   * for a cursor-paginated slice).
+   */
+  trackCenterExpansion(iri: string, page: Page | null, relations: string[] | null = null): void {
+    this.centerIri = iri;
+    this.centerLimit = page?.limit ?? 0;
+    this.centerTruncated = page?.truncated ?? false;
+    this.centerOffset = page?.limit ?? 0; // fold consumed exactly `limit` rows
+    this.centerRelations = relations;
+  }
+
+  /** Record a merged center page: advance the offset / completion flags. */
+  advanceCenterExpansion(page: Page | null): void {
+    this.centerTruncated = page?.truncated ?? false;
+    this.centerOffset += page?.limit ?? 0;
+    if (!this.centerTruncated) this.centerIri = null;
+  }
+
+  /** Drop center-expand continuation (e.g. a cursor page took over). */
+  clearCenterExpansion(): void {
+    this.centerIri = null;
+    this.centerOffset = 0;
+    this.centerLimit = 0;
+    this.centerTruncated = false;
+    this.centerRelations = null;
   }
 
   /** Number of distinct pages merged so far (1 after a first load). */
@@ -231,6 +294,7 @@ export class GraphStore {
     this.graph.clear();
     this.lastPage = null;
     this.consumedCursors = new Set();
+    this.clearCenterExpansion();
     this.selectedNodeId = null;
     this.focusedNodeId = null;
     // NOTE: focusTick is deliberately NOT reset (card D1, contract V2): the

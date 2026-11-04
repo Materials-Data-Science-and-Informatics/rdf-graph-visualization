@@ -14,6 +14,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore
 import { ApiError, getExpand, getSubgraph } from "../api/client";
 import type { NodeType, SubgraphResponse } from "../api/types";
 import type { RendererGraph } from "../render/renderer";
+import { ROOT_ENTITY_IRI, ROOT_EXPAND_LIMIT, ROOT_RELATION_NAMES } from "../config";
 import { updateSearchKeys } from "../view-state";
 import { GraphStore, type MergeResult } from "./graph-store";
 
@@ -118,12 +119,53 @@ export async function focusEntity(iri: string, signal?: AbortSignal): Promise<Me
   if (!graphStore.hasNode(iri)) {
     const slice = await getExpand(iri, { signal });
     merged = graphStore.ingestEntity(slice);
+    // The jumped-to hub becomes the "Load more" center when its 1-hop
+    // stream is truncated (relations: the full vocabulary = the default).
+    graphStore.trackCenterExpansion(iri, slice.page);
     if (!graphStore.hasNode(iri)) {
       throw new Error(`Entity ${iri} was not present in its expand slice`);
     }
   }
   graphStore.select(iri);
   graphStore.focus(iri);
+  return merged;
+}
+
+/**
+ * Root landing (owner directive): replace the store with the REAL subgraph
+ * around ROOT_ENTITY_IRI (center + 1 hop, relation allow-list) and arm the
+ * offset-paged "Load more" continuation for its truncated stream.
+ */
+export async function loadRootSlice(signal?: AbortSignal): Promise<SubgraphResponse> {
+  const slice = await getExpand(ROOT_ENTITY_IRI, {
+    limit: ROOT_EXPAND_LIMIT,
+    relations: ROOT_RELATION_NAMES,
+    signal,
+  });
+  graphStore.replaceSlice(slice);
+  if (!slice.page.cursor) {
+    graphStore.trackCenterExpansion(ROOT_ENTITY_IRI, slice.page, ROOT_RELATION_NAMES);
+  }
+  return slice;
+}
+
+/**
+ * Merge the NEXT center-expand page (offset window over the center's
+ * neighbour stream). Returns null when no center continuation is pending.
+ * The relations of the FIRST page are re-sent — offsets only line up
+ * against the same filtered stream.
+ */
+export async function expandCenterPage(signal?: AbortSignal): Promise<MergeResult | null> {
+  const pending = graphStore.pendingCenterPage;
+  if (!pending) return null;
+  const slice = await getExpand(pending.iri, {
+    limit: pending.limit,
+    offset: pending.offset,
+    ...(pending.relations ? { relations: pending.relations } : {}),
+    signal,
+  });
+  const merged = graphStore.ingestEntity(slice);
+  graphStore.advanceCenterExpansion(slice.page);
   return merged;
 }
 
@@ -148,8 +190,12 @@ export interface SliceActions {
    */
   load: (targetCursor?: string | null, type?: NodeType | null) => void;
   /** Fetch the next cursor page (with the current class filter) and merge
-   *  it; no-op when complete/blocked. */
+   *  it; no-op when complete/blocked. Without a cursor chain, continues
+   *  the center-expand offset window instead (root landing / jumps). */
   expand: () => void;
+  /** Root landing: replace the store with the real subgraph around the
+   *  root entity (see loadRootSlice). Abortable like `load`. */
+  loadRoot: () => void;
   clearError: () => void;
 }
 
@@ -206,18 +252,48 @@ export function useSliceActions(typeFilter: NodeType | null = null): SliceAction
     })();
   }, []);
 
+  const loadRoot = useCallback(() => {
+    loadAbortRef.current?.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    setLoading(true);
+    void (async () => {
+      try {
+        await loadRootSlice(controller.signal);
+        if (controller.signal.aborted) return;
+        setError(null);
+        syncCursorToUrl();
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        setError(describe(err));
+      } finally {
+        if (loadAbortRef.current === controller) {
+          setLoading(false);
+        }
+      }
+    })();
+  }, []);
+
   const expand = useCallback(() => {
-    if (graphStore.nextCursor === null || expandInFlightRef.current) return;
+    if (expandInFlightRef.current) return;
+    // Cursor chain wins; otherwise the center-expand window continues.
+    const viaCursor = graphStore.nextCursor !== null;
+    if (!viaCursor && graphStore.pendingCenterPage === null) return;
     const controller = new AbortController();
     expandAbortRef.current = controller;
     expandInFlightRef.current = true;
     setExpanding(true);
     void (async () => {
       try {
-        await expandNextPage(typeFilterRef.current, controller.signal);
+        if (viaCursor) {
+          await expandNextPage(typeFilterRef.current, controller.signal);
+          if (controller.signal.aborted) return;
+          syncCursorToUrl();
+        } else {
+          await expandCenterPage(controller.signal);
+        }
         if (controller.signal.aborted) return;
         setError(null);
-        syncCursorToUrl();
       } catch (err) {
         if (controller.signal.aborted) return;
         setError(describe(err));
@@ -243,7 +319,7 @@ export function useSliceActions(typeFilter: NodeType | null = null): SliceAction
   );
 
   return useMemo(
-    () => ({ loading, expanding, error, load, expand, clearError }),
-    [loading, expanding, error, load, expand, clearError]
+    () => ({ loading, expanding, error, load, loadRoot, expand, clearError }),
+    [loading, expanding, error, load, loadRoot, expand, clearError]
   );
 }

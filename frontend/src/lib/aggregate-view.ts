@@ -162,9 +162,11 @@ export function clustersToGraphData(clusters: AggregateNode[]): ClusterGraphData
  *   belongs to that typed slice.
  * - "slice-restore": the URL carries a plain slice deep link (cursor and/or
  *   selection) — legacy C3 restore wins, the overview is not loaded.
- * - "overview": plain first paint — the aggregate overview is the landing.
+ * - "root": plain first paint — the REAL subgraph around the root entity
+ *   lands (/api/expand; owner directive). The aggregate overview is
+ *   on-demand only, behind the "Show overview" button.
  */
-export type LandingMode = "slice-restore" | "ov-restore" | "overview";
+export type LandingMode = "slice-restore" | "ov-restore" | "root";
 
 export function pickLandingMode(view: {
   nextCursor: string | null;
@@ -173,5 +175,5 @@ export function pickLandingMode(view: {
 }): LandingMode {
   if (view.ov !== null) return "ov-restore";
   if (view.nextCursor !== null || view.selectedId !== null) return "slice-restore";
-  return "overview";
+  return "root";
 }
