@@ -1,18 +1,18 @@
-// Card D1 (D2: multi-entry) — runs the GraphRenderer contract tests.
+// Card D1 (D2: multi-entry) — runs the headless contract suites.
 //
-// Bundles every scripts/render-*.test.ts with esbuild (the same esbuild Vite
+// Bundles every scripts/*.test.ts with esbuild (the same esbuild Vite
 // drives, resolved THROUGH vite so the runner works under pnpm's strict
 // node_modules — esbuild is a transitive dependency and has no root
 // node_modules link there) and executes the bundles with Node's built-in
 // test runner. No test-framework dependency. Exits non-zero on any failure —
 // `npm run test` mirrors that.
 //
-// Entries today: render-contract.test.ts (headless stub reference),
-// render-sigma.test.ts (real sigma adapter + 2k fixture, D2 S1), and
-// render-layout.test.ts (force-atlas2 engine/worker/adapter seam, D2 S2).
-// The S2 tests also need a bundled copy of the layout WORKER entry
-// (src/render/forceatlas2.worker.ts) for node:worker_threads — it is built
-// once here and exported as FORCEATLAS2_WORKER_PATH.
+// Entries today: render-*.test.ts (D1 headless stub reference, D2 sigma
+// adapter + FA2 engine/worker, D2 S3 label LOD, D2 S3 10k check) and
+// filter-e4.test.ts (E4 class filter: slice re-query with ?type=, cursor
+// chain carries the filter, legend/config palette consistency, URL keys).
+// The cosmos suite (cosmos-contract.test.ts) has its own runner
+// (run-cosmos-tests.mjs) and is excluded here.
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readdirSync, rmSync } from "node:fs";
@@ -23,12 +23,13 @@ import { fileURLToPath } from "node:url";
 
 const frontend = dirname(dirname(fileURLToPath(import.meta.url)));
 const scriptsDir = join(frontend, "scripts");
+// All headless suites; the cosmos suite keeps its own runner (see header).
 const entries = readdirSync(scriptsDir)
-  .filter((f) => f.startsWith("render-") && f.endsWith(".test.ts"))
+  .filter((f) => f.endsWith(".test.ts") && f !== "cosmos-contract.test.ts")
   .sort()
   .map((f) => join(scriptsDir, f));
 if (entries.length === 0) {
-  console.error("run-contract-tests: no scripts/render-*.test.ts entries found");
+  console.error("run-contract-tests: no scripts/*.test.ts entries found");
   process.exit(1);
 }
 
@@ -60,6 +61,12 @@ try {
       format: "esm",
       target: "node20",
       logLevel: "warning",
+      // Bundled CJS deps (react-dom/server in filter-e4.test.ts) keep a
+      // `__require` shim for Node builtins; in ESM output the shim only
+      // works when a real `require` is in scope — provide one.
+      banner: {
+        js: "import { createRequire as __cjsRequire } from 'node:module'; const require = __cjsRequire(import.meta.url);",
+      },
       outfile: bundles[i],
     });
   }

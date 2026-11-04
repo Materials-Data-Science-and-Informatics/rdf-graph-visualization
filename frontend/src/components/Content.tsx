@@ -3,10 +3,11 @@ import Selections from "./Selections";
 import { useState, useRef, useCallback, useEffect } from "react";
 import useResizeObserver from "@react-hook/resize-observer";
 import type { RendererGraph } from "../render";
+import type { NodeType } from "../api/types";
+import { typeFilterFromUrl } from "../config";
 import { graphStore, useSliceActions, useGraphStoreVersion } from "../store/use-graph-store";
 import { useOverviewStore } from "../store/use-overview-store";
 import { clusterType } from "../lib/aggregate-view";
-import type { NodeType } from "../api/types";
 import { initialViewState, updateSearchKeys } from "../view-state";
 
 // Debounce delay for resize observer to prevent excessive re-renders during window resize
@@ -20,8 +21,16 @@ const Content = () => {
     nodes: [],
     links: [],
   });
-  // Slice fetch orchestration (load / expand / abort), shared with Selections
-  const actions = useSliceActions();
+  // Class filter (card E4): null = all classes; a change re-queries the
+  // slice. The URL's `type` value is trusted only if it names a class of
+  // the live /api/config palette (see typeFilterFromUrl).
+  const [typeFilter, setTypeFilter] = useState<NodeType | null>(() =>
+    typeFilterFromUrl(initialViewState.typeFilter)
+  );
+  // Slice fetch orchestration (load / expand / abort), shared with Selections.
+  // The hook mirrors typeFilter so load/expand always carry the current
+  // class filter (a filter change and its reload land in one handler).
+  const actions = useSliceActions(typeFilter);
   // Reference to the graph container for resize observation
   const boxRef = useRef<HTMLDivElement | null>(null);
   // Current dimensions of the graph container
@@ -95,7 +104,12 @@ const Content = () => {
 
   return (
     <div className="flex w-full flex-1 min-h-0 flex-col gap-4">
-      <Selections setFilteredGraphData={setFilteredGraphData} actions={actions} />
+      <Selections
+        setFilteredGraphData={setFilteredGraphData}
+        actions={actions}
+        typeFilter={typeFilter}
+        setTypeFilter={setTypeFilter}
+      />
       <div
         ref={boxRef}
         className="relative flex-1 w-full min-h-[360px] overflow-hidden md:min-h-[480px]"

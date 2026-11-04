@@ -3,17 +3,21 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import * as React from "react";
 import { useState, useEffect, type Dispatch, type SetStateAction } from "react";
+import FilterPanel from "./FilterPanel.tsx";
 import LoadingSpinner from "./LoadingSpinner.tsx";
+import type { NodeType } from "../api/types";
 import { useGraphData, graphStore, type SliceActions } from "../store/use-graph-store";
 import type { RendererGraph } from "../render";
 import { useOverviewStore, overviewStore } from "../store/use-overview-store";
 import { pickLandingMode } from "../lib/aggregate-view";
-import type { NodeType } from "../api/types";
 import { initialViewState, updateSearchKeys } from "../view-state";
 
 interface SelectionsProps {
   actions: SliceActions;
   setFilteredGraphData: Dispatch<SetStateAction<RendererGraph>>;
+  /** Data-model class the slice is filtered to (null = all; card E4). */
+  typeFilter: NodeType | null;
+  setTypeFilter: (type: NodeType | null) => void;
 }
 
 /**
@@ -26,11 +30,22 @@ interface SelectionsProps {
  * per data-model class, from /api/aggregate) and the layer switch —
  * Show/Back-to-overview, Refresh, Explore slice. Expand-on-click lives in
  * Content.tsx (node click) and fetches the typed slice into the graph store.
+ *
+ * Card E4 adds the class filter: picking a class RE-QUERIES the slice with
+ * `?type=` (a fresh slice, cursor chain reset) — it does not hide nodes
+ * client-side.
  */
-const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }) => {
+const Selections: React.FC<SelectionsProps> = ({
+  actions,
+  setFilteredGraphData,
+  typeFilter,
+  setTypeFilter,
+}) => {
   // Card C3: initial view state is read from the opened URL (one-time
   // capture); every change below writes its keys back (replaceState).
   const [isChecked, setIsChecked] = useState<boolean>(initialViewState.showIsolated);
+  // Legend group filters (client-side, current view only; the class filter
+  // is server-side — card E4).
   const [filters, setFilters] = useState<Set<string>>(() => new Set(initialViewState.hiddenGroups));
   // Current store contents (re-renders on every merged slice).
   const sliceData = useGraphData();
@@ -43,7 +58,8 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
   // deep links take precedence: `ov=<type>` restores a shared expanded
   // cluster (typed first page + cursor pages up to the shared cursor); a
   // plain `cursor`/`sel` restore the legacy C3 slice view without loading
-  // the overview. Stale restores are aborted on unmount.
+  // the overview. A `type` param carries the class filter (card E4).
+  // Stale restores are aborted on unmount.
   const { load: loadSlice } = actions;
   const landing = pickLandingMode(initialViewState);
   useEffect(() => {
@@ -83,18 +99,17 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [overview.version]);
 
-  // Card C3: keep the URL's filter keys in step with the state. (A fresh
-  // load via the "Load slice" button below clears the group filters — the
-  // previous load-completion effect is gone so a restored filter survives
-  // the initial load.)
+  // Card C3: keep the URL's class-filter key in step with the state.
   useEffect(() => {
-    updateSearchKeys({ hide: filters.size > 0 ? [...filters].join(",") : null });
-  }, [filters]);
+    updateSearchKeys({ type: typeFilter });
+  }, [typeFilter]);
   useEffect(() => {
     updateSearchKeys({ iso: isChecked ? "1" : null });
   }, [isChecked]);
 
-  // Filter graph data based on selected groups and optionally remove unconnected nodes
+  // "Add not connected nodes" (C2/C3 display option): when off, drop nodes
+  // without a connection in the current slice. The class filter itself is
+  // server-side (card E4) — nothing is hidden here any more.
   useEffect(() => {
     if (data.nodes.length === 0) {
       setFilteredGraphData({ nodes: [], links: [] });
@@ -126,21 +141,21 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
 
       // Filter links to only include those connecting filtered nodes
       // (contract RendererLink: source/target are always id strings).
-      const filteredLinks = graphData.links.filter((link) => {
+      const filteredLinks = data.links.filter((link) => {
         return filteredNodeIds.has(link.source) && filteredNodeIds.has(link.target);
       });
 
       let newGraphData: RendererGraph;
       if (!isChecked) {
-        // Remove nodes that have no connections in the filtered view
+        // Remove nodes that have no connections in the current view
         const connectedNodeIds = new Set(
           filteredLinks.flatMap((link) => [link.source, link.target])
         );
-        const connectedNodes = filteredNodes.filter((node) => connectedNodeIds.has(node.id));
+        const connectedNodes = data.nodes.filter((node) => connectedNodeIds.has(node.id));
         newGraphData = { nodes: connectedNodes, links: filteredLinks };
       } else {
-        // Show all filtered nodes with all their links
-        newGraphData = { nodes: filteredNodes, links: filteredLinks };
+        // Show all nodes with all their links
+        newGraphData = { nodes: data.nodes, links: filteredLinks };
       }
 
       // The mounted renderer OWNS the objects it is handed and may mutate
@@ -186,73 +201,102 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
 
   return (
     <div className="mx-auto w-full p-4">
-      <div className="flex flex-wrap items-center gap-4">
-        {inClusters ? (
-          <>
-            <Button
-              disabled={overview.status === "loading"}
-              onClick={() => {
-                void overview.load();
-              }}
-            >
-              {overview.status === "loading" && <Loader2 aria-hidden className="animate-spin" />}
-              Refresh overview
-            </Button>
-            <Button
-              variant="outline"
-              onClick={() => {
-                overview.enterSlice();
-                if (graphStore.nodeCount === 0) {
+      <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          {inClusters ? (
+            <>
+              <Button
+                disabled={overview.status === "loading"}
+                onClick={() => {
+                  void overview.load();
+                }}
+              >
+                {overview.status === "loading" && <Loader2 aria-hidden className="animate-spin" />}
+                Refresh overview
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  overview.enterSlice();
+                  if (graphStore.nodeCount === 0) {
+                    setFilters(new Set<string>());
+                    actions.load();
+                  }
+                }}
+              >
+                Explore slice
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button
+                disabled={actions.loading}
+                // A fresh load (replace) starts with no class filter and no
+                // active group filters; it is a PLAIN slice, so any expanded
+                // cluster is cleared (E3) and the cursor chain resets (E4).
+                onClick={() => {
                   setFilters(new Set<string>());
-                  actions.load();
-                }
-              }}
-            >
-              Explore slice
+                  setTypeFilter(null);
+                  overview.enterSlice();
+                  actions.load(null, null);
+                }}
+              >
+                {actions.loading && <Loader2 aria-hidden className="animate-spin" />}
+                Load slice
+              </Button>
+              {overview.status === "ready" && (
+                <Button variant="outline" onClick={overview.collapse}>
+                  Back to overview
+                </Button>
+              )}
+              {overview.status !== "ready" && (
+                <Button variant="outline" onClick={() => void overview.load()}>
+                  {overview.status === "loading" ? (
+                    <Loader2 aria-hidden className="animate-spin" />
+                  ) : (
+                    "Show overview"
+                  )}
+                </Button>
+              )}
+            </>
+          )}
+          {!inClusters && graphStore.canExpand && (
+            <Button variant="outline" disabled={actions.expanding} onClick={actions.expand}>
+              {actions.expanding && <Loader2 aria-hidden className="animate-spin" />}
+              Load more
             </Button>
-          </>
-        ) : (
-          <>
-            <Button
+          )}
+          {!inClusters && (
+            <label className="flex items-center gap-2">
+              <Checkbox
+                checked={isChecked}
+                onCheckedChange={(checked) => setIsChecked(checked === true)}
+              />
+              Add not connected nodes
+            </label>
+          )}
+        </div>
+        {!inClusters && (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="text-sm font-medium">Filter by class</span>
+            <FilterPanel
+              value={typeFilter}
               disabled={actions.loading}
-              // A fresh load (replace) starts with no active group filters;
-              // it is a PLAIN slice, so any expanded cluster is cleared.
-              onClick={() => {
-                setFilters(new Set<string>());
-                overview.enterSlice();
-                actions.load();
+              onChange={(group) => {
+                setTypeFilter(group);
+                // Card E4 DoD: a filter change re-queries the slice — a fresh
+                // load with the new class (cursor chain resets). The explicit
+                // `group` argument is the not-yet-rendered state (same handler).
+                loadSlice(null, group);
               }}
-            >
-              {actions.loading && <Loader2 aria-hidden className="animate-spin" />}
-              Load slice
-            </Button>
-            {overview.status === "ready" && (
-              <Button variant="outline" onClick={overview.collapse}>
-                Back to overview
-              </Button>
-            )}
-            {overview.status !== "ready" && (
-              <Button variant="outline" onClick={() => void overview.load()}>
-                {overview.status === "loading" ? (
-                  <Loader2 aria-hidden className="animate-spin" />
-                ) : (
-                  "Show overview"
-                )}
-              </Button>
-            )}
-          </>
+            />
+          </div>
         )}
-        {!inClusters && graphStore.canExpand && (
-          <Button variant="outline" disabled={actions.expanding} onClick={actions.expand}>
-            {actions.expanding && <Loader2 aria-hidden className="animate-spin" />}
-            Load more
-          </Button>
-        )}
-        <p className="mt-2 text-sm text-gray-500">
+        <p className="text-sm text-gray-500">
           {inClusters
             ? `${overview.clusters.length} classes · counts from /api/aggregate — click a cluster to expand its type`
             : page
-              ? `${graphStore.nodeCount} nodes, ${graphStore.edgeCount} edges in store${
+              ? `${typeFilter ?? "All classes"}: ${graphStore.nodeCount} nodes, ${graphStore.edgeCount} edges in store${
                   expandedType ? ` (type: ${expandedType})` : ""
                 } (limit ${page.limit}${
                   page.truncated
@@ -261,13 +305,6 @@ const Selections: React.FC<SelectionsProps> = ({ actions, setFilteredGraphData }
                 })`
               : "No slice loaded yet"}
         </p>
-        <label className="flex items-center gap-2">
-          <Checkbox
-            checked={isChecked}
-            onCheckedChange={(checked) => setIsChecked(checked === true)}
-          />
-          Add not connected nodes
-        </label>
       </div>
       {overview.error && (
         <div
