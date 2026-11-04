@@ -337,15 +337,19 @@ LIMIT {limit}"""
 
 
 def aggregate_query() -> str:
-    """Total entity counts per declared type — the B4 aggregate source.
+    """Total entity counts per ``rdf:type`` — the B4 aggregate source.
 
-    No LIMIT: this is the one unbounded query (counts, not rows).
+    No LIMIT: this is the one unbounded query (counts, not rows). ``?type``
+    is every type IRI in the dataset, not just the pinned data-model
+    classes; the endpoint folds the rest into the ``Unknown`` bucket.
+    ``?type`` is the secondary sort key so equal counts order
+    deterministically.
     """
     return """SELECT ?type (COUNT(?s) AS ?count) WHERE {
   ?s a ?type .
 }
 GROUP BY ?type
-ORDER BY DESC(?count)"""
+ORDER BY DESC(?count) ?type"""
 
 
 def entity_properties_query(*, iri: str, limit: int = 200) -> str:

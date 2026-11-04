@@ -10,12 +10,14 @@ SPARQL gateway.
 from fastapi import FastAPI
 
 from app import contract, presets, subgraph
+from app.aggregate import router as aggregate_router
 from app.api_b2 import router as b2_router
 from app.settings import Settings
 
 app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0")
 
 app.include_router(subgraph.router)
+app.include_router(aggregate_router)
 app.include_router(b2_router, prefix="/api")
 
 
