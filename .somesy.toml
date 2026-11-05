@@ -1,8 +1,20 @@
+# SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
+# SPDX-License-Identifier: MIT
+
+[config]
+# Root has no pyproject.toml and its package.json is a husky-only wrapper:
+# neither is a sync target. backend/ and frontend/ carry their own
+# .somesy.toml because npm needs semver (1.0.0-dev.0) while the PEP 440
+# version (1.0.0.dev0) is not valid in package.json.
+no_sync_pyproject = true
+no_sync_package_json = true
+packages = ["backend", "frontend"]
+
 [project]
-name = "rdf-graph-visualization"
-version = "0.3.0"
-description = "Visualization of RDF graphs in Turtle format in 3D on the web."
-keywords = ["rdf", "graph", "turtle", "visualization"]
+name = "hkg-graph-explorer"
+version = "1.0.0.dev0"
+description = "HKG Graph Explorer: live GPU-accelerated 3D/2D graph visualization of the Helmholtz Knowledge Graph."
+keywords = ["knowledge-graph", "hkg", "helmholtz", "graph", "visualization", "webgl", "3d"]
 license = "MIT"
 repository = "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
 homepage = "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"

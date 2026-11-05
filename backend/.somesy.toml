@@ -1,0 +1,22 @@
+# SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
+# SPDX-License-Identifier: MIT
+
+[config]
+# CITATION.cff / codemeta.json live only at the repo root.
+no_sync_cff = true
+no_sync_codemeta = true
+
+[project]
+name = "hkg-graph-explorer-backend"
+version = "1.0.0dev0"
+description = "SPARQL-backed graph API for the HKG graph visualization"
+license = "MIT"
+repository = "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
+
+[[project.people]]
+family-names = "Soylu"
+given-names = "Mustafa"
+email = "m.soylu@fz-juelich.de"
+orcid = "https://orcid.org/0000-0003-2637-0432"
+author = true
+maintainer = true

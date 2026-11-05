@@ -14,7 +14,7 @@ app = ["graph_config.toml"]
 
 [project]
 name = "hkg-graph-explorer-backend"
-version = "0.4.0.dev0"
+version = "1.0.0dev0"
 description = "SPARQL-backed graph API for the HKG graph visualization"
 requires-python = ">=3.11"
 dependencies = [
@@ -26,6 +26,13 @@ dependencies = [
     # bump the tag deliberately, never follow main/development.
     "hkg-data-model @ git+https://codebase.helmholtz.cloud/hmc/helmholtz-kg/semantics/internal-data-model.git@1.1.0",
 ]
+authors = [
+    {name = "Mustafa Soylu", email = "m.soylu@fz-juelich.de"},
+]
+maintainers = [
+    {name = "Mustafa Soylu", email = "m.soylu@fz-juelich.de"},
+]
+license = "MIT"
 
 [project.optional-dependencies]
 dev = [
@@ -37,6 +44,9 @@ dev = [
     "pylint>=4.1",
     "pip-audit>=2.10",
 ]
+
+[project.urls]
+repository = "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

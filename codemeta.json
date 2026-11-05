@@ -1,11 +1,5 @@
 {
-  "@context": [
-    "https://doi.org/10.5063/schema/codemeta-2.0",
-    "https://w3id.org/software-iodata",
-    "https://raw.githubusercontent.com/jantman/repostatus.org/master/badges/latest/ontology.jsonld",
-    "https://schema.org",
-    "https://w3id.org/software-types"
-  ],
+  "@context": "https://w3id.org/codemeta/3.1",
   "@type": "SoftwareSourceCode",
   "author": [
     {
@@ -15,16 +9,49 @@
       "email": "m.soylu@fz-juelich.de",
       "@id": "https://orcid.org/0000-0003-2637-0432",
       "identifier": "https://orcid.org/0000-0003-2637-0432"
+    },
+    {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0003-2637-0432",
+      "roleName": "The main author, maintainer and tester.",
+      "startDate": "2023-03-01"
+    },
+    {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0003-2637-0432",
+      "roleName": "ideas",
+      "startDate": "2023-03-01"
+    },
+    {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0003-2637-0432",
+      "roleName": "code",
+      "startDate": "2023-03-01"
+    },
+    {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0003-2637-0432",
+      "roleName": "design",
+      "startDate": "2023-03-01"
+    },
+    {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0003-2637-0432",
+      "roleName": "test",
+      "startDate": "2023-03-01"
     }
   ],
-  "name": "rdf-graph-visualization",
-  "description": "Visualization of RDF graphs in Turtle format in 3D on the web.",
-  "version": "0.3.0",
+  "name": "hkg-graph-explorer",
+  "description": "HKG Graph Explorer: live GPU-accelerated 3D/2D graph visualization of the Helmholtz Knowledge Graph.",
+  "version": "1.0.0.dev0",
   "keywords": [
-    "rdf",
+    "knowledge-graph",
+    "hkg",
+    "helmholtz",
     "graph",
-    "turtle",
-    "visualization"
+    "visualization",
+    "webgl",
+    "3d"
   ],
   "maintainer": [
     {
@@ -51,6 +78,18 @@
       "identifier": "https://orcid.org/0000-0002-2818-5890"
     },
     {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0002-2818-5890",
+      "roleName": "ideas",
+      "startDate": "2023-03-01"
+    },
+    {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0002-2818-5890",
+      "roleName": "userTesting",
+      "startDate": "2023-03-01"
+    },
+    {
       "@type": "Person",
       "givenName": "Volker",
       "familyName": "Hofmann",
@@ -59,13 +98,42 @@
       "identifier": "https://orcid.org/0000-0002-5149-603X"
     },
     {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0002-5149-603X",
+      "roleName": "Discussions and suggestions concerning tool scope and usability.",
+      "startDate": "2023-06-01",
+      "endDate": "2023-06-30"
+    },
+    {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0002-5149-603X",
+      "roleName": "ideas",
+      "startDate": "2023-06-01",
+      "endDate": "2023-06-30"
+    },
+    {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0002-5149-603X",
+      "roleName": "userTesting",
+      "startDate": "2023-06-01",
+      "endDate": "2023-06-30"
+    },
+    {
       "@type": "Person",
       "givenName": "Stefan",
       "familyName": "Sandfeld",
       "email": "s.sandfeld@fz-juelich.de",
       "@id": "https://orcid.org/0000-0001-9560-4728",
       "identifier": "https://orcid.org/0000-0001-9560-4728"
+    },
+    {
+      "@type": "Role",
+      "schema:author": "https://orcid.org/0000-0001-9560-4728",
+      "roleName": "fundingFinding"
     }
   ],
-  "url": "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
+  "url": "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization",
+  "issueTracker": "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization/issues",
+  "dateCreated": "2024-10-17",
+  "dateModified": "2026-11-05"
 }

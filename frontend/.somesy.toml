@@ -1,0 +1,58 @@
+# SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
+# SPDX-License-Identifier: MIT
+
+[config]
+# CITATION.cff / codemeta.json live only at the repo root; no pyproject here.
+no_sync_cff = true
+no_sync_codemeta = true
+no_sync_pyproject = true
+
+[project]
+name = "hkg-graph-explorer"
+version = "1.0.0-dev.0"
+description = "HKG Graph Explorer: live GPU-accelerated 3D/2D graph visualization of the Helmholtz Knowledge Graph."
+keywords = ["knowledge-graph", "hkg", "helmholtz", "graph", "visualization", "webgl", "3d"]
+license = "MIT"
+repository = "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
+homepage = "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
+
+[[project.people]]
+family-names = "Soylu"
+given-names = "Mustafa"
+email = "m.soylu@fz-juelich.de"
+orcid = "https://orcid.org/0000-0003-2637-0432"
+contribution = "The main author, maintainer and tester."
+contribution_begin = "2023-03-01"
+contribution_types = ["ideas", "code", "design", "test"]
+author = true
+maintainer = true
+
+[[project.people]]
+family-names = "Fathalla"
+given-names = "Said"
+email = "s.fathalla@fz-juelich.de"
+orcid = "https://orcid.org/0000-0002-2818-5890"
+
+contribution_begin = "2023-03-01"
+contribution_types = ["ideas", "userTesting"]
+
+[[project.people]]
+family-names = "Hofmann"
+given-names = "Volker"
+email = "v.hofmann@fz-juelich.de"
+orcid = "https://orcid.org/0000-0002-5149-603X"
+
+contribution = "Discussions and suggestions concerning tool scope and usability."
+contribution_begin = "2023-06-01"
+contribution_end = "2023-06-30"
+contribution_types = ["ideas", "userTesting"]
+publication_author = true
+
+[[project.people]]
+family-names = "Sandfeld"
+given-names = "Stefan"
+email = "s.sandfeld@fz-juelich.de"
+orcid = "https://orcid.org/0000-0001-9560-4728"
+
+contribution_types = ["fundingFinding"]
+publication_author = true

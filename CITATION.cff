@@ -1,14 +1,17 @@
 cff-version: 1.2.0
 message: If you use this software, please cite it using these metadata.
 type: software
-title: rdf-graph-visualization
-abstract: Visualization of RDF graphs in Turtle format in 3D on the web.
-version: 0.3.0
+title: hkg-graph-explorer
+abstract: 'HKG Graph Explorer: live GPU-accelerated 3D/2D graph visualization of the Helmholtz Knowledge Graph.'
+version: 1.0.0.dev0
 keywords:
-  - rdf
+  - knowledge-graph
+  - hkg
+  - helmholtz
   - graph
-  - turtle
   - visualization
+  - webgl
+  - 3d
 authors:
   - family-names: Soylu
     given-names: Mustafa
@@ -28,7 +31,5 @@ contact:
     orcid: https://orcid.org/0000-0003-2637-0432
     email: m.soylu@fz-juelich.de
 license: MIT
-repository-code:
-  https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization
-url:
-  https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization
+repository-code: https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization
+url: https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization

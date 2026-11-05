@@ -1,7 +1,7 @@
 {
-  "name": "rdf-graph-visualization",
+  "name": "hkg-graph-explorer",
   "private": true,
-  "version": "0.3.0",
+  "version": "1.0.0-dev.0",
   "type": "module",
   "packageManager": "pnpm@12.16.1",
   "engines": {
@@ -79,11 +79,6 @@
     "url": "https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization"
   },
   "contributors": [
-    {
-      "name": "Mustafa Soylu",
-      "url": "https://orcid.org/0000-0003-2637-0432",
-      "email": "m.soylu@fz-juelich.de"
-    },
     {
       "name": "Volker Hofmann",
       "url": "https://orcid.org/0000-0002-5149-603X",
