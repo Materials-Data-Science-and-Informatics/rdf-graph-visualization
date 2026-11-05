@@ -2,6 +2,7 @@ import * as THREE from "three/webgpu";
 import type { GraphStore } from "@/lib/graph-store";
 import { edgeOpacity, nodeRadius, type EngineConfig } from "./config";
 import { EDGE_SEGMENTS, UNTYPED_ALPHA } from "./curve";
+import { fillRadiusMultipliers, ROOT_SIZE, radiusMultiplier } from "./node-size";
 import { applyCarry, type Vec3 } from "./picking";
 import {
   buildCsr,
@@ -15,6 +16,7 @@ import {
   NONE,
   attrOf,
   createUniforms,
+  floatBuf,
   markRanges,
   uintBuf,
   vec4Buf,
@@ -34,6 +36,7 @@ export interface GpuSeed {
   pos: Float32Array;
   vel: Float32Array;
   colors: Float32Array;
+  sizes: Float32Array;
   edges: Uint32Array;
   edgeStore: Uint32Array;
   edgeColors: Float32Array;
@@ -63,6 +66,8 @@ export class GpuGraph {
   readonly edgeColorCpu: Float32Array;
   /** GPU edge-list index -> GraphStore edge index (for predicate lookup on pick). */
   readonly edgeStoreCpu: Uint32Array;
+  /** Per-node radius multiplier (recomputed with the CSR; new nodes start at 1, the root larger). */
+  readonly sizeCpu: Float32Array;
   private readonly initCpu: Float32Array;
   private readonly offsetsCpu: Uint32Array;
   private readonly neighCpu: Uint32Array;
@@ -105,6 +110,7 @@ export class GpuGraph {
     this.edgeCpu = new Uint32Array(edgeCap * 2);
     this.edgeStoreCpu = new Uint32Array(edgeCap);
     this.edgeColorCpu = new Float32Array(edgeCap * 4);
+    this.sizeCpu = new Float32Array(nodeCap).fill(1);
     this.initCpu = new Float32Array(nodeCap * 4);
     this.offsetsCpu = new Uint32Array(nodeCap + 1);
     this.neighCpu = new Uint32Array(edgeCap * 2);
@@ -112,6 +118,7 @@ export class GpuGraph {
       posArr.set(seed.pos.subarray(0, seed.nodeCount * 4));
       velArr.set(seed.vel.subarray(0, seed.nodeCount * 4));
       this.colorCpu.set(seed.colors.subarray(0, seed.nodeCount * 4));
+      this.sizeCpu.set(seed.sizes.subarray(0, seed.nodeCount));
       this.edgeCpu.set(seed.edges.subarray(0, seed.edgeCount * 2));
       this.edgeStoreCpu.set(seed.edgeStore.subarray(0, seed.edgeCount));
       this.edgeColorCpu.set(seed.edgeColors.subarray(0, seed.edgeCount * 4));
@@ -124,6 +131,7 @@ export class GpuGraph {
       pos: vec4Buf(posArr),
       vel: vec4Buf(velArr),
       colors: vec4Buf(this.colorCpu),
+      size: floatBuf(this.sizeCpu).toReadOnly(),
       initInfo: vec4Buf(this.initCpu),
       offsets: uintBuf(this.offsetsCpu).toReadOnly(),
       neigh: uintBuf(this.neighCpu).toReadOnly(),
@@ -233,6 +241,8 @@ export class GpuGraph {
         a >= 0 ? jitterRadius(this.cfg.rest, depth[i - from]) : orphanRadius;
       const [r, g, b] = colorOf(store.groups[i]);
       this.colorCpu.set([r, g, b, store.groups[i] >= 0 ? 1 : UNTYPED_ALPHA], i * 4);
+      // degree unknown until the next CSR rebuild: leaf size (the root is always the largest)
+      this.sizeCpu[i] = i === 0 ? radiusMultiplier(ROOT_SIZE) : 1;
     }
     const carried = carry
       ? applyCarry(store.nodeIds, from, to, carry, this.posCpu, this.initCpu)
@@ -242,6 +252,7 @@ export class GpuGraph {
     const range = [{ start: from, end: to }];
     markRanges(attrOf(this.b.initInfo), range, 4);
     markRanges(attrOf(this.b.colors), range, 4);
+    markRanges(attrOf(this.b.size), range, 1);
     this.u.uInitStart.value = from;
     this.u.uInitEnd.value = to;
     this.pendingInit = true;
@@ -337,6 +348,11 @@ export class GpuGraph {
   rebuildCsr(): void {
     buildCsr(this.edgeCpu, this.edgeCount, this.nodeCount, this.offsetsCpu, this.neighCpu);
     this.markCsrUploaded();
+    // node size from the CSR degree; whole buffer (any node's degree may have changed)
+    fillRadiusMultipliers(this.sizeCpu, this.nodeCount, this.offsetsCpu);
+    const sizeAttr = attrOf(this.b.size);
+    sizeAttr.clearUpdateRanges();
+    sizeAttr.needsUpdate = true;
   }
 
   private markCsrUploaded(): void {
@@ -443,6 +459,7 @@ export class GpuGraph {
       this.b.pos,
       this.b.vel,
       this.b.colors,
+      this.b.size,
       this.b.initInfo,
       this.b.offsets,
       this.b.neigh,

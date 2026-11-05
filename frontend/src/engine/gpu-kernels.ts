@@ -18,8 +18,8 @@ import { kernel, type GpuBuffers, type GpuUniforms } from "./gpu-buffers";
 
 /** Force step kernel (stochastic repulsion + ring samples + springs + gravity). */
 export function buildStep(b: GpuBuffers, u: GpuUniforms, cfg: EngineConfig, nodeCap: number) {
-  const { pos, vel, offsets, neigh } = b;
-  const { uCount, uCountF, uSeed, uZOn, uAlpha, uRepK, uSettled, uOldMob } = u;
+  const { pos, vel, offsets, neigh, size } = b;
+  const { uRad, uCount, uCountF, uSeed, uZOn, uAlpha, uRepK, uSettled, uOldMob } = u;
   const k = cfg.samples;
   const ring = cfg.ringSamples;
   const rest = uniform(cfg.rest);
@@ -87,8 +87,10 @@ export function buildStep(b: GpuBuffers, u: GpuUniforms, cfg: EngineConfig, node
         const dj = max(float(offsets.element(j.add(1)).sub(offsets.element(j))), 1);
         const d = pos.element(j).xyz.sub(pi);
         const dist = max(length(d), 1e-3);
+        // bigger nodes keep their neighbours outside their sphere: rest + (rA - base) + (rB - base)
+        const restIJ = rest.add(uRad.mul(size.element(idx).add(size.element(j)).sub(2)));
         const share = dj.div(di.add(dj));
-        f.addAssign(d.div(dist).mul(dist.sub(rest)).mul(spring).mul(share).div(min(di, dj)));
+        f.addAssign(d.div(dist).mul(dist.sub(restIJ)).mul(spring).mul(share).div(min(di, dj)));
       });
       f.subAssign(pi.mul(grav)); // centering
       // nodes that predate the current re-heat move at a fraction of the force

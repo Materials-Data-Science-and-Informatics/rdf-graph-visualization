@@ -398,6 +398,7 @@ export class Engine {
         pos,
         vel,
         colors: old.colorCpu,
+        sizes: old.sizeCpu,
         edges: old.edgeCpu,
         edgeStore: old.edgeStoreCpu,
         edgeColors: old.edgeColorCpu,

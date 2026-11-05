@@ -5,7 +5,8 @@ import type { IndexRange } from "./layout-utils";
 
 export type Vec4Buf = THREE.StorageBufferNode<"vec4">;
 export type UintBuf = THREE.StorageBufferNode<"uint">;
-export type StorageNode = Vec4Buf | UintBuf;
+export type FloatBuf = THREE.StorageBufferNode<"float">;
+export type StorageNode = Vec4Buf | UintBuf | FloatBuf;
 export type ComputeNodeT = ReturnType<Vec4Buf["compute"]>;
 
 /**
@@ -16,6 +17,9 @@ export type ComputeNodeT = ReturnType<Vec4Buf["compute"]>;
 export const vec4Buf = (data: Float32Array): Vec4Buf => instancedArray(data, "vec4");
 export const uintBuf = (data: Uint32Array): UintBuf =>
   instancedArray(data, "uint") as unknown as UintBuf;
+
+export const floatBuf = (data: Float32Array): FloatBuf =>
+  instancedArray(data, "float") as unknown as FloatBuf;
 
 /** `Fn(...)()` is typed as a plain Node upstream although it is a callable kernel with `.compute`. */
 export function kernel(body: () => void, threads: number): ComputeNodeT {
@@ -55,6 +59,8 @@ export interface GpuBuffers {
   pos: Vec4Buf;
   vel: Vec4Buf;
   colors: Vec4Buf;
+  /** Per-node radius multiplier (1 = base radius), see node-size.ts. */
+  size: FloatBuf;
   initInfo: Vec4Buf;
   offsets: UintBuf;
   neigh: UintBuf;

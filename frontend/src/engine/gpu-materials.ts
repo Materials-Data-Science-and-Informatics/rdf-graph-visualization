@@ -50,11 +50,16 @@ const idColor = (id: UintNode) => {
   return vec4(byte(0), byte(8), byte(16), byte(24));
 };
 
-/** Per-instance sprite scale factor: 1 + 0.2 hovered + 0.35 selected (vertex stage). */
+/** Extra sprite room for the root's outline ring (the selection ring brings its own, bigger one). */
+const ROOT_RING_ROOM = 0.16;
+
+/** Per-instance sprite scale factor: 1 + 0.2 hovered + 0.35 selected / 0.16 root (vertex stage). */
 function highlightScale(u: GpuUniforms) {
   const hov = u.uHover.equal(instanceIndex).select(float(1), float(0));
   const sel = u.uSel.equal(instanceIndex).select(float(1), float(0));
-  return float(1).add(hov.mul(0.2)).add(sel.mul(0.35));
+  const root = instanceIndex.equal(uint(0)).select(float(1), float(0));
+  const ring = sel.mul(0.35).add(root.mul(float(1).sub(sel)).mul(ROOT_RING_ROOM));
+  return float(1).add(hov.mul(0.2)).add(ring);
 }
 
 /**
@@ -62,13 +67,15 @@ function highlightScale(u: GpuUniforms) {
  * plus the edge colour (relation colour, else theme grey).
  */
 export function edgeShaders(bufs: GpuBuffers, u: GpuUniforms, forPick: boolean) {
-  const { pos, colors, edgeIdx, edgeCol } = bufs;
+  const { pos, colors, edgeIdx, edgeCol, size } = bufs;
   const { uRad, uCurv } = u;
   const i = instanceIndex;
   const ia = edgeIdx.element(i.mul(2));
   const ib = edgeIdx.element(i.mul(2).add(1));
   const a = pos.element(ia).xyz;
   const b = pos.element(ib).xyz;
+  const ra = uRad.mul(size.element(ia)); // endpoint radii (world units)
+  const rb = uRad.mul(size.element(ib));
   const ca = colors.element(ia);
   const cb = colors.element(ib);
   // an edge with a hidden endpoint collapses to a point (degenerate triangles draw nothing)
@@ -97,12 +104,12 @@ export function edgeShaders(bufs: GpuBuffers, u: GpuUniforms, forPick: boolean) 
   const tangent = (u: typeof len) => ta.mul(float(1).sub(u)).add(tb.mul(u));
   const sideAt = (u: typeof len, p: typeof a) =>
     normalize(cross(tangent(u), cameraPosition.sub(p)).add(vec3(1e-6)));
-  // curve parameter of a point ~uRad away from either end, measured along the end
-  // tangents (|P'(0)| = 2|ta|, |P'(1)| = 2|tb|)
+  // curve parameter of a point ~ra / rb away from the source / target centre, measured along
+  // the end tangents (|P'(0)| = 2|ta|, |P'(1)| = 2|tb|)
   const tbLen2 = max(length(tb), 1e-4).mul(2);
-  const uStart = clamp(uRad.div(max(length(ta), 1e-4).mul(2)), 0, 0.45);
-  const uTip = float(1).sub(clamp(uRad.div(tbLen2), 0, 0.45));
-  const arrowLen = clamp(len.sub(uRad.mul(2)), 0, uRad.mul(1.4)); // shrinks on very short edges
+  const uStart = clamp(ra.div(max(length(ta), 1e-4).mul(2)), 0, 0.45);
+  const uTip = float(1).sub(clamp(rb.div(tbLen2), 0, 0.45));
+  const arrowLen = clamp(len.sub(ra).sub(rb), 0, uRad.mul(1.4)); // shrinks on very short edges
   const uBase = max(uTip.sub(arrowLen.div(tbLen2)), uStart);
   const hovE = u.uHoverEdge.equal(i);
   // picking strips are 3x wider; the hovered edge is drawn 2.5x wider
@@ -133,8 +140,9 @@ export function edgeShaders(bufs: GpuBuffers, u: GpuUniforms, forPick: boolean) 
 export function createNodeMaterial(b: GpuBuffers, u: GpuUniforms): THREE.SpriteNodeMaterial {
   const mat = new THREE.SpriteNodeMaterial();
   mat.positionNode = b.pos.toAttribute().xyz;
-  // sprite scale = diameter; hovered nodes grow 20%, the selected one gets room for a ring
-  mat.scaleNode = u.uRad.mul(2).mul(highlightScale(u));
+  // sprite scale = diameter (degree-dependent); hovered nodes grow 20%, the selected one and the
+  // root get room for a ring
+  mat.scaleNode = u.uRad.mul(b.size.element(instanceIndex)).mul(2).mul(highlightScale(u));
   mat.transparent = false;
   mat.depthWrite = true;
   const cAttr = b.colors.toAttribute();
@@ -142,7 +150,11 @@ export function createNodeMaterial(b: GpuBuffers, u: GpuUniforms): THREE.SpriteN
   mat.fragmentNode = Fn(() => {
     const hov = uHover.equal(instanceIndex).select(float(1), float(0));
     const sel = uSel.equal(instanceIndex).select(float(1), float(0));
-    const k = float(1).add(sel.mul(0.35)).add(hov.mul(0.2)).div(hov.mul(0.2).add(1));
+    const root = instanceIndex.equal(uint(0)).select(float(1), float(0));
+    // sprite room beyond the shape: selection ring (0.35) wins over the thinner root ring
+    const ringRoom = sel.mul(0.35).add(root.mul(float(1).sub(sel)).mul(ROOT_RING_ROOM));
+    const k = float(1).add(ringRoom).add(hov.mul(0.2)).div(hov.mul(0.2).add(1));
+    const ringOn = sel.add(root).greaterThan(0.5);
     // alpha: 0 hidden, UNTYPED_ALPHA visible without group (box), 1 visible typed (sphere)
     const box = cAttr.w.lessThan(TYPED_THRESHOLD);
     const q = uv().mul(2).sub(1);
@@ -154,9 +166,10 @@ export function createNodeMaterial(b: GpuBuffers, u: GpuUniforms): THREE.SpriteN
     const r2 = dot(qq, qq);
     const mqq = max(abs(qq.x), abs(qq.y));
     const outside = box.select(mqq.greaterThan(0.8), r2.greaterThan(1));
+    // selection ring: outer 12% of the sprite; root ring: thinner, outer 8%
     const ringZone = box.select(
-      sel.greaterThan(0.5).and(mq0.greaterThan(0.88)),
-      rq2.greaterThanEqual(0.7744)
+      ringOn.and(mq0.greaterThan(sel.greaterThan(0.5).select(float(0.88), float(0.92)))),
+      ringOn.and(rq2.greaterThanEqual(sel.greaterThan(0.5).select(float(0.7744), float(0.8464))))
     );
     Discard(outside.and(ringZone.not())); // gap between shape and selection ring
     const z = sqrt(max(float(1).sub(r2), 0));
@@ -176,7 +189,9 @@ export function createNodeMaterial(b: GpuBuffers, u: GpuUniforms): THREE.SpriteN
       .mul(box.select(float(0.25), float(1)));
     const rim = box.select(float(0), pow(float(1).sub(z), 3).mul(0.35));
     const lit = cAttr.xyz.mul(diff.mul(0.85).add(0.3)).add(spec).add(rim).mul(hov.mul(0.35).add(1));
-    return vec4(outside.select(uRing as unknown as typeof lit, lit), 1);
+    // ring colour: selection = theme ring colour, root (not selected) = white
+    const ringCol = sel.greaterThan(0.5).select(uRing as unknown as typeof lit, vec3(1, 1, 1));
+    return vec4(outside.select(ringCol, lit), 1);
   })();
   return mat;
 }
@@ -216,7 +231,7 @@ export function createPickMaterials(b: GpuBuffers, u: GpuUniforms) {
   };
   const pickNodeMat = new THREE.SpriteNodeMaterial(pickBase);
   pickNodeMat.positionNode = b.pos.toAttribute().xyz;
-  pickNodeMat.scaleNode = u.uRad.mul(2.4); // a bit generous: small nodes stay easy to hit
+  pickNodeMat.scaleNode = u.uRad.mul(b.size.element(instanceIndex)).mul(2.4); // a bit generous: small nodes stay easy to hit
   const pAttr = b.colors.toAttribute();
   pickNodeMat.fragmentNode = Fn(() => {
     const q = uv().mul(2).sub(1);

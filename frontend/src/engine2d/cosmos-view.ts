@@ -10,7 +10,7 @@ import { HubLabels } from "./hub-labels";
 import { placeNodes } from "./placement";
 import { communityRegions, moveIntoRegions } from "./community-layout";
 import { findLeafGroups, leafIndices, placeLeafDiscs, type LeafGroups } from "./leaf-rings";
-import { computeDegrees, computePointSizes } from "./point-sizes";
+import { computeDegrees, computePointSizes } from "@/engine/node-size";
 
 const SPACE_SIZE = 4096;
 const CENTER = SPACE_SIZE / 2;
