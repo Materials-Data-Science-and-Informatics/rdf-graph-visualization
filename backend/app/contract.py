@@ -189,6 +189,9 @@ class StreamMeta(BaseModel):
     root: str
     max_nodes: int
     max_hops: int
+    #: Set on a replay from the snapshot cache (``built_at``: ISO UTC build time).
+    cached: bool | None = None
+    built_at: str | None = None
 
 
 class StreamNode(BaseModel):

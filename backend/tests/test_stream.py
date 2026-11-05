@@ -41,8 +41,15 @@ GRAPH = [(R, REL, A), (R, REL, Bn), (C, REL2, A), (D, REL, C), (Bn, REL, A)]
 class FakeClient:
     """Answers edge/type/label queries from GRAPH; records every query."""
 
-    def __init__(self, graph=GRAPH, delay: float = 0.0, fail_on: str | None = None):
+    def __init__(
+        self,
+        graph=GRAPH,
+        delay: float = 0.0,
+        fail_on: str | None = None,
+        gate: threading.Event | None = None,
+    ):
         self.graph, self.delay, self.fail_on = graph, delay, fail_on
+        self.gate = gate  # queries block until it is set
         self.queries: list[str] = []
         self._lock = threading.Lock()
 
@@ -52,6 +59,8 @@ class FakeClient:
     def _record(self, query: str) -> None:
         with self._lock:
             self.queries.append(query)
+        if self.gate:
+            self.gate.wait(10)
         time.sleep(self.delay)
         if self.fail_on and self.fail_on in query:
             raise QleverServerError("boom")

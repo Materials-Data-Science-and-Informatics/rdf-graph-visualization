@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import pytest
 
-from app import middleware
+from app import middleware, snapshot
 
 
 @pytest.fixture(autouse=True)
@@ -19,3 +19,13 @@ def reset_middleware_state():
     middleware.reset_state()
     yield
     middleware.reset_state()
+
+
+@pytest.fixture(autouse=True)
+def stream_cache_off(monkeypatch):
+    """No snapshot cache / prewarm unless a test opts in (STREAM_CACHE_TTL_S)."""
+    monkeypatch.setenv("STREAM_CACHE_TTL_S", "0")
+    monkeypatch.setenv("STREAM_REFRESH_S", "0")
+    snapshot.reset_state()
+    yield
+    snapshot.reset_state()

@@ -10,3 +10,4 @@ backend/.venv
 *.tsbuildinfo
 KANBAN.md
 scripts
+backend/.cache

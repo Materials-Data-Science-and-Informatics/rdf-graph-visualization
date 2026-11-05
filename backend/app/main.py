@@ -8,9 +8,13 @@ SPARQL gateway. The B7 guard middleware (TTL cache + rate limit) wraps all
 /api traffic, excluding the health probe.
 """
 
+import asyncio
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
-from app import contract, presets, subgraph
+from app import bulk, contract, presets, stream, subgraph
 from app.aggregate import router as aggregate_router
 from app.api_b2 import router as b2_router
 from app.middleware import ApiGuardMiddleware
@@ -18,7 +22,22 @@ from app.search import router as search_router
 from app.settings import Settings
 from app.stream import router as stream_router
 
-app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0")
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    """Prewarm the default /api/stream snapshot; release workers on shutdown."""
+    prewarm = stream.start_prewarm()
+    try:
+        yield
+    finally:
+        if prewarm:
+            prewarm.cancel()
+            await asyncio.gather(prewarm, return_exceptions=True)
+        await stream.shutdown()
+        bulk.shutdown_executor()
+
+
+app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0", lifespan=lifespan)
 
 app.add_middleware(ApiGuardMiddleware)
 app.include_router(subgraph.router)

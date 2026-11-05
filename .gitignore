@@ -10,3 +10,4 @@ __pycache__/
 .husky/_/
 .coverage
 *.egg-info/
+backend/.cache/

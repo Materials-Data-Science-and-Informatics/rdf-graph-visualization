@@ -54,6 +54,9 @@ COPY --from=frontend-build /app/dist /usr/share/nginx/html
 COPY backend/app /srv/app/app
 COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY docker/supervisord.conf /etc/supervisor/supervisord.conf
+# /api/stream snapshot cache (mount a volume here to survive restarts).
+ENV STREAM_CACHE_DIR=/var/cache/hkg-stream
+RUN mkdir -p /var/cache/hkg-stream
 EXPOSE 80
 HEALTHCHECK --interval=15s --timeout=5s --start-period=15s --retries=3 \
     CMD /opt/venv/bin/python -c "import sys,urllib.request; r=urllib.request.urlopen('http://127.0.0.1/api/health', timeout=3); sys.exit(0 if r.status==200 else 1)"

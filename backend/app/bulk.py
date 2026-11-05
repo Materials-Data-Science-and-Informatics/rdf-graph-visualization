@@ -72,6 +72,15 @@ def _get_executor() -> ThreadPoolExecutor:
         return _executor
 
 
+def shutdown_executor() -> None:
+    """Drop queued jobs and release the shared executor (app shutdown)."""
+    global _executor  # pylint: disable=global-statement
+    with _executor_lock:
+        executor, _executor = _executor, None
+    if executor is not None:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+
 async def _run_iter(
     jobs: Sequence[Callable[[], _T]], concurrency: int | None
 ) -> AsyncIterator[tuple[int, _T]]:

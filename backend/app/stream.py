@@ -26,25 +26,37 @@ Concurrency against QLever is capped process-wide in ``app.bulk``.
 Failures become an ``error`` event + ``done(error)`` — never an HTTP error
 once the response has started. Time budget and client disconnect cancel all
 outstanding work.
+
+Snapshot cache (``app.snapshot``): the endpoint replays a fresh stored run, or
+attaches to the single in-flight build of the same (root, max_nodes, max_hops)
+key, or starts one; ``start_prewarm`` keeps the default view's snapshot warm.
+A shared build ignores a subscriber's disconnect (see ``app.snapshot``) and
+uses the maximum time budget; a subscriber's own ``time_budget_s`` only ends
+its response. With ``STREAM_CACHE_TTL_S <= 0`` the live path above is used.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
-from collections.abc import AsyncIterator, Awaitable, Callable, Iterable
+from collections.abc import (
+    AsyncGenerator,
+    AsyncIterator,
+    Awaitable,
+    Callable,
+    Iterable,
+)
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import FileResponse, Response, StreamingResponse
 
-from app import bulk, graph_config, qlever, templates
+from app import bulk, graph_config, qlever, snapshot, templates
 from app.settings import Settings
 
 router = APIRouter()
-log = logging.getLogger(__name__)
+log = logging.getLogger("uvicorn.error")  # same handlers as the server log
 
 #: Edge query LIMIT = clamp(remaining budget * 3 + margin, FLOOR, CAP). LIMIT
 #: counts triples, and back-edges to already-seen nodes also consume it, hence
@@ -222,7 +234,7 @@ async def stream_events(
     time_budget_s: float,
     client: qlever.QleverClient | None = None,
     multi: bool = True,
-) -> AsyncIterator[Event]:
+) -> AsyncGenerator[Event, None]:
     """The event sequence of one stream (see module doc)."""
     yield {"type": "meta", "root": root, "max_nodes": max_nodes, "max_hops": max_hops}
     queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=QUEUE_MAX)
@@ -271,34 +283,119 @@ async def stream_events(
         await asyncio.gather(driver, return_exceptions=True)
 
 
-def _line(event: Event) -> bytes:
-    return json.dumps(event, separators=(",", ":")).encode() + b"\n"
+#: Default ``max_hops`` of a request (clamped to ``Settings.stream_max_hops``).
+DEFAULT_MAX_HOPS = 6
+#: Wait before the prewarm retries after a failed/uncacheable build (<= refresh).
+PREWARM_RETRY_S = 300.0
+
+
+def effective_key(
+    cfg: Settings, root: str, max_nodes: int | None, max_hops: int | None
+) -> snapshot.Key:
+    """Cache key: the root and the clamped limits (see ``stream``)."""
+    nodes = min(
+        max(cfg.stream_max_nodes if max_nodes is None else max_nodes, 1),
+        cfg.stream_max_nodes,
+    )
+    hops = min(
+        max(DEFAULT_MAX_HOPS if max_hops is None else max_hops, 0),
+        cfg.stream_max_hops,
+    )
+    return root, nodes, hops
+
+
+def _build_events(
+    cfg: Settings, key: snapshot.Key
+) -> Callable[[], AsyncGenerator[Event, None]]:
+    root, nodes, hops = key
+    return lambda: stream_events(
+        root,
+        max_nodes=nodes,
+        max_hops=hops,
+        time_budget_s=cfg.stream_max_time_budget_s,
+        multi=cfg.stream_multi_relation,
+    )
+
+
+def _ensure_build(cfg: Settings, key: snapshot.Key) -> snapshot.Build | None:
+    return snapshot.get_build(key) or snapshot.start_build(
+        key,
+        _build_events(cfg, key),
+        cfg.stream_cache_dir,
+        cfg.stream_cache_ttl_s,
+        cfg.stream_cache_max_bytes,
+    )
+
+
+async def _prewarm(cfg: Settings) -> None:
+    """Keep the default view's snapshot fresh (never raises, retries)."""
+    key = effective_key(cfg, cfg.default_root_iri, cfg.default_max_nodes, None)
+    refresh = cfg.stream_refresh_s
+    while True:
+        age = snapshot.age_s(cfg.stream_cache_dir, key)
+        if age is not None and age < refresh:
+            await asyncio.sleep(refresh - age)
+        ok = False
+        try:
+            build = _ensure_build(cfg, key)
+            if build and build.task:
+                await asyncio.wait({build.task})
+                ok = build.stored  # the file exists (a failed write must back off)
+            log.info(
+                "stream prewarm %s: %s",
+                "ok" if ok else "failed",
+                build and build.reason,
+            )
+        except Exception:  # pylint: disable=broad-exception-caught
+            log.warning("stream prewarm failed", exc_info=True)
+        if not ok:
+            await asyncio.sleep(min(refresh, PREWARM_RETRY_S))
+
+
+def start_prewarm(cfg: Settings | None = None) -> asyncio.Task[None] | None:
+    """Start the background prewarm task, or ``None`` when disabled."""
+    try:
+        cfg = cfg or Settings.from_env()
+    except ValueError:
+        log.warning("prewarm disabled: invalid settings", exc_info=True)
+        return None
+    if cfg.stream_cache_ttl_s <= 0 or cfg.stream_refresh_s <= 0:
+        return None
+    try:
+        templates.assert_valid_iri(cfg.default_root_iri)
+    except ValueError:
+        log.warning("prewarm disabled: invalid DEFAULT_ROOT_IRI")
+        return None
+    return asyncio.create_task(_prewarm(cfg))
+
+
+async def shutdown() -> None:
+    """Cancel the prewarm and running builds (app shutdown)."""
+    await snapshot.cancel_builds()
 
 
 @router.get("/api/stream")
-async def stream(
+async def stream(  # pylint: disable=too-many-locals
+    request: Request,
     root: str = Query(description="Root entity IRI (hop 0)."),
     max_nodes: int | None = Query(default=None),
     max_hops: int | None = Query(default=None),
     time_budget_s: float | None = Query(default=None),
-) -> StreamingResponse:
+) -> Response:
     """Progressive BFS from *root* as ``application/x-ndjson``."""
     try:
         templates.assert_valid_iri(root)
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     cfg = Settings.from_env()
-    nodes = min(
-        max(cfg.stream_max_nodes if max_nodes is None else max_nodes, 1),
-        cfg.stream_max_nodes,
-    )
-    hops = min(max(6 if max_hops is None else max_hops, 0), cfg.stream_max_hops)
+    key = effective_key(cfg, root, max_nodes, max_hops)
+    _, nodes, hops = key
     budget = min(
         max(120.0 if time_budget_s is None else time_budget_s, 1.0),
         cfg.stream_max_time_budget_s,
     )
 
-    async def body() -> AsyncIterator[bytes]:
+    async def live() -> AsyncIterator[bytes]:
         async for event in stream_events(
             root,
             max_nodes=nodes,
@@ -306,10 +403,42 @@ async def stream(
             time_budget_s=budget,
             multi=cfg.stream_multi_relation,
         ):
-            yield _line(event)
+            yield snapshot.encode(event)
 
+    headers = {"Cache-Control": "no-store", "X-Accel-Buffering": "no"}
+    body: AsyncIterator[bytes] | None = None
+    if cfg.stream_cache_ttl_s > 0:
+        ttl = cfg.stream_cache_ttl_s
+        path = snapshot.fresh_path(cfg.stream_cache_dir, key, ttl)
+        if (
+            path is not None
+            and "gzip" in request.headers.get("accept-encoding", "")
+            and snapshot.has_gzip_magic(path)
+        ):
+            # the stored gzip file is sent as is (meta already says cached)
+            return FileResponse(
+                path,
+                media_type="application/x-ndjson",
+                headers={
+                    **headers,
+                    "Content-Encoding": "gzip",
+                    "Vary": "Accept-Encoding",
+                },
+            )
+        body = await snapshot.open_fresh(cfg.stream_cache_dir, key, ttl)
+        if body is None:
+            build = snapshot.get_build(key)
+            # the default root is always cached; others from their 2nd request
+            if build is None and (
+                root == cfg.default_root_iri or snapshot.seen_before(key, ttl)
+            ):
+                build = _ensure_build(cfg, key)
+            if build is not None:
+                body = snapshot.follow(
+                    build, deadline=time.monotonic() + budget, heartbeat_s=HEARTBEAT_S
+                )
     return StreamingResponse(
-        body(),
+        body or live(),
         media_type="application/x-ndjson",
-        headers={"Cache-Control": "no-store", "X-Accel-Buffering": "no"},
+        headers={**headers, "Vary": "Accept-Encoding"},
     )
