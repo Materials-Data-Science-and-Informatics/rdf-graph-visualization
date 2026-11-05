@@ -6,18 +6,26 @@ export class WebGpuUnavailableError extends Error {
   }
 }
 
-export const WEBGPU_NOTICE = "This view needs WebGPU — use a current Chrome, Edge or Safari";
+export const WEBGPU_NOTICE = "3D needs WebGPU (Chrome/Edge 113+, Safari 26+, Firefox 141+)";
+
+let detected: Promise<boolean> | null = null;
+
+/** True when a WebGPU adapter is available. Checked once, then cached. */
+export function detectWebGpu(): Promise<boolean> {
+  detected ??= (async () => {
+    const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
+    if (!gpu) return false;
+    try {
+      return Boolean(await gpu.requestAdapter());
+    } catch {
+      return false;
+    }
+  })();
+  return detected;
+}
 
 export async function assertWebGpu(): Promise<void> {
-  const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
-  if (!gpu) throw new WebGpuUnavailableError();
-  let adapter: unknown;
-  try {
-    adapter = await gpu.requestAdapter();
-  } catch {
-    adapter = null;
-  }
-  if (!adapter) throw new WebGpuUnavailableError();
+  if (!(await detectWebGpu())) throw new WebGpuUnavailableError();
 }
 
 /** Resolve any CSS colour (incl. oklch from the Tailwind theme) to sRGB 0..255 via a 1x1 canvas. */

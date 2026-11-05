@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchNode, type GraphGroupConfig, type NodeInfo } from "@/lib/api";
 import type { Engine } from "@/engine/engine";
-import { WEBGPU_NOTICE, WebGpuUnavailableError } from "@/engine/webgpu";
+import { useWebGpuSupport } from "@/lib/use-webgpu-support";
 import { DEFAULT_ROOT_IRI } from "@/lib/config";
 import { readUrlParams } from "@/lib/url-params";
 import { useGraphStream } from "@/lib/use-graph-stream";
@@ -34,8 +34,9 @@ import { DEPTH_DEBOUNCE_MS, bucketParam, useFetchBucket } from "@/lib/fetch-buck
 import Sidebar from "./Sidebar";
 import NodeDetails, { type SelectedView } from "./NodeDetails";
 import GraphTooltip from "./GraphTooltip";
+import WebGpuNotice from "./WebGpuNotice";
 import GraphOverlay from "./GraphOverlay";
-import { useEscapeClose, useTipPlacement } from "./graph-view-hooks";
+import { engineHandlers, useEscapeClose, useTipPlacement } from "./graph-view-hooks";
 import GraphToolbar from "./GraphToolbar";
 import Graph2D, { type ViewHandle } from "./Graph2D";
 import type { GraphControl } from "./SearchBox";
@@ -94,7 +95,9 @@ export default function GraphView({
   const paletteRef = useRef(palette);
   // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   paletteRef.current = palette;
-  const [dim, setDimState] = useState<2 | 3>(() => urlParams.dim ?? loadDim());
+  const [requestedDim, setDimState] = useState<2 | 3>(() => urlParams.dim ?? loadDim());
+  const { shownDim, unavailable, setEngineFailed } = useWebGpuSupport(requestedDim);
+  const dim = shownDim ?? 2;
   const settingsRef = useRef({ dim });
   // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   settingsRef.current = { dim };
@@ -296,7 +299,6 @@ export default function GraphView({
   }, []);
   const onResetView = useCallback(() => activeView()?.resetView(), [activeView]);
   const onToggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
-
   const onNodeLimit = useCallback((v: number) => {
     setNodeLimit(v);
     nodeLimitRef.current = v;
@@ -305,7 +307,7 @@ export default function GraphView({
   }, []);
 
   // The 3D engine lives while 3D is shown; it is (re)attached to the store when that changes.
-  const is3d = dim === 3;
+  const is3d = shownDim === 3;
   useEffect(() => {
     const host = hostRef.current;
     if (!host || !is3d) return;
@@ -318,21 +320,14 @@ export default function GraphView({
         if (cancelled) return e.dispose();
         engine = e;
         engineRef.current = e;
-        e.onError = setEngineError;
+        e.onError = () => setEngineFailed(true);
         e.onGenerationReset = () => handlersRef.current.clearSelection();
-        e.setHandlers({
-          onHover: (hit, at) => {
+        e.setHandlers(
+          engineHandlers(handlersRef, (hit, at) => {
             if (hit) pointerRef.current = at;
             setHover(hit);
-          },
-          onClick: (hit) => {
-            if (hit?.kind === "node") handlersRef.current.selectNode(hit.index);
-            else handlersRef.current.clearSelection();
-          },
-          onContextMenu: (hit) => {
-            if (hit?.kind === "node") handlersRef.current.makeRoot(hit.index);
-          },
-        });
+          })
+        );
         e.setNodeLimit(nodeLimitRef.current);
         e.setRelationColors(paletteRef.current);
         e.attach(store);
@@ -340,18 +335,15 @@ export default function GraphView({
       })
       .catch((err: unknown) => {
         if (cancelled) return;
-        setEngineError(
-          err instanceof WebGpuUnavailableError
-            ? WEBGPU_NOTICE
-            : `The graph view could not start: ${err instanceof Error ? err.message : String(err)}`
-        );
+        console.warn("3D engine failed to start, showing 2D", err);
+        setEngineFailed(true);
       });
     return () => {
       cancelled = true;
       engineRef.current = null;
       engine?.dispose();
     };
-  }, [store, is3d]);
+  }, [store, is3d, setEngineFailed]);
 
   // Stats poll shared by both views.
   useEffect(() => {
@@ -439,6 +431,7 @@ export default function GraphView({
         legend={legend}
         relationLegend={relationLegend}
         dim={dim}
+        dim3Disabled={unavailable}
         onDim={onDim}
         onResetView={onResetView}
       />
@@ -451,7 +444,7 @@ export default function GraphView({
           if (hover) placeTip();
         }}
       >
-        {is3d ? (
+        {shownDim === null ? null : is3d ? (
           <div ref={hostRef} className="absolute inset-0" data-slot="canvas-host" />
         ) : (
           <Graph2D
@@ -468,6 +461,7 @@ export default function GraphView({
         )}
         {hover && !busy && <GraphTooltip ref={tipRef} store={store} hit={hover} />}
         <GraphOverlay busy={busy} status={status} engineError={engineError} />
+        <WebGpuNotice show={requestedDim === 3 && unavailable} />
         {selected && (
           <NodeDetails
             sel={selected}
@@ -491,7 +485,14 @@ export default function GraphView({
               : void wrapRef.current?.requestFullscreen()
           }
           onResetView={onResetView}
-          share={{ root: rootIri, nodes: nodeLimit, depth, fanout, dim, select: selected?.iri }}
+          share={{
+            root: rootIri,
+            nodes: nodeLimit,
+            depth,
+            fanout,
+            dim: requestedDim,
+            select: selected?.iri,
+          }}
         />
       </div>
     </div>

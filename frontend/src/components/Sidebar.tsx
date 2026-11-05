@@ -1,3 +1,4 @@
+import { WEBGPU_NOTICE } from "@/engine/webgpu";
 import { memo, useEffect, useState, type ReactNode } from "react";
 import { PanelLeftClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -39,6 +40,8 @@ export interface SidebarProps {
   legend: LegendRow[];
   relationLegend: LegendRow[];
   dim: 2 | 3;
+  /** 3D cannot run here (no WebGPU or the engine failed). */
+  dim3Disabled?: boolean;
   onDim: (d: 2 | 3) => void;
   onResetView: () => void;
 }
@@ -305,6 +308,8 @@ function Sidebar(p: SidebarProps) {
                   size="sm"
                   variant={p.dim === d ? "default" : "outline"}
                   aria-pressed={p.dim === d}
+                  disabled={d === 3 && p.dim3Disabled}
+                  title={d === 3 && p.dim3Disabled ? WEBGPU_NOTICE : undefined}
                   onClick={() => p.onDim(d)}
                 >
                   {d}D

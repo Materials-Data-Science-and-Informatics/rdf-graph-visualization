@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, type RefObject } from "react";
+import type { EngineHandlers } from "@/engine/engine";
 import { NARROW } from "@/lib/sidebar-settings";
 
 /** One global Escape: details card first, then the narrow-screen sidebar overlay. */
@@ -47,4 +48,25 @@ export function useTipPlacement(
   }, [tipRef, wrapRef, pointerRef]);
   useLayoutEffect(placeTip, [hover, placeTip]);
   return placeTip;
+}
+
+/** 3D engine pointer handlers: hover reports out, click selects, right-click re-roots. */
+export function engineHandlers(
+  ref: RefObject<{
+    selectNode(i: number): void;
+    clearSelection(): void;
+    makeRoot(i: number): void;
+  }>,
+  onHover: EngineHandlers["onHover"]
+): EngineHandlers {
+  return {
+    onHover,
+    onClick: (hit) => {
+      if (hit?.kind === "node") ref.current.selectNode(hit.index);
+      else ref.current.clearSelection();
+    },
+    onContextMenu: (hit) => {
+      if (hit?.kind === "node") ref.current.makeRoot(hit.index);
+    },
+  };
 }
