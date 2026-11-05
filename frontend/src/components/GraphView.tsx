@@ -3,6 +3,7 @@ import { fetchNode, type GraphGroupConfig, type NodeInfo } from "@/lib/api";
 import type { Engine } from "@/engine/engine";
 import { WEBGPU_NOTICE, WebGpuUnavailableError } from "@/engine/webgpu";
 import { DEFAULT_ROOT_IRI } from "@/lib/config";
+import { readUrlParams } from "@/lib/url-params";
 import { useGraphStream } from "@/lib/use-graph-stream";
 import { shortName } from "@/lib/graph-store";
 import {
@@ -52,23 +53,28 @@ export default function GraphView({
   control: React.RefObject<GraphControl | null>;
 }) {
   const { store, status, start } = useGraphStream(groups);
+  // URL parameters win over saved settings for this visit only (never written to localStorage).
+  const [urlParams] = useState(() => readUrlParams(window.location.search));
+  const phaseRef = useRef(status.phase);
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref read by the stats poll
+  phaseRef.current = status.phase;
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Engine | null>(null);
   const view2dRef = useRef<ViewHandle | null>(null);
   const [fps, setFps] = useState(0);
   const [settling, setSettling] = useState(false);
-  const [nodeLimit, setNodeLimit] = useState(loadNodeLimit);
+  const [nodeLimit, setNodeLimit] = useState(() => urlParams.nodes ?? loadNodeLimit());
   const nodeLimitRef = useRef(nodeLimit);
   const [engineError, setEngineError] = useState<string | null>(null);
   const [isFullscreen, setFullscreen] = useState(false);
 
-  const [depth, setDepth] = useState(loadDepth);
+  const [depth, setDepth] = useState(() => urlParams.depth ?? loadDepth());
   const [appliedDepth, setAppliedDepth] = useState(depth);
-  const [fanout, setFanout] = useState(loadFanout);
+  const [fanout, setFanout] = useState(() => urlParams.fanout ?? loadFanout());
   const [appliedFanout, setAppliedFanout] = useState(fanout);
   const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia(NARROW).matches);
-  const [rootIri, setRootIri] = useState(() => loadRoot(DEFAULT_ROOT_IRI));
+  const [rootIri, setRootIri] = useState(() => urlParams.root ?? loadRoot(DEFAULT_ROOT_IRI));
   const [selected, setSelected] = useState<SelectedView | null>(null);
   const selectAbort = useRef<AbortController | null>(null);
   const [hover, setHover] = useState<PickHit | null>(null);
@@ -82,7 +88,7 @@ export default function GraphView({
   const paletteRef = useRef(palette);
   // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   paletteRef.current = palette;
-  const [dim, setDimState] = useState<2 | 3>(loadDim);
+  const [dim, setDimState] = useState<2 | 3>(() => urlParams.dim ?? loadDim());
   const settingsRef = useRef({ dim });
   // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   settingsRef.current = { dim };
@@ -164,7 +170,10 @@ export default function GraphView({
   );
 
   // Select-after-reroot request: resolved only once the store was reset (generation moved on).
-  const pendingSelect = useRef<{ iri: string; gen: number; until: number } | null>(null);
+  const pendingSelect = useRef<{ iri: string; gen: number; until: number } | null>(
+    // URL `select`: gen -1 matches the first stream; no timeout, dropped once the stream ended
+    urlParams.select ? { iri: urlParams.select, gen: -1, until: Infinity } : null
+  );
 
   /** Make an IRI the new root; positions of known nodes carry over. */
   const makeRootIri = useCallback(
@@ -328,6 +337,9 @@ export default function GraphView({
         }
       }
       if (pend && Date.now() > pend.until) pendingSelect.current = null;
+      else if (pend && pendingSelect.current && ["done", "error"].includes(phaseRef.current)) {
+        pendingSelect.current = null; // stream finished without the node in the window
+      }
       const stats = windowStats(store, nodeLimitRef.current);
       setCounts((prev) => keepIfSameCounts(prev, stats.counts));
       setRelCounts((prev) => keepIfSameMap(prev, stats.relCounts));

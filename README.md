@@ -83,6 +83,21 @@ groups:
   - `properties`: List of properties that will be used to filter the data. **Can be empty.**
   - `color`: Color of the group. Please use HEX color codes.
 
+## URL parameters
+
+The explorer can be opened with its settings in the query string. URL values apply to that visit only (they are not saved) and override saved settings; invalid values are ignored or clamped.
+
+| Parameter | Meaning |
+| --------- | ------- |
+| `root`    | IRI (http/https) of the starting node |
+| `nodes`   | Number of nodes shown (500 to 100000) |
+| `depth`   | Maximum hops from the root (1 to 8) |
+| `fanout`  | Connections per node (0 = no cap) |
+| `dim`     | `2` or `3` |
+| `select`  | IRI of a node whose details card opens once it is in the shown window |
+
+Example: `/?root=https%3A%2F%2Fexample.org%2Fa&depth=3&dim=2&select=https%3A%2F%2Fexample.org%2Fb`
+
 ## How to Cite
 
 If you want to cite this project in your scientific work,
