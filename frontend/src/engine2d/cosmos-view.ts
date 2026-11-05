@@ -8,6 +8,7 @@ import type { Communities } from "./communities";
 import { CommunityDetector } from "./community-detector";
 import { HubLabels } from "./hub-labels";
 import { placeNodes } from "./placement";
+import { communityRegions, moveIntoRegions } from "./community-layout";
 import { findLeafGroups, leafIndices, placeLeafDiscs, type LeafGroups } from "./leaf-rings";
 import { computeDegrees, computePointSizes } from "./point-sizes";
 
@@ -19,7 +20,11 @@ const ALPHA_GROWTH = 0.35;
 const ALPHA_CLUSTER = 0.3;
 // weak pull of members to their community centroid (centroid = hub in the middle of its
 // leaves); degree-1 leaves get 0 (their link spring already binds them)
-const CLUSTER_STRENGTH = 0.05;
+const CLUSTER_STRENGTH = 0.4;
+/** Region radius of a one-node community (space units); regions scale with sqrt(size). */
+const REGION_UNIT = 6;
+/** Spring strength of links between different communities (inside: cosmos default). */
+const INTER_LINK_STRENGTH = 0.02;
 const FIT_MS = 400;
 const FIT_EVERY_MS = 1000;
 /** While the layout moves, leaf discs are re-centred on their hubs at this interval. */
@@ -54,10 +59,14 @@ export class CosmosView {
   private autoFit = true;
   private lastFit = 0;
   private communities: Communities | null = null;
+  private clusterCenters: number[] = [];
+  private linkPairs = new Uint32Array(0);
   private degrees: Uint32Array<ArrayBufferLike> = new Uint32Array(0);
   private sizes: Float32Array<ArrayBufferLike> = new Float32Array(0);
   private leafGroups: LeafGroups | null = null;
   private lastLeaves = 0;
+  private edgeOpacity = 1;
+  private linkCount = 0;
   private readonly detector = new CommunityDetector((r) => this.applyCommunities(r));
   private store: GraphStore | null = null;
   private labels: HubLabels | null = null;
@@ -78,6 +87,7 @@ export class CosmosView {
       linkDefaultWidth: 1,
       linkOpacity: this.linkOpacity(opts.edgeOpacity),
       curvedLinks: opts.curved,
+      // (opacity is lowered further for big link counts in push())
       linkDefaultArrows: opts.arrows,
       renderHoveredPointRing: true,
       focusedPointRingColor: "#ffffff",
@@ -129,6 +139,7 @@ export class CosmosView {
   }
 
   setOptions(o: CosmosOptions): void {
+    this.edgeOpacity = o.edgeOpacity;
     this.graph.setConfigPartial({
       curvedLinks: o.curved,
       linkDefaultArrows: o.arrows,
@@ -231,6 +242,9 @@ export class CosmosView {
     g.setPointSizes(this.sizes);
     g.setPinnedPoints(leafIndices(this.leafGroups));
     g.setLinkColors(linkColors);
+    this.linkCount = m;
+    this.linkPairs = win.slice(0, m * 2);
+    g.setConfigPartial({ linkOpacity: this.linkOpacity(this.edgeOpacity) });
     if (!fresh && this.communities) this.setClusters(n);
     if (fresh) {
       this.autoFit = true;
@@ -262,13 +276,26 @@ export class CosmosView {
     });
   }
 
-  /** Communities only add a weak centroid pull; sizes depend on degree alone. */
+  /**
+   * Each community gets its own region of the map: members are moved there at once (keeping
+   * their relative layout) and held by the cluster force; leaves follow their hubs.
+   */
   private applyCommunities(r: Communities): void {
     if (r.community.length !== this.nodes) return; // window changed meanwhile; a new run follows
     this.communities = r;
     if (this.store) this.labels?.setCandidates(this.store, r, this.nodes);
+    const regions = communityRegions(r.sizes, CENTER, REGION_UNIT, 1.25);
+    const pos = this.graph.getPointPositionsArray();
+    if (pos.length >= this.nodes * 2) {
+      moveIntoRegions(pos, r.community, regions);
+      if (this.leafGroups) placeLeafDiscs(pos, this.leafGroups, this.sizes);
+      this.graph.setPointPositions(pos, true);
+    }
+    this.clusterCenters = Array.from(regions.centers);
     this.setClusters(this.nodes);
+    this.graph.render();
     this.graph.start(ALPHA_CLUSTER);
+    this.lastFit = 0;
   }
 
   private setClusters(n: number): void {
@@ -278,6 +305,21 @@ export class CosmosView {
     for (let i = 0; i < n; i++)
       pts[i] = i < c.community.length && c.community[i] >= 0 ? c.community[i] : undefined;
     this.graph.setPointClusters(pts);
+    this.graph.setClusterPositions(this.clusterCenters);
+    // links between communities barely pull, so communities separate instead of streaking
+    const m = this.linkPairs.length / 2;
+    const linkStrength = new Float32Array(m);
+    for (let e = 0; e < m; e++) {
+      const a = this.linkPairs[2 * e];
+      const b = this.linkPairs[2 * e + 1];
+      const ca = a < c.community.length ? c.community[a] : -1;
+      const cb = b < c.community.length ? c.community[b] : -1;
+      const inside = ca >= 0 && ca === cb;
+      linkStrength[e] = inside
+        ? 1 / Math.sqrt(Math.max(1, Math.min(this.degrees[a], this.degrees[b])))
+        : INTER_LINK_STRENGTH;
+    }
+    this.graph.setLinkStrength(linkStrength);
     const strength = new Float32Array(n);
     for (let i = 0; i < n; i++) strength[i] = this.degrees[i] > 1 ? 1 : 0;
     this.graph.setPointClusterStrength(strength);
@@ -325,8 +367,10 @@ export class CosmosView {
     return this.dark ? "#9ca3af" : "#6b7280";
   }
 
+  /** Lines fade as their number grows, so dense graphs don't paint over the nodes. */
   private linkOpacity(edgeOpacity: number): number {
-    return Math.min(1, 0.6 * edgeOpacity);
+    const density = 1 / (1 + this.linkCount / 4000);
+    return Math.min(1, Math.max(0.08, 0.6 * density) * edgeOpacity);
   }
 
   /** Background follows the app theme (`--background`, possibly oklch -> resolved via canvas). */
