@@ -8,7 +8,7 @@ import type { Communities } from "./communities";
 import { CommunityDetector } from "./community-detector";
 import { HubLabels } from "./hub-labels";
 import { placeNodes } from "./placement";
-import { computePointSizes } from "./point-sizes";
+import { computeDegrees, computePointSizes } from "./point-sizes";
 
 const SPACE_SIZE = 4096;
 const CENTER = SPACE_SIZE / 2;
@@ -16,9 +16,9 @@ const NO_GROUP_COLOR = "#8a8f98";
 const ALPHA_FRESH = 1;
 const ALPHA_GROWTH = 0.35;
 const ALPHA_CLUSTER = 0.3;
-// cluster pull towards the hub: strong enough to separate communities, weak enough
-// that link springs and repulsion still fan members out around the hub
-const CLUSTER_STRENGTH = 0.2;
+// weak pull of members to their community centroid (centroid = hub in the middle of its
+// leaves); degree-1 leaves get 0 (their link spring already binds them)
+const CLUSTER_STRENGTH = 0.05;
 const FIT_MS = 400;
 const FIT_EVERY_MS = 1000;
 
@@ -51,7 +51,7 @@ export class CosmosView {
   private autoFit = true;
   private lastFit = 0;
   private communities: Communities | null = null;
-  private clusterPos: number[] = [];
+  private degrees: Uint32Array<ArrayBufferLike> = new Uint32Array(0);
   private readonly detector = new CommunityDetector((r) => this.applyCommunities(r));
   private store: GraphStore | null = null;
   private labels: HubLabels | null = null;
@@ -79,11 +79,14 @@ export class CosmosView {
       enableRightClickRepulsion: false,
       fitViewOnInit: false,
       transitionDuration: 0, // a position transition would pause the running simulation
-      // weak gravity: a strong pull to the centre squeezed each hub's leaves into a wedge
-      // on the centre side; stronger repulsion fans them out all around the hub
+      // weak gravity and moderate repulsion so the dense core does not push leaves outwards;
+      // collision (radius from point sizes) spreads a hub's leaves evenly around it
+      // link strength is left at cosmos' default, which is already 1/min(deg) per link
       simulationDecay: 1000,
       simulationGravity: 0.05,
-      simulationRepulsion: 2,
+      simulationRepulsion: 0.8,
+      simulationCollision: 1,
+      simulationCollisionPadding: 1,
       simulationLinkSpring: 1,
       simulationLinkDistance: 15,
       simulationCluster: 0, // switched on once communities are known
@@ -211,9 +214,8 @@ export class CosmosView {
     g.setPointPositions(pos, true);
     g.setLinks(links);
     g.setPointColors(colors);
-    g.setPointSizes(
-      computePointSizes(n, store.edges, store.edgeCount, fresh ? null : this.communities)
-    );
+    this.degrees = computeDegrees(n, store.edges, store.edgeCount);
+    g.setPointSizes(computePointSizes(n, this.degrees));
     g.setLinkColors(linkColors);
     if (!fresh && this.communities) this.setClusters(n);
     if (fresh) {
@@ -246,18 +248,11 @@ export class CosmosView {
     });
   }
 
-  /** The hub's current position becomes the cluster centre, so the hub sits in the middle. */
+  /** Communities only add a weak centroid pull; sizes depend on degree alone. */
   private applyCommunities(r: Communities): void {
     if (r.community.length !== this.nodes) return; // window changed meanwhile; a new run follows
-    const pos = this.graph.getPointPositionsArray();
-    this.clusterPos = [];
-    for (const h of r.hubs) this.clusterPos.push(pos[2 * h], pos[2 * h + 1]);
     this.communities = r;
-    const s = this.store;
-    if (s) {
-      this.graph.setPointSizes(computePointSizes(this.nodes, s.edges, s.edgeCount, r));
-      this.labels?.setCandidates(s, r, this.nodes);
-    }
+    if (this.store) this.labels?.setCandidates(this.store, r, this.nodes);
     this.setClusters(this.nodes);
     this.graph.start(ALPHA_CLUSTER);
   }
@@ -269,7 +264,9 @@ export class CosmosView {
     for (let i = 0; i < n; i++)
       pts[i] = i < c.community.length && c.community[i] >= 0 ? c.community[i] : undefined;
     this.graph.setPointClusters(pts);
-    this.graph.setClusterPositions(this.clusterPos);
+    const strength = new Float32Array(n);
+    for (let i = 0; i < n; i++) strength[i] = this.degrees[i] > 1 ? 1 : 0;
+    this.graph.setPointClusterStrength(strength);
     this.graph.setConfigPartial({ simulationCluster: CLUSTER_STRENGTH });
   }
 
@@ -278,7 +275,6 @@ export class CosmosView {
     this.detector.cancel();
     this.graph.setConfigPartial({ simulationCluster: 0 });
     this.graph.setPointClusters(new Array<number | undefined>(n).fill(undefined));
-    this.graph.setClusterPositions([]);
   }
 
   private fitWhileRunning(): void {

@@ -1,25 +1,13 @@
-/** Per-point sizes for the 2D view: communities' hubs and the root stand out, degree adds a subtle hint. */
-import type { Communities } from "./communities";
+/** Per-point sizes for the 2D view: size grows with the number of connections, capped; the root stays largest. */
 
-export const BASE_SIZE = 4;
-export const ROOT_SIZE = 24;
-const HUB_PER_SQRT = 1.2;
-const HUB_CAP = 20;
-const DEGREE_PER_SQRT = 0.25;
-const DEGREE_CAP = 1.5;
+export const BASE_SIZE = 3;
+export const SIZE_PER_SQRT_DEGREE = 1.2;
+export const MAX_SIZE = 18;
+/** The root is at least this much bigger than the cap. */
+export const ROOT_SIZE = MAX_SIZE + 4;
 
-/** Size of a community hub: grows with sqrt(community size), capped so it never covers its members. */
-export function hubSize(communitySize: number): number {
-  return Math.min(HUB_CAP, BASE_SIZE + HUB_PER_SQRT * Math.sqrt(communitySize));
-}
-
-/** Sizes for the first `n` points; `edges` = [a0, b0, ...] over the store's edge list, node 0 is the root. */
-export function computePointSizes(
-  n: number,
-  edges: Uint32Array,
-  edgeCount: number,
-  communities: Communities | null
-): Float32Array {
+/** Degree of each of the first `n` points over the window's edges (`edges` = [a0, b0, ...]). */
+export function computeDegrees(n: number, edges: Uint32Array, edgeCount: number): Uint32Array {
   const deg = new Uint32Array(n);
   for (let e = 0; e < edgeCount; e++) {
     const a = edges[2 * e];
@@ -29,14 +17,14 @@ export function computePointSizes(
       deg[b]++;
     }
   }
+  return deg;
+}
+
+/** Sizes for the first `n` points from their degree; node 0 is the root. */
+export function computePointSizes(n: number, deg: Uint32Array): Float32Array {
   const sizes = new Float32Array(n);
   for (let i = 0; i < n; i++)
-    sizes[i] = BASE_SIZE + Math.min(DEGREE_CAP, DEGREE_PER_SQRT * Math.sqrt(deg[i]));
-  if (communities) {
-    communities.hubs.forEach((h, c) => {
-      if (h < n) sizes[h] = hubSize(communities.sizes[c]);
-    });
-  }
+    sizes[i] = Math.min(MAX_SIZE, BASE_SIZE + SIZE_PER_SQRT_DEGREE * Math.sqrt(deg[i]));
   if (n > 0) sizes[0] = Math.max(sizes[0], ROOT_SIZE);
   return sizes;
 }
