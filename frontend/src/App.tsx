@@ -1,18 +1,21 @@
+import { useRef } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GraphView from "@/components/GraphView";
 import Footer from "@/components/Footer";
 import TopBar from "@/components/TopBar";
+import type { GraphControl } from "@/components/SearchBox";
 import { useConfig } from "@/lib/use-config";
 
 export default function App() {
   const cfg = useConfig();
+  const control = useRef<GraphControl | null>(null);
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden">
-      <TopBar />
+      <TopBar groups={cfg.status === "ready" ? cfg.config.graph.groups : []} control={control} />
       {cfg.status === "ready" ? (
-        <GraphView groups={cfg.config.graph.groups} />
+        <GraphView groups={cfg.config.graph.groups} control={control} />
       ) : (
         <main className="flex flex-1 items-center justify-center">
           {cfg.status === "loading" ? (

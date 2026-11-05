@@ -20,6 +20,9 @@ import type { PickHit } from "@/engine/picking";
 import Sidebar from "./Sidebar";
 import NodeDetails, { type SelectedView } from "./NodeDetails";
 import GraphTooltip from "./GraphTooltip";
+import type { GraphControl } from "./SearchBox";
+
+const PENDING_SELECT_MS = 20000;
 
 const NARROW = "(max-width: 767px)";
 const DEPTH_DEBOUNCE_MS = 500;
@@ -36,7 +39,13 @@ const loadNodeLimit = (): number => {
 };
 
 /** Canvas host: the GPU engine mounts into the `canvas-host` div and pulls deltas from the stream's store. */
-export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
+export default function GraphView({
+  groups,
+  control,
+}: {
+  groups: GraphGroupConfig[];
+  control: React.MutableRefObject<GraphControl | null>;
+}) {
   const { store, status, start } = useGraphStream(groups);
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
@@ -126,19 +135,77 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
     [store]
   );
 
-  /** Right click: the node becomes the new root; positions of known nodes carry over. */
-  const makeRoot = useCallback(
-    (index: number) => {
-      const iri = store.nodeIds[index];
-      if (iri === undefined || iri === rootIri) return;
+  // Select-after-reroot request: resolved only once the store was reset (generation moved on).
+  const pendingSelect = useRef<{ iri: string; gen: number; until: number } | null>(null);
+
+  /** Make an IRI the new root; positions of known nodes carry over. */
+  const makeRootIri = useCallback(
+    (iri: string) => {
+      pendingSelect.current = null;
+      if (iri === rootIri) return;
       engineRef.current?.captureForReroot();
       clearSelection();
       setHover(null);
       setRootInfo(null);
       setRootIri(iri);
     },
-    [store, clearSelection, rootIri]
+    [clearSelection, rootIri]
   );
+  /** Right click: the node becomes the new root. */
+  const makeRoot = useCallback(
+    (index: number) => {
+      const iri = store.nodeIds[index];
+      if (iri !== undefined) makeRootIri(iri);
+    },
+    [store, makeRootIri]
+  );
+
+  // Search box API: select once the node (new root) shows up in the visible window.
+  const inWindow = useCallback(
+    (iri: string) => {
+      const i = store.indexOf(iri);
+      return i >= 0 && i < nodeLimitRef.current ? i : -1;
+    },
+    [store]
+  );
+  const focusSelect = useCallback(
+    (i: number) => {
+      selectNode(i);
+      engineRef.current?.focusOn(i);
+    },
+    [selectNode]
+  );
+  const requestRoot = useCallback(
+    (iri: string) => {
+      makeRootIri(iri);
+      pendingSelect.current = {
+        iri,
+        gen: store.generation,
+        until: Date.now() + PENDING_SELECT_MS,
+      };
+    },
+    [makeRootIri, store]
+  );
+  useEffect(() => {
+    control.current = {
+      has: (iri) => inWindow(iri) >= 0,
+      open: (iri) => {
+        const i = inWindow(iri);
+        if (i >= 0) return focusSelect(i);
+        requestRoot(iri);
+      },
+      makeRoot: (iri) => {
+        if (iri === rootIri) {
+          pendingSelect.current = null;
+          const i = inWindow(iri);
+          if (i >= 0) focusSelect(i);
+        } else requestRoot(iri);
+      },
+    };
+    return () => {
+      control.current = null;
+    };
+  }, [control, inWindow, focusSelect, requestRoot, rootIri]);
   const closeDetails = useCallback(() => {
     clearSelection();
     wrapRef.current?.focus();
@@ -158,8 +225,8 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
   }, [closeDetails]);
-  const handlersRef = useRef({ selectNode, clearSelection, makeRoot });
-  handlersRef.current = { selectNode, clearSelection, makeRoot };
+  const handlersRef = useRef({ selectNode, clearSelection, makeRoot, focusSelect });
+  handlersRef.current = { selectNode, clearSelection, makeRoot, focusSelect };
 
   // hover card follows the pointer (direct style writes, no re-render per move)
   const placeTip = useCallback(() => {
@@ -265,6 +332,15 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
       setFps(engine?.fps ?? 0);
       setSettling(engine?.settling ?? false);
       setShown(Math.min(nodeLimitRef.current, store.nodeCount));
+      const pend = pendingSelect.current;
+      if (pend && store.generation > pend.gen) {
+        const i = store.indexOf(pend.iri);
+        if (i >= 0 && i < nodeLimitRef.current) {
+          pendingSelect.current = null;
+          handlersRef.current.focusSelect(i);
+        }
+      }
+      if (pend && Date.now() > pend.until) pendingSelect.current = null;
       const next = groupCounts(store.groups, nodeLimitRef.current, store.groupNames.length);
       setCounts((prev) =>
         prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next
