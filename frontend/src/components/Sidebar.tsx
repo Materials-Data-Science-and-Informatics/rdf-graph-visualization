@@ -3,7 +3,16 @@ import { PanelLeftClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NODE_LIMIT_DEFAULT, countToSlider, sliderToCount } from "@/engine/layout-utils";
-import { DEPTH_DEFAULT, DEPTH_MAX, DEPTH_MIN, clampDepth } from "@/lib/sidebar-settings";
+import {
+  DEPTH_DEFAULT,
+  DEPTH_MAX,
+  DEPTH_MIN,
+  FANOUT_DEFAULT,
+  FANOUT_MAX,
+  FANOUT_MIN,
+  clampDepth,
+  clampFanout,
+} from "@/lib/sidebar-settings";
 import { statusText, type StreamStatus } from "@/lib/use-graph-stream";
 import type { NodeInfo } from "@/lib/api";
 import { ROOT_PRESETS, findPreset } from "@/lib/centers";
@@ -21,6 +30,8 @@ export interface SidebarProps {
   onNodeLimit: (n: number) => void; // receives a node count
   depth: number;
   onDepth: (d: number) => void;
+  fanout: number;
+  onFanout: (n: number) => void;
   status: StreamStatus;
   shown: number;
   fps: number;
@@ -98,17 +109,58 @@ function PresetIcon({ src }: { src: string }) {
   );
 }
 
+/** Number field that commits (clamped) on blur / Enter, so typing does not restart the stream. */
+function CommitNumber({
+  label,
+  hint,
+  ariaLabel,
+  value,
+  min,
+  max,
+  clamp,
+  onCommit,
+}: {
+  label: string;
+  hint: string;
+  ariaLabel: string;
+  value: number;
+  min: number;
+  max: number;
+  clamp: (v: number) => number;
+  onCommit: (v: number) => void;
+}) {
+  const [draft, setDraft] = useState(String(value));
+  useEffect(() => setDraft(String(value)), [value]);
+  const commit = () => {
+    const v = clamp(draft === "" ? value : Number(draft));
+    setDraft(String(v));
+    if (v !== value) onCommit(v);
+  };
+  return (
+    <label className="flex items-center justify-between gap-2 text-sm">
+      <span>
+        {label} <span className="text-muted-foreground text-xs">({hint})</span>
+      </span>
+      <input
+        type="number"
+        min={min}
+        max={max}
+        step={1}
+        value={draft}
+        aria-label={ariaLabel}
+        className="bg-background w-20 rounded-md border px-2 py-1 text-right text-sm tabular-nums"
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && commit()}
+      />
+    </label>
+  );
+}
+
 function Sidebar(p: SidebarProps) {
   const s = p.status;
   const preset = findPreset(p.rootIri);
-  const { depth, onDepth } = p;
-  const [draft, setDraft] = useState(String(depth));
-  useEffect(() => setDraft(String(depth)), [depth]);
-  const commitDepth = () => {
-    const v = clampDepth(draft === "" ? depth : Number(draft));
-    setDraft(String(v));
-    if (v !== depth) onDepth(v);
-  };
+  const { onDepth } = p;
   const phase =
     s.phase === "streaming"
       ? `streaming hop ${s.hop}`
@@ -197,23 +249,26 @@ function Sidebar(p: SidebarProps) {
               onChange={(e) => p.onNodeLimit(sliderToCount(Number(e.target.value)))}
             />
           </label>
-          <label className="flex items-center justify-between gap-2 text-sm">
-            <span>
-              Depth <span className="text-muted-foreground text-xs">(hops, reloads)</span>
-            </span>
-            <input
-              type="number"
-              min={DEPTH_MIN}
-              max={DEPTH_MAX}
-              step={1}
-              value={draft}
-              aria-label="Maximum hops from the root"
-              className="bg-background w-16 rounded-md border px-2 py-1 text-right text-sm tabular-nums"
-              onChange={(e) => setDraft(e.target.value)}
-              onBlur={commitDepth}
-              onKeyDown={(e) => e.key === "Enter" && commitDepth()}
-            />
-          </label>
+          <CommitNumber
+            label="Depth"
+            hint="hops, reloads"
+            ariaLabel="Maximum hops from the root"
+            value={p.depth}
+            min={DEPTH_MIN}
+            max={DEPTH_MAX}
+            clamp={clampDepth}
+            onCommit={onDepth}
+          />
+          <CommitNumber
+            label="Neighbours per node"
+            hint="0 = all, reloads"
+            ariaLabel="Maximum new neighbours taken per node and hop"
+            value={p.fanout}
+            min={FANOUT_MIN}
+            max={FANOUT_MAX}
+            clamp={clampFanout}
+            onCommit={p.onFanout}
+          />
           <Button
             variant="outline"
             size="sm"
@@ -221,6 +276,7 @@ function Sidebar(p: SidebarProps) {
             onClick={() => {
               p.onNodeLimit(NODE_LIMIT_DEFAULT);
               onDepth(DEPTH_DEFAULT);
+              p.onFanout(FANOUT_DEFAULT);
               p.onRoot(DEFAULT_ROOT_IRI);
             }}
           >

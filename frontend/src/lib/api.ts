@@ -83,6 +83,7 @@ export type StreamEvent =
       root: string;
       max_nodes: number;
       max_hops: number;
+      max_fanout?: number;
       cached?: boolean | null;
       built_at?: string | null;
     }
@@ -168,6 +169,7 @@ export interface StreamParams {
   root: string;
   maxNodes?: number;
   maxHops?: number;
+  maxFanout?: number;
 }
 
 /**
@@ -183,6 +185,7 @@ export async function streamGraph(
   const qs = new URLSearchParams({ root: params.root });
   if (params.maxNodes !== undefined) qs.set("max_nodes", String(params.maxNodes));
   if (params.maxHops !== undefined) qs.set("max_hops", String(params.maxHops));
+  if (params.maxFanout !== undefined) qs.set("max_fanout", String(params.maxFanout));
   const res = await fetch(`/api/stream?${qs}`, { signal });
   if (!res.ok) throw await httpError(res);
   if (!res.body) throw new Error("Backend returned an empty stream body");

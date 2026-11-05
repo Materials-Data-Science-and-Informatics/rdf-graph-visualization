@@ -8,8 +8,12 @@ import { WEBGPU_NOTICE, WebGpuUnavailableError } from "@/engine/webgpu";
 import { DEFAULT_ROOT_IRI } from "@/lib/config";
 import { useGraphStream } from "@/lib/use-graph-stream";
 import {
+  FANOUT_KEY,
   clampDepth,
+  clampFanout,
   depthToMaxHops,
+  fanoutParam,
+  loadFanout,
   groupCounts,
   ARROWS_KEY,
   CURVED_KEY,
@@ -72,6 +76,8 @@ export default function GraphView({
 
   const [depth, setDepth] = useState(loadDepth);
   const [appliedDepth, setAppliedDepth] = useState(depth);
+  const [fanout, setFanout] = useState(loadFanout);
+  const [appliedFanout, setAppliedFanout] = useState(fanout);
   const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia(NARROW).matches);
   const [rootIri, setRootIri] = useState(() => loadRoot(DEFAULT_ROOT_IRI));
   const [selected, setSelected] = useState<SelectedView | null>(null);
@@ -96,13 +102,25 @@ export default function GraphView({
 
   // Depth changes restart the stream; omitted max_hops (default 6) keeps the cached snapshot key.
   useEffect(() => {
-    start(rootIri, { maxHops: depthToMaxHops(appliedDepth) });
-  }, [start, appliedDepth, rootIri]);
+    start(rootIri, {
+      maxHops: depthToMaxHops(appliedDepth),
+      maxFanout: fanoutParam(appliedFanout),
+    });
+  }, [start, appliedDepth, appliedFanout, rootIri]);
 
   useEffect(() => {
-    const t = setTimeout(() => setAppliedDepth(depth), DEPTH_DEBOUNCE_MS);
+    const t = setTimeout(() => {
+      setAppliedDepth(depth);
+      setAppliedFanout(fanout);
+    }, DEPTH_DEBOUNCE_MS);
     return () => clearTimeout(t);
-  }, [depth]);
+  }, [depth, fanout]);
+
+  const onFanout = useCallback((n: number) => {
+    const v = clampFanout(n);
+    setFanout(v);
+    savePref(FANOUT_KEY, String(v));
+  }, []);
 
   const onDepth = useCallback((d: number) => {
     const v = clampDepth(d);
@@ -415,6 +433,8 @@ export default function GraphView({
         onNodeLimit={onNodeLimit}
         depth={depth}
         onDepth={onDepth}
+        fanout={fanout}
+        onFanout={onFanout}
         status={status}
         shown={shown}
         fps={fps}

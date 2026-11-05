@@ -59,7 +59,7 @@ export function useGraphStream(groups: readonly Pick<GraphGroupConfig, "name" | 
   }, []);
 
   const start = useCallback(
-    (root: string, opts: { maxNodes?: number; maxHops?: number } = {}) => {
+    (root: string, opts: { maxNodes?: number; maxHops?: number; maxFanout?: number } = {}) => {
       abort();
       const ctrl = new AbortController();
       ctrlRef.current = ctrl;
@@ -80,7 +80,7 @@ export function useGraphStream(groups: readonly Pick<GraphGroupConfig, "name" | 
       };
       push();
       streamGraph(
-        { root, maxNodes: opts.maxNodes, maxHops: opts.maxHops },
+        { root, maxNodes: opts.maxNodes, maxHops: opts.maxHops, maxFanout: opts.maxFanout },
         (e) => {
           if (ctrl.signal.aborted) return;
           store.apply(e);

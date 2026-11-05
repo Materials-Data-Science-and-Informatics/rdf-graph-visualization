@@ -34,6 +34,22 @@ export const loadDepth = (): number =>
   loadPref(DEPTH_KEY, (r) => clampDepth(Number(r)), DEPTH_DEFAULT);
 export const saveDepth = (v: number): void => savePref(DEPTH_KEY, String(v));
 
+export const FANOUT_MIN = 0; // 0 = no cap
+export const FANOUT_MAX = 100_000;
+/** Backend default `max_fanout` (STREAM_FANOUT); requests with it omit the parameter. */
+export const FANOUT_DEFAULT = 200;
+export const FANOUT_KEY = "hkg-fanout";
+
+export function clampFanout(v: number): number {
+  if (!Number.isFinite(v)) return FANOUT_DEFAULT;
+  return Math.min(FANOUT_MAX, Math.max(FANOUT_MIN, Math.round(v)));
+}
+export const loadFanout = (): number =>
+  loadPref(FANOUT_KEY, (r) => (r === "" ? undefined : clampFanout(Number(r))), FANOUT_DEFAULT);
+/** `max_fanout` request parameter: undefined for the backend default (prewarmed snapshots). */
+export const fanoutParam = (v: number): number | undefined =>
+  v === FANOUT_DEFAULT ? undefined : v;
+
 /** `max_hops` request parameter for a depth: undefined for the backend default. */
 export function depthToMaxHops(depth: number): number | undefined {
   return depth === DEPTH_DEFAULT ? undefined : depth;
