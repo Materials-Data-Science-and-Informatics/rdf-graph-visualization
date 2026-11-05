@@ -287,3 +287,48 @@ async def fetch_labels(
     ):
         out.update(part)
     return out
+
+
+class NodeSummary(NamedTuple):
+    """Info-panel data of one node (see :func:`fetch_node_summary`)."""
+
+    types: list[str]
+    node_type: NodeType
+    label: str | None
+    relations: dict[str, tuple[int, int]]  # predicate -> (out, in), both > 0 total
+
+
+async def fetch_node_summary(
+    iri: str, *, client: qlever.QleverClient | None = None
+) -> NodeSummary:
+    """Types, group/skip, label and per-relation out/in counts of one node.
+
+    Three queries run concurrently on the shared executor: all ``rdf:type``
+    IRIs, the label candidates, and one aggregate for the relation counts.
+    Group/skip/label use the same folds as the bulk fetchers. Relation counts
+    are edges (triples), not distinct neighbours; a self-loop counts in both
+    directions.
+    """
+    cfg = graph_config.load()
+    cli = client or qlever.get_client()
+    queries = [
+        templates.types_query(nodes=[iri]),
+        templates.labels_query(nodes=[iri], label_iris=cfg.label_iris()),
+        templates.node_relations_query(iri=iri, relation_iris=cfg.relation_iris()),
+    ]
+    types_res, labels_res, counts_res = await _run_all(
+        [partial(cli.select_tsv, q) for q in queries], None
+    )
+    counts: dict[str, list[int]] = {}
+    for row in counts_res.rows:
+        pred, direction, num = row.get("p"), row.get("dir"), row.get("n")
+        if pred is None or direction is None or num is None:
+            continue
+        pair = counts.setdefault(pred.value, [0, 0])
+        pair[0 if direction.value == "out" else 1] += int(num.value)
+    return NodeSummary(
+        types=sorted({r["t"].value for r in types_res.rows if "t" in r}),
+        node_type=_fold_types([types_res], [iri])[iri],
+        label=_fold_labels([labels_res]).get(iri),
+        relations={p: (o, i) for p, (o, i) in counts.items() if o + i > 0},
+    )

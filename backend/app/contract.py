@@ -182,6 +182,26 @@ DoneReason = Literal[
 ]
 
 
+class NodeRelation(BaseModel):
+    """IRI-edge counts of one configured relation at a node."""
+
+    predicate: str
+    out: int
+    in_: int = Field(alias="in", serialization_alias="in")
+
+
+class NodeInfo(BaseModel):
+    """``GET /api/node/{iri}``: info-panel summary (no property list)."""
+
+    id: str
+    label: str | None
+    group: str | None
+    types: list[str] = Field(description="rdf:type IRIs, sorted.")
+    relations: list[NodeRelation] = Field(
+        description="Relations with out+in > 0, total desc."
+    )
+
+
 class StreamMeta(BaseModel):
     """First event: the effective (clamped) parameters."""
 

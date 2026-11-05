@@ -531,3 +531,31 @@ def labels_query(*, nodes: Sequence[str], label_iris: Sequence[str]) -> str:
   VALUES ?p {{ {iri_list(label_iris)} }}
   ?n ?p ?l .
 }}"""
+
+
+def node_relations_query(*, iri: str, relation_iris: Sequence[str]) -> str:
+    """Per-relation, per-direction IRI-edge counts of one node (info panel).
+
+    One aggregate SELECT with plain joins (``VALUES ?s``/``?o`` + ``VALUES
+    ?p``, no OPTIONAL), IRI-only other end, ``GROUP BY ?p ?dir``. Rows: ``?p
+    ?dir ?n`` with ``?dir`` ``out`` | ``in``. Counts are edges (triples), not
+    distinct neighbours; a self-loop counts in both directions. Uncapped: measured live, a hub
+    with 53k in-links counts in ~0.2s.
+    """
+    _nonempty("relation_iris", relation_iris)
+    node, preds = iri_ref(iri), iri_list(relation_iris)
+
+    def side(direction: str, bound: str, other: str) -> str:
+        return f"""{{ SELECT ?p ("{direction}" AS ?dir) WHERE {{
+      VALUES ?{bound} {{ {node} }}
+      VALUES ?p {{ {preds} }}
+      ?s ?p ?o .
+      FILTER(isIRI(?{other}))
+    }} }}"""
+
+    return f"""SELECT ?p ?dir (COUNT(*) AS ?n) WHERE {{
+  {side("out", "s", "o")}
+  UNION
+  {side("in", "o", "s")}
+}}
+GROUP BY ?p ?dir"""
