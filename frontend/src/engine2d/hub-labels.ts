@@ -50,6 +50,8 @@ export function labelCandidates(communities: Communities | null, max = MAX_HUB_L
 export class HubLabels {
   private readonly layer: HTMLDivElement;
   private readonly chips = new Map<number, HTMLDivElement>();
+  /** The root (index 0) is drawn first by cosmos, i.e. under everything: redrawn on top here. */
+  private readonly rootMarker: HTMLDivElement;
   private candidates: number[] = [];
   private store: GraphStore | null = null;
   private raf = 0;
@@ -63,6 +65,10 @@ export class HubLabels {
     this.layer.className = "pointer-events-none absolute inset-0 overflow-hidden";
     this.layer.dataset.slot = "hub-labels";
     host.appendChild(this.layer);
+    this.rootMarker = document.createElement("div");
+    this.rootMarker.className =
+      "absolute top-0 left-0 hidden rounded-full border-2 border-white shadow-[0_0_0_2px_rgba(0,0,0,0.6)]";
+    this.layer.appendChild(this.rootMarker); // first child: labels stay on top of it
     this.raf = requestAnimationFrame(this.frame);
   }
 
@@ -81,6 +87,7 @@ export class HubLabels {
 
   /** Drops all labels and tracking (new generation, dim switch, empty window). */
   clear(): void {
+    this.rootMarker.classList.add("hidden");
     this.candidates = [];
     this.graph.trackPointPositionsByIndices([]);
     for (const el of this.chips.values()) el.remove();
@@ -91,6 +98,22 @@ export class HubLabels {
     cancelAnimationFrame(this.raf);
     this.layer.remove();
     this.chips.clear();
+  }
+
+  private placeRoot(store: GraphStore, pos: ReadonlyMap<number, [number, number]>): void {
+    const m = this.rootMarker;
+    const p = pos.get(0);
+    if (!p) {
+      m.classList.add("hidden");
+      return;
+    }
+    const [sx, sy] = this.graph.spaceToScreenPosition(p);
+    const r = Math.max(4, this.graph.spaceToScreenRadius(this.graph.getPointRadiusByIndex(0) ?? 2));
+    const g = store.groups[0];
+    m.style.background = g >= 0 && g < store.groupColors.length ? store.groupColors[g] : "#8a8f98";
+    m.style.width = m.style.height = `${Math.round(2 * r)}px`;
+    m.style.transform = `translate(${Math.round(sx - r)}px, ${Math.round(sy - r)}px)`;
+    m.classList.remove("hidden");
   }
 
   private chip(i: number): HTMLDivElement {
@@ -131,6 +154,7 @@ export class HubLabels {
       const bw = Math.min(192, text.length * CHAR_W + CHIP_PAD);
       return { x: sx - bw / 2, y: sy + r + GAP, w: bw, h: CHIP_H };
     });
+    this.placeRoot(store, pos);
     const shown = new Set(pickVisible(boxes, w, h));
     this.candidates.forEach((i, k) => {
       const el = this.chip(i);
