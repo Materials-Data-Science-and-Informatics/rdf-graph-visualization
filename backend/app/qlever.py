@@ -26,12 +26,15 @@ from __future__ import annotations
 
 import email.utils
 import json
+import re
 import threading
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Self
 
 import httpx
+
+from app import templates
 
 DEFAULT_TIMEOUT_S = 30.0
 #: Shared-token penalty ladder bounds: floor used when Retry-After is absent,
@@ -40,6 +43,17 @@ RATE_LIMIT_WAIT_FLOOR_S = 60.0
 RATE_LIMIT_WAIT_CEILING_S = 3600.0
 
 _ACCEPT = "application/sparql-results+json"
+_ACCEPT_NT = "application/n-triples"
+_ACCEPT_TSV = "text/tab-separated-values"
+
+# <s> <p> <o> .   (o: IRI, literal or blank node; s may be a blank node)
+# QLever emits raw IRIs (no \uXXXX escapes), so ``<[^<>\s]*>`` is the IRI form;
+# anything else in object position is a literal/bnode and gets skipped.
+_NT_LINE = re.compile(r"^(<[^<>\s]*>|_:\S+)\s+<([^<>\s]*)>\s+(.+?)\s*\.$")
+_NT_IRI = re.compile(r"^<[^<>\s]*>$")
+_TSV_UNESCAPE = {"t": "\t", "n": "\n", "r": "\r", "\\": "\\", '"': '"'}
+_TSV_ESCAPE_RE = re.compile(r"\\(.)")
+_TSV_LITERAL = re.compile(r'^"(.*)"(?:@([A-Za-z0-9-]+)|\^\^<(.*)>)?$', re.DOTALL)
 
 
 class QleverError(Exception):
@@ -138,6 +152,22 @@ def _binding(raw: dict[str, Any]) -> Binding:
     )
 
 
+def _tsv_binding(cell: str) -> Binding | None:
+    """One TSV cell -> Binding (None when unbound/empty)."""
+    if not cell:
+        return None
+    if cell.startswith("<") and cell.endswith(">"):
+        return Binding(type="uri", value=cell[1:-1])
+    if cell.startswith("_:"):
+        return Binding(type="bnode", value=cell[2:])
+    match = _TSV_LITERAL.match(cell)
+    if match is None:  # bare value (numbers etc.)
+        return Binding(type="literal", value=cell)
+    raw, lang, datatype = match.groups()
+    value = _TSV_ESCAPE_RE.sub(lambda m: _TSV_UNESCAPE.get(m.group(1), m.group(0)), raw)
+    return Binding(type="literal", value=value, lang=lang, datatype=datatype)
+
+
 def _error_text(resp: httpx.Response) -> str:
     """Human-readable reason: QLever error JSON has an ``exception`` field."""
     try:
@@ -182,6 +212,62 @@ class QleverClient:
         meta = payload.get("meta") or {}
         return SelectResult(vars=vars_, rows=rows, meta=meta)
 
+    def construct(self, query: str) -> list[tuple[str, str, str]]:
+        """Run a CONSTRUCT as N-Triples; return the IRI-only triples.
+
+        Triples with a literal or blank-node subject/object are skipped (the
+        graph only has IRI-IRI edges). A truncated body raises
+        :class:`QleverServerError`, see :func:`_require_complete`.
+        """
+        text = self._post_text(query, _ACCEPT_NT)
+        triples: list[tuple[str, str, str]] = []
+        for line in text.split("\n"):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            match = _NT_LINE.match(line)
+            if match is None:
+                raise QleverServerError(
+                    f"QLever returned bad N-Triples line: {line[:80]!r}"
+                )
+            subj, pred, obj = match.groups()
+            if _NT_IRI.match(subj) and _NT_IRI.match(obj):
+                s, o = subj[1:-1], obj[1:-1]
+                # drop IRIs we could not safely re-use in a later VALUES block
+                if templates.is_valid_iri(s) and templates.is_valid_iri(o):
+                    triples.append((s, pred, o))
+        return triples
+
+    def select_tsv(self, query: str) -> SelectResult:
+        """Run a SELECT as TSV (compact for big flat results) -> parsed rows.
+
+        TSV is parsed (not JSON) because the bulk queries return 10^5+ flat
+        rows where JSON is several times larger; the cells are simple enough
+        (``<iri>``, ``"lit"@lang``, ``"lit"^^<dt>``, backslash escapes) to map
+        onto :class:`Binding`. Unbound cells are omitted from the row dict.
+        A body cut exactly on a line boundary cannot be detected.
+        """
+        text = self._post_text(query, _ACCEPT_TSV)
+        lines = [ln.rstrip("\r") for ln in text.split("\n")[:-1]]
+        if not lines:
+            raise QleverServerError("QLever returned an empty TSV body")
+        vars_ = [v.lstrip("?") for v in lines[0].split("\t")]
+        rows: list[dict[str, Binding]] = []
+        for line in lines[1:]:
+            cells = line.split("\t")
+            if len(cells) != len(vars_):
+                raise QleverServerError(
+                    f"QLever returned malformed TSV row: {line[:80]!r}"
+                )
+            rows.append(
+                {
+                    v: b
+                    for v, c in zip(vars_, cells)
+                    if (b := _tsv_binding(c)) is not None
+                }
+            )
+        return SelectResult(vars=vars_, rows=rows)
+
     def ask(self, query: str) -> bool:
         """Run an ASK and return the boolean answer."""
         payload = self._post_json(query)
@@ -215,9 +301,26 @@ class QleverClient:
             )
         return payload
 
-    def _post(self, query: str) -> httpx.Response:
+    def _post_text(self, query: str, accept: str) -> str:
+        """POST expecting a line-oriented body; reject truncated answers.
+
+        On a QLever timeout the endpoint can answer HTTP 200 with a body cut
+        mid-stream. Both N-Triples and TSV bodies end every line with ``\\n``,
+        so a non-empty body without a trailing newline is truncated.
+        """
+        text = self._post(query, accept).text
+        if text and not text.endswith("\n"):
+            raise QleverServerError(
+                "QLever returned a truncated body (no trailing newline; likely a "
+                "server-side timeout)",
+                status=200,
+            )
+        return text
+
+    def _post(self, query: str, accept: str | None = None) -> httpx.Response:
+        headers = {"Accept": accept} if accept else None
         try:
-            resp = self._client.post(self.url, data={"query": query})
+            resp = self._client.post(self.url, data={"query": query}, headers=headers)
         except httpx.TimeoutException as exc:
             raise QleverUnavailable(
                 f"QLever request timed out after {self.timeout_s:.1f}s"

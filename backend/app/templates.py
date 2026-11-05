@@ -46,6 +46,15 @@ def assert_valid_iri(iri: str) -> str:
     return iri
 
 
+def is_valid_iri(iri: str) -> bool:
+    """Boolean form of :func:`assert_valid_iri`."""
+    try:
+        assert_valid_iri(iri)
+    except ValueError:
+        return False
+    return True
+
+
 def iri_ref(iri: str) -> str:
     """``https://x`` -> ``<https://x>`` (validated)."""
     return f"<{assert_valid_iri(iri)}>"
@@ -398,3 +407,92 @@ def entity_properties_query(*, iri: str, limit: int = 200) -> str:
 }}
 ORDER BY ?pred ?obj
 LIMIT {limit}"""
+
+
+# -- bulk BFS building blocks (flat queries over VALUES chunks) ----------------
+#
+# The bulk fetcher (``app.bulk``) never asks for edges and node attributes in
+# one joined query: an OPTIONAL join multiplies rows and times out on the
+# shared endpoint (measured live). Instead it runs three flat queries per
+# chunk of ~2k IRIs. QLever quirk (verified live): ``OPTIONAL { ?n ?p ?v }``
+# with ``?p`` bound by an outer VALUES misbehaves, so labels use a plain join
+# (``VALUES ?n`` + ``VALUES ?p`` + ``?n ?p ?l``) and the fold-by-priority
+# happens in Python.
+
+
+def _limit_clause(limit: int | None) -> str:
+    if limit is None:
+        return ""
+    if not isinstance(limit, int) or isinstance(limit, bool) or limit < 1:
+        raise ValueError(f"limit must be an int >= 1, got {limit!r}")
+    return f"\nLIMIT {limit}"
+
+
+def _nonempty(name: str, iris: Sequence[str]) -> None:
+    if not iris:
+        raise ValueError(f"{name} must not be empty")
+
+
+def edges_construct_query(
+    *, frontier: Sequence[str], relation: str, limit: int | None = None
+) -> str:
+    """Edges of ONE relation touching a frontier chunk, both directions.
+
+    ``CONSTRUCT { ?s <relation> ?o }`` — N-Triples is the fastest result
+    format for edge sets (measured live: 2-hop/10k edges ~16s vs ~25s for
+    SELECT). Both directions run as one ``UNION`` query: the frontier
+    ``VALUES`` block is the bulk of the query text and is parsed/planned
+    once instead of twice, and the request count (a shared, rate-limited
+    endpoint) halves. Each branch binds both ``?s`` and ``?o`` (the
+    frontier node sits in ``?s`` for ``out``, in ``?o`` for ``in``) and
+    requires the *other* end to be an IRI (no literals / blank nodes).
+    An edge between two frontier nodes matches both branches; CONSTRUCT
+    output is not guaranteed duplicate-free, callers de-duplicate.
+
+    One relation per query keeps the predicate a constant (no ``?p``
+    variable bound by VALUES, see the quirk note above) and bounds each
+    request's cost.
+    """
+    _nonempty("frontier", frontier)
+    nodes = iri_list(frontier)
+    rel = iri_ref(relation)
+    return f"""CONSTRUCT {{ ?s {rel} ?o }} WHERE {{
+  {{
+    VALUES ?s {{ {nodes} }}
+    ?s {rel} ?o .
+    FILTER(isIRI(?o))
+  }}
+  UNION {{
+    VALUES ?o {{ {nodes} }}
+    ?s {rel} ?o .
+    FILTER(isIRI(?s))
+  }}
+}}{_limit_clause(limit)}"""
+
+
+def types_query(*, nodes: Sequence[str], type_iris: Sequence[str] = ()) -> str:
+    """Flat ``?n ?t`` rdf:type rows for a chunk of nodes.
+
+    ``type_iris`` (optional) restricts ``?t`` through a plain ``VALUES``
+    join, which cuts the row count for nodes with many irrelevant types.
+    """
+    _nonempty("nodes", nodes)
+    restrict = f"\n  VALUES ?t {{ {iri_list(type_iris)} }}" if type_iris else ""
+    return f"""SELECT ?n ?t WHERE {{
+  VALUES ?n {{ {iri_list(nodes)} }}{restrict}
+  ?n a ?t .
+}}"""
+
+
+def labels_query(*, nodes: Sequence[str], label_iris: Sequence[str]) -> str:
+    """Flat ``?n ?p ?l`` label rows for a chunk (no OPTIONAL, see above).
+
+    ``?p`` is projected so the caller can fold by label-property priority.
+    """
+    _nonempty("nodes", nodes)
+    _nonempty("label_iris", label_iris)
+    return f"""SELECT ?n ?p ?l WHERE {{
+  VALUES ?n {{ {iri_list(nodes)} }}
+  VALUES ?p {{ {iri_list(label_iris)} }}
+  ?n ?p ?l .
+}}"""

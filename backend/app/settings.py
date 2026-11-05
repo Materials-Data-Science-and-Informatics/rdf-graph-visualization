@@ -26,6 +26,7 @@ class Settings:
     request_timeout_s: float
     default_limit: int
     max_limit: int
+    qlever_concurrency: int = 4
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -35,4 +36,5 @@ class Settings:
             request_timeout_s=float(os.environ.get("QLEVER_TIMEOUT_S", "30")),
             default_limit=int(os.environ.get("QLEVER_DEFAULT_LIMIT", "500")),
             max_limit=int(os.environ.get("QLEVER_MAX_LIMIT", "5000")),
+            qlever_concurrency=max(1, int(os.environ.get("QLEVER_CONCURRENCY", "4"))),
         )
