@@ -30,6 +30,7 @@ import {
 import type { PickHit } from "@/engine/picking";
 import { keepIfSameCounts, keepIfSameMap, windowStats } from "@/lib/graph-stats";
 import { relationPalette } from "@/lib/relation-colors";
+import { DEPTH_DEBOUNCE_MS, bucketParam, useFetchBucket } from "@/lib/fetch-bucket";
 import Sidebar from "./Sidebar";
 import NodeDetails, { type SelectedView } from "./NodeDetails";
 import GraphTooltip from "./GraphTooltip";
@@ -40,8 +41,6 @@ import Graph2D, { type ViewHandle } from "./Graph2D";
 import type { GraphControl } from "./SearchBox";
 
 const PENDING_SELECT_MS = 20000;
-
-const DEPTH_DEBOUNCE_MS = 500;
 const NO_GROUP_COLOR = "#8a8f98";
 const UNCLASSIFIED = "Unclassified";
 
@@ -101,12 +100,16 @@ export default function GraphView({
   settingsRef.current = { dim };
 
   // Depth changes restart the stream; omitted max_hops (default 6) keeps the cached snapshot key.
+  // A bigger node count than the fetched bucket restarts the stream (positions carry over).
+  const streamKey = `${rootIri}|${appliedDepth}|${appliedFanout}`;
+  const bucket = useFetchBucket(nodeLimit, streamKey, () => engineRef.current?.captureForReroot());
   useEffect(() => {
     start(rootIri, {
+      maxNodes: bucketParam(bucket),
       maxHops: depthToMaxHops(appliedDepth),
       maxFanout: fanoutParam(appliedFanout),
     });
-  }, [start, appliedDepth, appliedFanout, rootIri]);
+  }, [start, appliedDepth, appliedFanout, rootIri, bucket]);
 
   useEffect(() => {
     const t = setTimeout(() => {

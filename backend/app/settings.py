@@ -74,7 +74,8 @@ class Settings:  # pylint: disable=too-many-instance-attributes
     stream_refresh_s: float = 0.8 * 6 * 3600.0
     stream_cache_max_bytes: int = 1 << 30
     default_root_iri: str = DEFAULT_ROOT_IRI
-    default_max_nodes: int = 100_000
+    #: Node budget of the prewarmed snapshots: the frontend's default fetch bucket (5000 nodes).
+    default_max_nodes: int = 5_000
     #: Extra roots prewarmed after the default root (PREWARM_ROOTS, comma-separated).
     prewarm_roots: tuple[str, ...] = HELMHOLTZ_CENTRE_IRIS
 
@@ -107,9 +108,7 @@ class Settings:  # pylint: disable=too-many-instance-attributes
                 0, int(os.environ.get("STREAM_CACHE_MAX_BYTES", str(1 << 30)))
             ),
             default_root_iri=os.environ.get("DEFAULT_ROOT_IRI", DEFAULT_ROOT_IRI),
-            default_max_nodes=max(
-                1, int(os.environ.get("DEFAULT_MAX_NODES", "100000"))
-            ),
+            default_max_nodes=max(1, int(os.environ.get("DEFAULT_MAX_NODES", "5000"))),
             prewarm_roots=tuple(
                 r.strip()
                 for r in os.environ.get(

@@ -489,4 +489,4 @@ def test_prewarm_keys_cover_default_root_and_presets(monkeypatch) -> None:
     monkeypatch.setenv("DEFAULT_ROOT_IRI", R)
     keys = stream.prewarm_keys(Settings.from_env())
     assert [k[0] for k in keys] == [R, "https://ror.org/02nv7yv05"]
-    assert all(k[1:] == (100000, 6, 200) for k in keys)
+    assert all(k[1:] == (5000, 6, 200) for k in keys)
