@@ -4,7 +4,7 @@
 
 Id, label, group, rdf:type IRIs and the per-relation out/in edge counts (see
 ``bulk.fetch_node_summary``). IRIs arrive percent-encoded and decoded by
-ASGI, hence the ``:path`` converter (same as ``/api/expand``). An IRI with
+ASGI, hence the ``:path`` converter. An IRI with
 no types, no label and no relation edges is unknown (404).
 """
 

@@ -6,7 +6,7 @@ All QLever traffic is replayed through ``httpx.MockTransport`` — no network.
 Coverage: the visible DoD (repeat call served from cache with
 ``X-Cache: HIT`` and no second QLever round-trip), cache keying
 (query-order-insensitive, distinct queries miss), TTL disable/expiry,
-LRU eviction, 404s never cached, health-probe exemption, 429 +
+LRU eviction, non-200s never cached, health-probe exemption, 429 +
 ``Retry-After`` on bucket exhaustion, cache hits spending tokens,
 limiter disable (<=0), malformed env fallback, and the token-bucket
 refill/prune rules.
@@ -15,7 +15,6 @@ refill/prune rules.
 from __future__ import annotations
 
 from typing import Any
-from urllib.parse import quote
 
 import httpx
 import pytest
@@ -28,9 +27,8 @@ from app.qlever import QleverClient
 
 DEV_URL = "https://sparql.unhide.helmholtz-metadaten.de/sparql"
 CENTER = "https://doi.org/10.1234/dataset123"
-RDF_TYPE = "http://www.w3.org/1999/02/22-rdf-syntax-ns#type"
 TYPE_DATASET = "https://schema.org/Dataset"
-ENTITY_PATH = f"/api/entity/{quote(CENTER, safe='')}"
+SEARCH_PATH = "/api/search?q=data"
 
 
 def uri(value: str) -> dict[str, str]:
@@ -52,15 +50,15 @@ def sparql_response(*rows: dict[str, Any]) -> httpx.Response:
     )
 
 
-def entity_row(pred: str, obj: dict[str, Any]) -> dict[str, Any]:
-    return {"pred": uri(pred), "obj": obj}
-
-
 def dataset_entity() -> httpx.Response:
-    """A minimal 200 /api/entity payload (Dataset with one label)."""
+    """A minimal 200 /api/search payload (one Dataset hit)."""
     return sparql_response(
-        entity_row(RDF_TYPE, uri(TYPE_DATASET)),
-        entity_row("https://schema.org/name", lit("Dataset name")),
+        {
+            "node": uri(CENTER),
+            "nodeType": uri(TYPE_DATASET),
+            "lbl": uri("https://schema.org/name"),
+            "label": lit("Dataset name"),
+        }
     )
 
 
@@ -89,10 +87,10 @@ def client() -> TestClient:
 
 def test_repeat_get_is_cache_hit_without_qlever_roundtrip(mock_qlever, client):
     mock_qlever["responses"] = [dataset_entity()]
-    first = client.get(ENTITY_PATH)
+    first = client.get(SEARCH_PATH)
     assert first.status_code == 200
     assert first.headers["x-cache"] == "MISS"
-    second = client.get(ENTITY_PATH)
+    second = client.get(SEARCH_PATH)
     assert second.status_code == 200
     assert second.headers["x-cache"] == "HIT"
     # the DoD: the hit is visible in the header and costs no QLever traffic
@@ -102,8 +100,8 @@ def test_repeat_get_is_cache_hit_without_qlever_roundtrip(mock_qlever, client):
 
 def test_cache_hit_preserves_body_and_content_type(mock_qlever, client):
     mock_qlever["responses"] = [dataset_entity()]
-    first = client.get(ENTITY_PATH)
-    second = client.get(ENTITY_PATH)
+    first = client.get(SEARCH_PATH)
+    second = client.get(SEARCH_PATH)
     assert second.headers["content-type"].startswith("application/json")
     assert int(second.headers["content-length"]) == len(second.content)
     assert second.content == first.content
@@ -121,20 +119,20 @@ def test_config_endpoint_is_cached_like_any_get(client):
 
 
 def test_cache_key_is_query_order_insensitive(mock_qlever, client):
-    mock_qlever["responses"] = [sparql_response(), sparql_response()]
-    first = client.get("/api/subgraph?limit=3&type=Person")
+    mock_qlever["responses"] = [dataset_entity(), dataset_entity()]
+    first = client.get("/api/search?q=data&x=1")
     assert first.status_code == 200
     assert first.headers["x-cache"] == "MISS"
-    second = client.get("/api/subgraph?type=Person&limit=3")
+    second = client.get("/api/search?x=1&q=data")
     assert second.status_code == 200
     assert second.headers["x-cache"] == "HIT"
     assert len(mock_qlever["requests"]) == 1
 
 
 def test_distinct_query_is_cache_miss(mock_qlever, client):
-    mock_qlever["responses"] = [sparql_response(), sparql_response()]
-    first = client.get("/api/subgraph?limit=3")
-    second = client.get("/api/subgraph?limit=4")
+    mock_qlever["responses"] = [dataset_entity(), dataset_entity()]
+    first = client.get("/api/search?q=data")
+    second = client.get("/api/search?q=other")
     assert first.headers["x-cache"] == "MISS"
     assert second.headers["x-cache"] == "MISS"
     assert len(mock_qlever["requests"]) == 2
@@ -143,22 +141,22 @@ def test_distinct_query_is_cache_miss(mock_qlever, client):
 def test_zero_ttl_disables_cache(mock_qlever, client, monkeypatch):
     monkeypatch.setenv("HKG_CACHE_TTL_S", "0")
     mock_qlever["responses"] = [dataset_entity(), dataset_entity()]
-    first = client.get(ENTITY_PATH)
-    second = client.get(ENTITY_PATH)
+    first = client.get(SEARCH_PATH)
+    second = client.get(SEARCH_PATH)
     assert first.headers["x-cache"] == "MISS"
     assert second.headers["x-cache"] == "MISS"
     assert len(mock_qlever["requests"]) == 2
 
 
 def test_non_200_responses_are_not_cached(mock_qlever, client):
-    # first call: empty entity -> 404; second: the entity now exists -> 200
-    mock_qlever["responses"] = [sparql_response(), dataset_entity()]
-    first = client.get(ENTITY_PATH)
-    assert first.status_code == 404
+    # first call: upstream 500 -> 502; second: upstream recovered -> 200
+    mock_qlever["responses"] = [httpx.Response(500, text="boom"), dataset_entity()]
+    first = client.get(SEARCH_PATH)
+    assert first.status_code == 502
     assert "x-cache" not in first.headers
-    second = client.get(ENTITY_PATH)
+    second = client.get(SEARCH_PATH)
     assert second.status_code == 200
-    assert second.headers["x-cache"] == "MISS"  # the 404 was not stored
+    assert second.headers["x-cache"] == "MISS"  # the 502 was not stored
     assert len(mock_qlever["requests"]) == 2
 
 
@@ -169,7 +167,7 @@ def test_health_is_never_cached_nor_rate_limited(mock_qlever, client, monkeypatc
     monkeypatch.setenv("HKG_RATE_LIMIT_PER_MIN", "1")
     assert client.get("/api/health").status_code == 200
     mock_qlever["responses"] = [dataset_entity()]
-    assert client.get(ENTITY_PATH).status_code == 200  # spends the one token
+    assert client.get(SEARCH_PATH).status_code == 200  # spends the one token
     # health stays up even with the bucket dry, and is never cached
     third = client.get("/api/health")
     assert third.status_code == 200
@@ -182,9 +180,9 @@ def test_health_is_never_cached_nor_rate_limited(mock_qlever, client, monkeypatc
 def test_rate_limit_429_with_retry_after(mock_qlever, client, monkeypatch):
     monkeypatch.setenv("HKG_RATE_LIMIT_PER_MIN", "2")
     mock_qlever["responses"] = [dataset_entity()]
-    assert client.get(ENTITY_PATH).status_code == 200  # token 2 -> 1
-    assert client.get(ENTITY_PATH).status_code == 200  # token 1 -> 0 (HIT)
-    limited = client.get(ENTITY_PATH)  # bucket dry
+    assert client.get(SEARCH_PATH).status_code == 200  # token 2 -> 1
+    assert client.get(SEARCH_PATH).status_code == 200  # token 1 -> 0 (HIT)
+    limited = client.get(SEARCH_PATH)  # bucket dry
     assert limited.status_code == 429
     assert "x-cache" not in limited.headers  # no cache header on the 429
     assert "detail" in limited.json()
@@ -195,10 +193,10 @@ def test_rate_limit_429_with_retry_after(mock_qlever, client, monkeypatch):
 def test_rate_limit_counts_cache_hits(mock_qlever, client, monkeypatch):
     monkeypatch.setenv("HKG_RATE_LIMIT_PER_MIN", "2")
     mock_qlever["responses"] = [dataset_entity(), dataset_entity()]
-    assert client.get(ENTITY_PATH).status_code == 200  # MISS
-    hit = client.get(ENTITY_PATH)
+    assert client.get(SEARCH_PATH).status_code == 200  # MISS
+    hit = client.get(SEARCH_PATH)
     assert hit.headers["x-cache"] == "HIT"  # hits still spend a token
-    assert client.get(ENTITY_PATH).status_code == 429
+    assert client.get(SEARCH_PATH).status_code == 429
     assert len(mock_qlever["requests"]) == 1
 
 

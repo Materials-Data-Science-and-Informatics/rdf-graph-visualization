@@ -107,7 +107,7 @@ def type_iri_groups() -> dict[str, contract.NodeType]:
     plus BASE_TYPE (e.g. InstitutionModel -> Organization, FundingAgency,
     GovernmentOrganization, ...; DocumentModel -> ScholarlyArticle, Book, ...)
     — never the MRO-wide union, which would drag in ``Thing``. The group's own
-    name is always mapped too. Shared by /api/expand and /api/aggregate.
+    name is always mapped too.
     """
     mapping: dict[str, contract.NodeType] = {}
     for group in known_groups():

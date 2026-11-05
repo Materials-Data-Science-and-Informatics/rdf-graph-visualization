@@ -14,9 +14,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from app import bulk, contract, presets, stream, subgraph
-from app.aggregate import router as aggregate_router
-from app.api_b2 import router as b2_router
+from app import bulk, contract, presets, stream
 from app.middleware import ApiGuardMiddleware
 from app.node import router as node_router
 from app.search import router as search_router
@@ -41,9 +39,6 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0", lifespan=lifespan)
 
 app.add_middleware(ApiGuardMiddleware)
-app.include_router(subgraph.router)
-app.include_router(aggregate_router)
-app.include_router(b2_router, prefix="/api")
 app.include_router(search_router)
 app.include_router(stream_router)
 app.include_router(node_router)
