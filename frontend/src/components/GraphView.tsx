@@ -448,6 +448,7 @@ export default function GraphView({
             ref={view2dRef}
             store={store}
             nodeLimit={nodeLimit}
+            streaming={status.phase === "streaming"}
             curved={curved}
             arrows={arrows}
             edgeOpacity={edgeOpacity}

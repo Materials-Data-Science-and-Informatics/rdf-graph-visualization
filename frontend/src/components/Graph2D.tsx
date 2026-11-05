@@ -16,6 +16,7 @@ export interface ViewHandle {
 interface Graph2DProps {
   store: GraphStore;
   nodeLimit: number;
+  streaming: boolean;
   curved: boolean;
   arrows: boolean;
   edgeOpacity: number;
@@ -79,7 +80,7 @@ export default function Graph2D(p: Graph2DProps) {
         timer = setInterval(() => {
           const c = latest.current;
           view?.sampleFps();
-          view?.poll(c.store, c.nodeLimit);
+          view?.poll(c.store, c.nodeLimit, c.streaming);
         }, POLL_MS);
       })
       .catch((err: unknown) => {

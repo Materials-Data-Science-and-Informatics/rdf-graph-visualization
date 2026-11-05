@@ -4,6 +4,8 @@ import { UNTYPED_ALPHA } from "@/engine/curve";
 import { appendWindowEdges } from "@/engine/layout-utils";
 import { cssToRgb } from "@/engine/webgpu";
 import type { GraphStore } from "@/lib/graph-store";
+import type { Communities } from "./communities";
+import { CommunityDetector } from "./community-detector";
 import { placeNodes } from "./placement";
 
 const SPACE_SIZE = 4096;
@@ -11,6 +13,10 @@ const CENTER = SPACE_SIZE / 2;
 const NO_GROUP_COLOR = "#8a8f98";
 const ALPHA_FRESH = 1;
 const ALPHA_GROWTH = 0.35;
+const ALPHA_CLUSTER = 0.3;
+// cluster pull towards the hub: strong enough to separate communities, weak enough
+// that link springs and repulsion still fan members out around the hub
+const CLUSTER_STRENGTH = 0.2;
 const FIT_MS = 400;
 const FIT_EVERY_MS = 1000;
 
@@ -42,6 +48,9 @@ export class CosmosView {
   private dark = true;
   private autoFit = true;
   private lastFit = 0;
+  private communities: Communities | null = null;
+  private clusterPos: number[] = [];
+  private readonly detector = new CommunityDetector((r) => this.applyCommunities(r));
   private ticks = 0;
   private fpsAt = performance.now();
   fps = 0;
@@ -73,6 +82,7 @@ export class CosmosView {
       simulationRepulsion: 2,
       simulationLinkSpring: 1,
       simulationLinkDistance: 15,
+      simulationCluster: 0, // switched on once communities are known
       onPointClick: (i) => handlers.onPointClick(i),
       onPointContextMenu: (i, _pos, e) => {
         e.preventDefault();
@@ -131,7 +141,7 @@ export class CosmosView {
   }
 
   /** Cheap change check, meant to be called on a timer; pushes data only when the window changed. */
-  poll(store: GraphStore, nodeLimit: number): void {
+  poll(store: GraphStore, nodeLimit: number, streaming: boolean): void {
     const n = Math.min(store.nodeCount, nodeLimit);
     const fresh = store.generation !== this.generation;
     if (
@@ -142,13 +152,15 @@ export class CosmosView {
       this.seenPalette === this.paletteVersion
     ) {
       this.fitWhileRunning();
-      return;
+    } else {
+      this.push(store, n, nodeLimit, fresh);
     }
-    this.push(store, n, nodeLimit, fresh);
+    this.scheduleCommunities(store, nodeLimit, streaming);
   }
 
   destroy(): void {
     this.themeObs.disconnect();
+    this.detector.destroy();
     this.graph.destroy();
   }
 
@@ -186,10 +198,12 @@ export class CosmosView {
       const c = this.rgb(typed ? store.groupColors[grp] : NO_GROUP_COLOR);
       colors.set([c[0], c[1], c[2], typed ? 1 : UNTYPED_ALPHA], 4 * i);
     }
+    if (fresh && this.communities) this.clearCommunities(n);
     g.setPointPositions(pos, true);
     g.setLinks(links);
     g.setPointColors(colors);
     g.setLinkColors(linkColors);
+    if (!fresh && this.communities) this.setClusters(n);
     if (fresh) {
       this.autoFit = true;
       g.setConfigPartial({ focusedPointIndex: undefined });
@@ -202,6 +216,51 @@ export class CosmosView {
     this.limit = nodeLimit;
     this.seenPalette = this.paletteVersion;
     this.lastFit = 0;
+  }
+
+  /** Louvain once the stream is done and after window changes; once mid-stream when the window is full. */
+  private scheduleCommunities(store: GraphStore, nodeLimit: number, streaming: boolean): void {
+    const n = Math.min(store.nodeCount, nodeLimit);
+    if (n === 0 || (streaming && n < nodeLimit)) return;
+    const key = streaming
+      ? `s:${store.generation}:${nodeLimit}`
+      : `d:${store.generation}:${n}:${store.edgeCount}`;
+    this.detector.schedule(key, () => {
+      const count = Math.min(store.nodeCount, nodeLimit);
+      const pairs = new Uint32Array(store.edgeCount * 2);
+      const m = appendWindowEdges(store.edges, 0, store.edgeCount, count, pairs, 0);
+      return { n: count, pairs: pairs.slice(0, m * 2) };
+    });
+  }
+
+  /** The hub's current position becomes the cluster centre, so the hub sits in the middle. */
+  private applyCommunities(r: Communities): void {
+    if (r.community.length !== this.nodes) return; // window changed meanwhile; a new run follows
+    const pos = this.graph.getPointPositionsArray();
+    this.clusterPos = [];
+    for (const h of r.hubs) this.clusterPos.push(pos[2 * h], pos[2 * h + 1]);
+    this.communities = r;
+    this.setClusters(this.nodes);
+    this.graph.start(ALPHA_CLUSTER);
+  }
+
+  private setClusters(n: number): void {
+    const c = this.communities;
+    if (!c) return;
+    const pts: (number | undefined)[] = new Array<number | undefined>(n);
+    for (let i = 0; i < n; i++)
+      pts[i] = i < c.community.length && c.community[i] >= 0 ? c.community[i] : undefined;
+    this.graph.setPointClusters(pts);
+    this.graph.setClusterPositions(this.clusterPos);
+    this.graph.setConfigPartial({ simulationCluster: CLUSTER_STRENGTH });
+  }
+
+  private clearCommunities(n: number): void {
+    this.communities = null;
+    this.detector.cancel();
+    this.graph.setConfigPartial({ simulationCluster: 0 });
+    this.graph.setPointClusters(new Array<number | undefined>(n).fill(undefined));
+    this.graph.setClusterPositions([]);
   }
 
   private fitWhileRunning(): void {
