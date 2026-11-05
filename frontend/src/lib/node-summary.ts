@@ -36,3 +36,17 @@ export function sortRelationCounts(rels: readonly NodeRelation[]): NodeRelation[
     (a, b) => b.out + b.in - (a.out + a.in) || a.predicate.localeCompare(b.predicate)
   );
 }
+
+/** "all linked to: A, B (+3) via rel1, rel2" for a bundle's relations; "" without neighbours. */
+export function summarizeBundleLinks(
+  rels: readonly NodeRelationView[],
+  nameOf: (index: number) => string,
+  max = 3
+): string {
+  const others = [...new Set(rels.map((r) => r.otherIndex))].map(nameOf).sort();
+  if (others.length === 0) return "";
+  const preds = [...new Set(rels.map((r) => r.predicateShort))].sort().slice(0, max);
+  const shown = others.slice(0, max).join(", ");
+  const extra = others.length > max ? ` (+${others.length - max})` : "";
+  return `all linked to: ${shown}${extra} via ${preds.join(", ")}`;
+}

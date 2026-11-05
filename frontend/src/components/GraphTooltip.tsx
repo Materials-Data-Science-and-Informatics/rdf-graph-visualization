@@ -29,6 +29,7 @@ const GraphTooltip = forwardRef<HTMLDivElement, { store: GraphStore; hit: PickHi
             />
             {members.length.toLocaleString()} bundled nodes
           </div>
+          <div className="text-muted-foreground text-[10px]">click to list members</div>
         </>
       ) : (
         <>

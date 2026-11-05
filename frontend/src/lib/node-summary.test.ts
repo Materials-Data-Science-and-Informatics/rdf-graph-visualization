@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import type { NodeRelationView } from "./graph-store";
-import { formatRelationRow, sortRelationCounts, summarizeRelations } from "./node-summary";
+import {
+  formatRelationRow,
+  sortRelationCounts,
+  summarizeBundleLinks,
+  summarizeRelations,
+} from "./node-summary";
 
 const rel = (p: string, dir: "out" | "in"): NodeRelationView => ({
   predicateIndex: 0,
@@ -34,5 +39,27 @@ describe("sortRelationCounts", () => {
     ];
     expect(sortRelationCounts(input).map((r) => r.predicate)).toEqual(["b", "a"]);
     expect(input[0].predicate).toBe("a");
+  });
+});
+
+describe("summarizeBundleLinks", () => {
+  it("names neighbours and relations, truncating", () => {
+    const r = (o: number, p: string) => ({
+      predicateIndex: 0,
+      predicateShort: p,
+      dir: "out" as const,
+      otherIndex: o,
+    });
+    const name = (i: number) => `N${i}`;
+    expect(summarizeBundleLinks([], name)).toBe("");
+    expect(summarizeBundleLinks([r(1, "a"), r(2, "a"), r(1, "b")], name)).toBe(
+      "all linked to: N1, N2 via a, b"
+    );
+    expect(
+      summarizeBundleLinks(
+        [1, 2, 3, 4, 5].map((i) => r(i, "a")),
+        name
+      )
+    ).toBe("all linked to: N1, N2, N3 (+2) via a");
   });
 });

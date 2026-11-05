@@ -8,6 +8,7 @@ import { useGraphStream } from "@/lib/use-graph-stream";
 import { useDisplayStore } from "@/lib/use-display-store";
 import { isBundleId } from "@/lib/bundles";
 import { shortName } from "@/lib/graph-store";
+import { summarizeBundleLinks } from "@/lib/node-summary";
 import {
   FANOUT_KEY,
   clampDepth,
@@ -158,12 +159,20 @@ export default function GraphView({
       selectAbort.current = ctrl;
       activeView()?.setSelected(index);
       const members = store.bundles.get(index);
-      if (members)
+      if (members) {
+        const label = (i: number) => store.labels[i] ?? shortName(store.nodeIds[i]);
         return setSelected({
           iri,
           status: "none",
-          bundle: { label: store.labels[index] ?? iri, members },
+          bundle: {
+            label: store.labels[index] ?? iri,
+            members: members
+              .map((m) => ({ iri: m, label: source.labels[source.indexOf(m)] ?? shortName(m) }))
+              .sort((a, b) => a.label.localeCompare(b.label) || a.iri.localeCompare(b.iri)),
+            links: summarizeBundleLinks(store.relationsOf(index), label),
+          },
         });
+      }
       setSelected({ iri, status: "loading" });
       fetchNode(iri, ctrl.signal)
         .then((info) => {
@@ -179,7 +188,7 @@ export default function GraphView({
           });
         });
     },
-    [store, activeView]
+    [store, source, activeView]
   );
 
   // Select-after-reroot request: resolved only once the store was reset (generation moved on).
@@ -466,6 +475,7 @@ export default function GraphView({
               const i = store.indexOf(selected.iri);
               if (i >= 0) makeRoot(i);
             }}
+            onMakeRootIri={makeRootIri}
           />
         )}
         <GraphToolbar

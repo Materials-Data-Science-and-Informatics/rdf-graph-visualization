@@ -2,6 +2,7 @@ import { ExternalLink, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { NodeInfo } from "@/lib/api";
 import { sortRelationCounts } from "@/lib/node-summary";
+import BundleMembers from "./BundleMembers";
 import { CopyButton, Swatch, type LegendRow } from "./shared";
 
 export interface SelectedView {
@@ -10,7 +11,7 @@ export interface SelectedView {
   info?: NodeInfo;
   error?: string;
   /** Bundle node: label and IRIs of the nodes it stands for (no backend lookup for those). */
-  bundle?: { label: string; members: string[] };
+  bundle?: { label: string; members: { iri: string; label: string }[]; links: string };
 }
 
 interface Props {
@@ -19,12 +20,20 @@ interface Props {
   isRoot: boolean;
   onClose: () => void;
   onMakeRoot: () => void;
+  onMakeRootIri: (iri: string) => void;
 }
 
 const localName = (p: string) => p.slice(Math.max(p.lastIndexOf("/"), p.lastIndexOf("#")) + 1) || p;
 
 /** Floating details card (right side of the canvas; bottom sheet on narrow screens). */
-export default function NodeDetails({ sel, legend, isRoot, onClose, onMakeRoot }: Props) {
+export default function NodeDetails({
+  sel,
+  legend,
+  isRoot,
+  onClose,
+  onMakeRoot,
+  onMakeRootIri,
+}: Props) {
   const { info, bundle } = sel;
   const color = legend.find((l) => l.name === info?.group)?.color;
   const rels = info ? sortRelationCounts(info.relations) : [];
@@ -65,12 +74,7 @@ export default function NodeDetails({ sel, legend, isRoot, onClose, onMakeRoot }
         {sel.status === "loading" && (
           <p className="text-muted-foreground text-sm">Loading details...</p>
         )}
-        {bundle && (
-          <p className="text-muted-foreground text-sm">
-            {bundle.members.length.toLocaleString()} nodes with the same class and the same
-            connections, shown as one.
-          </p>
-        )}
+        {bundle && <BundleMembers bundle={bundle} onMakeRoot={onMakeRootIri} />}
         {sel.status === "none" && !bundle && (
           <p className="text-muted-foreground text-sm">No details</p>
         )}
