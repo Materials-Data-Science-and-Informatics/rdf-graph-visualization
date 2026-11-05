@@ -3,7 +3,15 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import type { GraphStore } from "@/lib/graph-store";
 import { DEFAULT_CONFIG, estimateRadius, type EngineConfig } from "./config";
 import { GpuGraph } from "./gpu-graph";
-import { DEFAULT_CAPACITY, growCapacity, roundCapacity } from "./layout-utils";
+import {
+  DEFAULT_CAPACITY,
+  NODE_LIMIT_DEFAULT,
+  fitDistance,
+  fitFromPositions,
+  growCapacity,
+  nextAlpha,
+  roundCapacity,
+} from "./layout-utils";
 import { WebGpuUnavailableError, assertWebGpu, cssToRgb } from "./webgpu";
 
 /** TODO(F4/F5): picking. Node index = store index; `null` = nothing under the pointer. */
@@ -50,7 +58,18 @@ export class Engine {
   private alpha: number;
   private dim: 2 | 3 = 3;
   private dark = true;
+  /** Show the first N nodes (BFS arrival order) and the edges among them. */
+  private windowN = NODE_LIMIT_DEFAULT;
+  private windowDirty = false;
+  private edgesScanned = 0; // store edges already filtered into the GPU edge list
   private fitting = true;
+  private fitCenter = new THREE.Vector3();
+  private fitDist = 0;
+  private fitValid = false; // true once a measured fit exists for this generation
+  private fitBusy = false;
+  private lastFitRead = 0;
+  private fitAfterFreeze = false;
+  private viewDir = new THREE.Vector3(0, 0, 1);
   /** TODO(F4/F5): read by the picking code once it exists. */
   handlers: EngineHandlers = {};
   private readonly hidden = new Set<number>(); // TODO(F6): applied to rendering
@@ -77,7 +96,8 @@ export class Engine {
     this.controls.enableDamping = true;
     this.controls.maxDistance = 1e5;
     this.controls.addEventListener("start", () => (this.fitting = false));
-    this.camera.position.set(0, 0, this.fitDistance(estimateRadius(cfg.rest, 1)));
+    this.setViewDir();
+    this.camera.position.copy(this.viewDir).multiplyScalar(this.estimateDist(1));
 
     this.resizeObs = new ResizeObserver(() => this.resize());
     this.resizeObs.observe(host);
@@ -143,17 +163,39 @@ export class Engine {
     this.dim = dim;
     this.gpu?.setDim(dim);
     this.controls.enableRotate = dim === 3;
-    if (dim === 2) this.resetView();
+    this.alpha = Math.max(this.alpha, this.cfg.alphaBump); // let the z flattening/expansion animate
+    this.resetView();
   }
 
   /** Re-frame the whole graph and resume auto-fit while the graph grows. */
   resetView(): void {
     this.fitting = true;
-    this.controls.target.set(0, 0, 0);
-    // restore the default orbit direction (+z, looking at the origin) in 2D and 3D
-    const d = this.camera.position.length() || 1;
-    this.camera.position.set(0, 0, d);
-    this.camera.updateProjectionMatrix();
+    this.setViewDir();
+    const d = this.camera.position.distanceTo(this.controls.target) || this.estimateDist(1);
+    this.camera.position.copy(this.controls.target).addScaledVector(this.viewDir, d);
+    this.lastFitRead = 0; // measure again right away
+  }
+
+  /** Default orbit direction: +z, elevated by `viewElevationDeg` in 3D; straight on in 2D. */
+  private setViewDir(): void {
+    const e = this.dim === 2 ? 0 : THREE.MathUtils.degToRad(this.cfg.viewElevationDeg);
+    this.viewDir.set(0, Math.sin(e), Math.cos(e));
+  }
+
+  /**
+   * Show only the first `n` nodes (store indices are in BFS arrival order) and the edges
+   * among them, client-side from already loaded data. Re-heats the layout.
+   */
+  setNodeLimit(n: number): void {
+    if (n === this.windowN) return;
+    this.windowN = n;
+    this.windowDirty = true;
+    this.lastFitRead = 0; // re-fit if still auto-fitting
+  }
+
+  /** True while the layout is still moving (compute is dispatched). */
+  get settling(): boolean {
+    return this.alpha > 0;
   }
 
   /**
@@ -209,8 +251,8 @@ export class Engine {
     this.gpu?.setLook(this.dark);
   }
 
-  private fitDistance(radius: number): number {
-    return (radius * 1.15) / Math.tan(THREE.MathUtils.degToRad(FOV / 2));
+  private estimateDist(nodeCount: number): number {
+    return fitDistance(estimateRadius(this.cfg.rest, nodeCount), FOV);
   }
 
   private frame(): void {
@@ -237,10 +279,13 @@ export class Engine {
       this.pull(now);
       if (this.gpu) {
         this.gpu.step(this.renderer, this.alpha);
-        this.alpha = Math.max(this.cfg.alphaMin, this.alpha * this.cfg.alphaDecay);
+        if (this.alpha > 0) {
+          this.alpha = nextAlpha(this.alpha, this.cfg.alphaDecay, this.cfg.alphaStop);
+          if (this.alpha === 0) this.fitAfterFreeze = true;
+        }
       }
     }
-    this.updateFit();
+    this.updateFit(now);
     this.controls.update();
     void this.renderer.render(this.scene, this.camera);
   }
@@ -256,26 +301,52 @@ export class Engine {
     const gpu = this.gpu;
     if (!gpu) return;
 
-    const ch = store.takeChanges();
-    if (ch.empty && !this.csrDirty) return;
-    gpu.addNodes(
-      store,
-      ch.newNodeStart,
-      ch.newNodeEnd,
-      ch.newEdgeStart,
-      ch.newEdgeEnd,
-      this.colorOf
-    );
-    gpu.addEdges(store, ch.newEdgeStart, ch.newEdgeEnd);
-    if (ch.recoloredNodes.length) gpu.recolor(ch.recoloredNodes, store, this.colorOf);
-    if (ch.newNodeEnd > ch.newNodeStart || ch.newEdgeEnd > ch.newEdgeStart) {
+    const ch = store.takeChanges(); // recolours; node/edge cursors are tracked here (windowed)
+    const target = Math.min(this.windowN, store.nodeCount);
+    const prevNodes = gpu.nodeCount;
+    const prevEdges = gpu.edgeCount;
+    let heat = 0;
+    if (this.windowDirty) {
+      this.windowDirty = false;
+      if (target < prevNodes) gpu.truncate(target);
+      else if (target > prevNodes)
+        gpu.addNodes(store, prevNodes, target, 0, store.edgeCount, this.colorOf); // anchors from all edges
+      gpu.rescanEdges(store);
+      this.edgesScanned = store.edgeCount;
+      heat = this.cfg.alphaLimitChange;
+      gpu.setSettled(Math.min(prevNodes, target));
+    } else {
+      if (target > prevNodes) {
+        gpu.addNodes(store, prevNodes, target, this.edgesScanned, store.edgeCount, this.colorOf);
+      }
+      if (store.edgeCount > this.edgesScanned) {
+        gpu.appendEdges(store, this.edgesScanned, store.edgeCount);
+        this.edgesScanned = store.edgeCount;
+      }
+      if (gpu.nodeCount > prevNodes || gpu.edgeCount > prevEdges) {
+        // Re-heat modestly. Nodes that existed before this growth keep only `oldMobility`
+        // of the force, so a settled layout barely moves while newcomers find their place
+        // (one uniform comparison, no per-node state). First batch: everyone is new.
+        gpu.setSettled(prevNodes);
+        heat = prevNodes === 0 ? this.cfg.alphaStart : this.cfg.alphaBump;
+      }
+    }
+    if (ch.recoloredNodes.length) {
+      gpu.recolor(
+        ch.recoloredNodes.filter((i) => i < gpu.nodeCount),
+        store,
+        this.colorOf
+      );
+    }
+    if (heat > 0) {
       this.csrDirty = true;
-      this.alpha = Math.max(this.alpha, this.cfg.alphaBump);
+      this.alpha = Math.max(this.alpha, heat);
     }
     // Springs adjacency: full rebuild + upload, throttled while streaming (trailing edge
     // is covered because this runs every frame while csrDirty).
     if (this.csrDirty && now - this.lastCsr >= this.cfg.csrIntervalMs) {
       gpu.rebuildCsr();
+      this.alpha = Math.max(this.alpha, this.cfg.alphaBump / 2); // springs just changed
       this.csrDirty = false;
       this.lastCsr = now;
     }
@@ -287,6 +358,10 @@ export class Engine {
     this.gpu?.clear();
     this.csrDirty = false;
     this.regrowFailed = false;
+    this.fitValid = false;
+    this.edgesScanned = 0;
+    this.windowDirty = false;
+    this.gpu?.reseed();
     this.alpha = this.cfg.alphaStart;
     this.resetView();
   }
@@ -304,6 +379,7 @@ export class Engine {
     if (!gpu || (gpu.nodeCount === 0 && gpu.nodeCap !== wantNodes)) {
       // nothing on the GPU yet (first use, or after a reset): (re)allocate without readback
       gpu?.dispose();
+      this.edgesScanned = 0;
       this.adopt(new GpuGraph(this.scene, this.cfg, wantNodes, 4 * wantNodes));
       return true;
     }
@@ -350,13 +426,49 @@ export class Engine {
     this.csrDirty = true;
   }
 
-  /** Ease the camera distance toward the estimated layout radius until the user interacts. */
-  private updateFit(): void {
-    if (!this.fitting || !this.gpu || this.gpu.nodeCount === 0) return;
+  /**
+   * Auto-fit until the user interacts: positions are read back from the GPU (active
+   * nodes only) every `fitIntervalMs` while simulating and once after the freeze; the
+   * centroid and 95th-percentile radius give the target and distance, eased per frame.
+   */
+  private updateFit(now: number): void {
+    const gpu = this.gpu;
+    if (!this.fitting || !gpu || gpu.nodeCount === 0) return;
+    const due =
+      this.fitAfterFreeze ||
+      (!this.fitValid && now - this.lastFitRead >= 200) ||
+      (this.alpha > 0 && now - this.lastFitRead >= this.cfg.fitIntervalMs) ||
+      this.lastFitRead === 0;
+    if (due && !this.fitBusy && !this.rebuilding) {
+      this.fitBusy = true;
+      this.fitAfterFreeze = false;
+      this.lastFitRead = now;
+      const gen = this.generation;
+      const count = gpu.nodeCount;
+      gpu
+        .readPositions(this.renderer, count)
+        .then((pos) => {
+          if (this.disposed || this.gpu !== gpu || gen !== this.generation) return;
+          const fit = fitFromPositions(pos, count, 4, this.cfg.fitPercentile);
+          const radius = Math.max(fit.radius + gpu.radius, this.cfg.rest); // include sphere size
+          this.fitCenter.set(...fit.center);
+          if (this.dim === 2) this.fitCenter.z = 0;
+          this.fitDist = fitDistance(radius, FOV);
+          this.fitValid = true;
+          this.camera.near = Math.max(0.01, radius * 0.01);
+          this.camera.far = Math.max(1000, (this.fitDist + radius) * 10);
+          this.camera.updateProjectionMatrix();
+          this.controls.maxDistance = this.fitDist * 20;
+        })
+        .catch((err: unknown) => console.warn("camera fit readback failed", err))
+        .finally(() => (this.fitBusy = false));
+    }
+    const center = this.fitValid ? this.fitCenter : this.controls.target;
+    const want = this.fitValid ? this.fitDist : this.estimateDist(gpu.nodeCount);
     const target = this.controls.target;
     const offset = this.camera.position.clone().sub(target);
-    const want = this.fitDistance(estimateRadius(this.cfg.rest, this.gpu.nodeCount));
     const dist = offset.length() || want;
+    target.lerp(center, FIT_EASE);
     offset.setLength(dist + (want - dist) * FIT_EASE);
     this.camera.position.copy(target).add(offset);
   }

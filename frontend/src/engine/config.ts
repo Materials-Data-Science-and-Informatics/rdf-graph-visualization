@@ -2,24 +2,41 @@
 export interface EngineConfig {
   /** Random repulsion samples per node and step (baked into the shader; scaled by n/K). */
   samples: number;
-  /** Spring rest length in world units; everything else is expressed relative to it. */
+  /** Extra repulsion samples taken from the node's own 2-hop ring (weight 1 each; keeps local neighbourhoods apart). */
+  ringSamples: number;
+  /** Spring rest length in world units (d3 forceLink distance; node radius is rest/6, main's 5 vs 30). */
   rest: number;
+  /** Multiplier on the d3 link strength 1/min(deg(src), deg(dst)). */
   spring: number;
-  /** Repulsion strength as a multiple of rest^3. */
+  /** d3 many-body strength (|F| = strength/d, falloff 1/d); the n/K sampling scale is applied on top. */
   repulsion: number;
+  /**
+   * NOT d3's forceCenter. A very weak pull toward the origin that only stops disconnected
+   * components from drifting apart without bound; effectively 0 for connected graphs.
+   */
   gravity: number;
-  damping: number;
-  /** Softening of the 1/r^2 repulsion as a multiple of rest^2. */
+  /** d3 velocityDecay: velocity *= (1 - velocityDecay) per tick. */
+  velocityDecay: number;
+  /** Minimum squared distance in the repulsion (d3 distanceMin^2 = 1). */
   epsilon: number;
-  /** Max node speed per step as a multiple of rest. */
+  /** Safety clamp on node speed per step as a multiple of rest (d3 has none; sampling noise needs one). */
   speedClamp: number;
-  /** Random per-step jiggle (multiple of rest) that keeps a settled graph "live". */
-  jiggle: number;
-  /** Force multiplier: reset to alphaStart when a graph (re)starts, bumped on growth, decays to alphaMin. */
+  /** Force multiplier (d3 alpha): alphaStart when a graph (re)starts, re-heated on growth, decays to alphaStop. */
   alphaStart: number;
-  alphaMin: number;
+  /** Below this alpha the layout is frozen: no compute dispatch at all. */
+  alphaStop: number;
+  /** Per-tick multiplier; d3 alphaDecay 0.0228 -> 0.9772. */
   alphaDecay: number;
+  /** Re-heat level when the node limit changes. */
+  alphaLimitChange: number;
+  /** Re-heat level when the graph grows (modest: settled nodes should barely move). */
   alphaBump: number;
+  /** Force multiplier of nodes that already existed when a re-heat started (new nodes: 1). */
+  oldMobility: number;
+  /** Camera auto-fit: readback interval while simulating, distance percentile, elevation. */
+  fitIntervalMs: number;
+  fitPercentile: number;
+  viewElevationDeg: number;
   /** Minimum interval between CSR/adjacency rebuilds while streaming. */
   csrIntervalMs: number;
   maxPixelRatio: number;
@@ -29,35 +46,43 @@ export interface EngineConfig {
 
 export const DEFAULT_CONFIG: EngineConfig = {
   samples: 32,
-  rest: 10,
-  spring: 0.1,
-  repulsion: 0.1,
-  gravity: 0.02,
-  damping: 0.85,
-  epsilon: 0.05,
-  speedClamp: 0.5,
-  jiggle: 0.02,
+  ringSamples: 8,
+  rest: 30,
+  spring: 1,
+  repulsion: 30,
+  gravity: 0.001,
+  velocityDecay: 0.3,
+  epsilon: 1,
+  speedClamp: 1,
   alphaStart: 1,
-  alphaMin: 0.15,
-  alphaDecay: 0.995,
-  alphaBump: 0.6,
+  alphaStop: 0.001,
+  alphaDecay: 0.9772,
+  alphaBump: 0.3,
+  alphaLimitChange: 0.5,
+  oldMobility: 0.5,
+  fitIntervalMs: 500,
+  fitPercentile: 0.95,
+  viewElevationDeg: 22,
   csrIntervalMs: 200,
   maxPixelRatio: 2,
   noGroupColor: "#8a8f98",
 };
 
-/** Sphere diameter: large for small graphs, shrinking with node count (0.6 -> 0.2 of rest). */
-export function nodeSize(rest: number, nodeCount: number): number {
-  const f = 0.6 - 0.2 * Math.log10(Math.max(nodeCount, 100) / 100);
-  return rest * Math.min(0.6, Math.max(0.2, f));
+/** Node radius = rest/6: main's r=5 spheres on 30-unit links. */
+export function nodeRadius(rest: number): number {
+  return rest / 6;
 }
 
-/** Edge opacity: fades as edge count grows so dense graphs do not wash out. */
-export function edgeOpacity(edgeCount: number): number {
-  return Math.max(0.04, 0.25 / (1 + edgeCount / 40_000));
+/**
+ * Edge opacity: clearly visible, fading gently as edge count grows. Dark theme 0.5 -> 0.15,
+ * light theme 0.6 -> 0.2 (normal blending in both).
+ */
+export function edgeOpacity(edgeCount: number, dark: boolean): number {
+  const f = 1 / (1 + edgeCount / 60_000);
+  return dark ? Math.max(0.15, 0.5 * f) : Math.max(0.2, 0.6 * f);
 }
 
 /** Rough radius of the settled layout (used to frame the camera). */
 export function estimateRadius(rest: number, nodeCount: number): number {
-  return rest * (1 + Math.cbrt(Math.max(nodeCount, 1)) * 0.6);
+  return rest * (1 + Math.cbrt(Math.max(nodeCount, 1)) * 0.6) + nodeRadius(rest);
 }

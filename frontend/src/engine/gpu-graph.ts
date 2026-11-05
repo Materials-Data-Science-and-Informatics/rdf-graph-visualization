@@ -8,6 +8,7 @@ import {
   float,
   hash,
   instanceIndex,
+  positionGeometry,
   instancedArray,
   length,
   max,
@@ -20,14 +21,17 @@ import {
   uv,
   vec3,
   vec4,
-  vertexIndex,
+  cameraPosition,
+  cross,
+  clamp,
 } from "three/tsl";
 import type { GraphStore } from "@/lib/graph-store";
-import { edgeOpacity, nodeSize, type EngineConfig } from "./config";
+import { edgeOpacity, nodeRadius, type EngineConfig } from "./config";
 import {
   buildCsr,
   coalesceRanges,
   computeAnchors,
+  appendWindowEdges,
   jitterRadius,
   type IndexRange,
 } from "./layout-utils";
@@ -113,17 +117,25 @@ export class GpuGraph {
   private readonly uFrame = uniform(0, "uint");
   private readonly uZOn = uniform(1);
   private readonly uAlpha = uniform(1);
+  private readonly uSeed = uniform(0, "uint");
+  private readonly uSettled = uniform(0, "uint");
+  private readonly uOldMob = uniform(1);
   private readonly uRepK = uniform(0);
-  private readonly uSize = uniform(1);
+  /** Node radius in world units (rest/3 * user scale); drives sphere, edge width and arrow size. */
+  private readonly uRad = uniform(1);
+  private dark = true;
   private readonly uInitStart = uniform(0, "uint");
   private readonly uInitEnd = uniform(0, "uint");
 
   private readonly stepKernel: ComputeNodeT;
   private readonly initKernel: ComputeNodeT;
   private readonly sprite: THREE.Sprite;
-  private readonly lines: THREE.LineSegments;
-  private readonly lineGeo: THREE.BufferGeometry;
-  private readonly lineMat: THREE.LineBasicNodeMaterial;
+  private readonly shaft: THREE.Mesh;
+  private readonly arrows: THREE.Mesh;
+  private readonly shaftGeo: THREE.InstancedBufferGeometry;
+  private readonly arrowGeo: THREE.InstancedBufferGeometry;
+  private readonly shaftMat: THREE.MeshBasicNodeMaterial;
+  private readonly arrowMat: THREE.MeshBasicNodeMaterial;
   private readonly nodeMat: THREE.SpriteNodeMaterial;
   private pendingInit = false;
   private frame = 0;
@@ -167,7 +179,7 @@ export class GpuGraph {
     // nodes: one instanced draw, sphere impostor shaded in the fragment stage
     this.nodeMat = new THREE.SpriteNodeMaterial();
     this.nodeMat.positionNode = this.pos.toAttribute().xyz;
-    this.nodeMat.scaleNode = this.uSize;
+    this.nodeMat.scaleNode = this.uRad.mul(2); // sprite scale = diameter
     this.nodeMat.transparent = false;
     this.nodeMat.depthWrite = true;
     const cAttr = this.colors.toAttribute();
@@ -189,38 +201,94 @@ export class GpuGraph {
     this.sprite.frustumCulled = false;
     this.scene.add(this.sprite);
 
-    // edges: one draw; endpoints are fetched from the position buffer through the edge
-    // index buffer. The dummy `position` attribute only provides the vertex capacity.
-    this.lineGeo = new THREE.BufferGeometry();
-    this.lineGeo.setAttribute(
+    // Edges: camera-facing quads (WebGPU lines are always 1px) plus flat arrowhead
+    // triangles at the target end: 2 instanced draws, one instance per edge. Endpoints come
+    // from the position buffer via the edge index buffer; geometry holds only the unit
+    // quad / triangle. Both stop at the sphere surfaces (radius uRad). No curvature.
+    const quad = new THREE.InstancedBufferGeometry();
+    quad.setAttribute(
       "position",
-      new THREE.BufferAttribute(new Float32Array(edgeCap * 6), 3)
+      new THREE.BufferAttribute(new Float32Array([0, -0.5, 0, 1, -0.5, 0, 1, 0.5, 0, 0, 0.5, 0]), 3)
     );
-    this.lineGeo.setDrawRange(0, 0);
-    this.lineMat = new THREE.LineBasicNodeMaterial({
-      color: 0x6f8fd0,
+    quad.setIndex([0, 1, 2, 0, 2, 3]);
+    quad.instanceCount = 0;
+    const tri = new THREE.InstancedBufferGeometry();
+    // x: 1 = tip, 0 = base; y: -0.5..0.5 across the base
+    tri.setAttribute(
+      "position",
+      new THREE.BufferAttribute(new Float32Array([1, 0, 0, 0, -0.5, 0, 0, 0.5, 0]), 3)
+    );
+    tri.instanceCount = 0;
+    this.shaftGeo = quad;
+    this.arrowGeo = tri;
+    const matOpts = {
       transparent: true,
-      opacity: 0.14,
       depthWrite: false,
-      blending: THREE.AdditiveBlending,
-    });
-    this.lineMat.positionNode = this.pos.element(this.edgeIdx.element(vertexIndex)).xyz;
-    this.lines = new THREE.LineSegments(this.lineGeo, this.lineMat);
-    this.lines.frustumCulled = false;
-    this.scene.add(this.lines);
+      side: THREE.DoubleSide,
+    };
+    this.shaftMat = new THREE.MeshBasicNodeMaterial(matOpts);
+    this.arrowMat = new THREE.MeshBasicNodeMaterial(matOpts);
+    const { shaftPos, arrowPos } = this.edgeShaders();
+    this.shaftMat.positionNode = shaftPos;
+    this.arrowMat.positionNode = arrowPos;
+    this.shaft = new THREE.Mesh(quad, this.shaftMat);
+    this.arrows = new THREE.Mesh(tri, this.arrowMat);
+    for (const m of [this.shaft, this.arrows]) {
+      m.frustumCulled = false;
+      this.scene.add(m);
+    }
+    this.uRad.value = nodeRadius(cfg.rest);
     this.syncCounts();
   }
 
+  /** World-space vertex positions of the edge quads / arrowheads (see constructor comment). */
+  private edgeShaders() {
+    const { pos, edgeIdx, uRad } = this;
+    const i = instanceIndex;
+    const a = pos.element(edgeIdx.element(i.mul(2))).xyz;
+    const b = pos.element(edgeIdx.element(i.mul(2).add(1))).xyz;
+    const d = b.sub(a);
+    const len = max(length(d), 1e-4);
+    const dn = d.div(len);
+    const side = normalize(cross(dn, cameraPosition.sub(a.add(b).mul(0.5))).add(vec3(1e-6)));
+    const tip = b.sub(dn.mul(uRad));
+    const start = a.add(dn.mul(uRad));
+    const arrowLen = clamp(len.sub(uRad.mul(2)), 0, uRad.mul(1.4)); // shrinks on very short edges
+    const shaftEnd = tip.sub(dn.mul(arrowLen));
+    const shaftW = uRad.mul(0.2);
+    const t = positionGeometry.x;
+    const s = positionGeometry.y;
+    const shaftPos = start.add(shaftEnd.sub(start).mul(t)).add(side.mul(s.mul(shaftW)));
+    const arrowPos = tip
+      .sub(dn.mul(arrowLen.mul(float(1).sub(t))))
+      .add(side.mul(s.mul(arrowLen).mul(0.8)));
+    return { shaftPos, arrowPos };
+  }
+
   private buildStep() {
-    const { pos, vel, offsets, neigh, uCount, uCountF, uFrame, uZOn, uAlpha, uRepK } = this;
+    const {
+      pos,
+      vel,
+      offsets,
+      neigh,
+      uCount,
+      uCountF,
+      uSeed,
+      uZOn,
+      uAlpha,
+      uRepK,
+      uSettled,
+      uOldMob,
+    } = this;
     const k = this.cfg.samples;
+    const ring = this.cfg.ringSamples;
     const rest = uniform(this.cfg.rest);
     const spring = uniform(this.cfg.spring);
     const grav = uniform(this.cfg.gravity);
-    const damp = uniform(this.cfg.damping);
-    const eps = uniform(this.cfg.epsilon * this.cfg.rest * this.cfg.rest);
+    const damp = uniform(1 - this.cfg.velocityDecay);
+    const eps = uniform(this.cfg.epsilon);
+    const strength = uniform(this.cfg.repulsion);
     const clamp = uniform(this.cfg.speedClamp * this.cfg.rest);
-    const jig = uniform(this.cfg.jiggle * this.cfg.rest);
     // Loose upstream typings (Node vs. swizzle chains): everything below is plain TSL.
     return kernel(() => {
       const idx = instanceIndex;
@@ -228,41 +296,64 @@ export class GpuGraph {
         const pi = pos.element(idx).xyz.toVar();
         const vi = vel.element(idx).xyz.toVar();
         const f = vec3(0).toVar();
-        // stochastic repulsion: K random samples (new set every frame), scaled by n/K
+        // stochastic repulsion: K random samples, fixed per node (idx, sample, seed; no frame
+        // term) so the equilibrium is stable, scaled by n/K
         Loop(k, ({ i }) => {
           const h = hash(
             idx
               .mul(uint(1664525))
               .add(uint(i).mul(uint(1013904223)))
-              .add(uFrame.mul(uint(747796405)))
+              .add(uSeed.mul(uint(747796405)))
           );
           // h in [0,1): map to [0.5, n-0.5) so truncation stays inside [0, n-1] without a clamp
           const j = h.mul(uCountF.sub(1)).add(0.5).toUint();
           const d = pi.sub(pos.element(j).xyz);
           const r2 = dot(d, d).add(eps);
-          f.addAssign(d.mul(uRepK).div(r2.mul(sqrt(r2))));
+          f.addAssign(d.mul(uRepK).div(r2)); // d3 charge: |F| ~ 1/d
         });
-        // springs over CSR neighbours
+        // 2-hop ring samples: a neighbour's random neighbour (weight 1) keeps the local
+        // neighbourhood spread out, which the n/K random samples rarely reach
         const s = offsets.element(idx);
         const e = offsets.element(idx.add(1));
-        const deg = max(float(e.sub(s)), 1);
+        If(e.greaterThan(s), () => {
+          Loop(ring, ({ i }) => {
+            const h1 = hash(
+              idx
+                .mul(uint(2654435761))
+                .add(uint(i).mul(uint(40503)))
+                .add(uSeed)
+            );
+            const nb = neigh.element(s.add(h1.mul(float(e.sub(s))).toUint()));
+            const ns = offsets.element(nb);
+            const ne = offsets.element(nb.add(1));
+            const h2 = hash(
+              idx
+                .mul(uint(97))
+                .add(uint(i).mul(uint(7919)))
+                .add(uSeed.add(uint(13)))
+            );
+            const j = neigh.element(ns.add(h2.mul(float(ne.sub(ns))).toUint()));
+            const d = pi.sub(pos.element(j).xyz);
+            const r2 = max(dot(d, d), eps);
+            If(j.notEqual(idx), () => {
+              f.addAssign(d.mul(strength).div(r2));
+            });
+          });
+        });
+        // springs, d3 forceLink: strength 1/min(deg), the lower-degree node takes the bigger share
+        const di = max(float(e.sub(s)), 1);
         Loop({ start: s, end: e, type: "uint", condition: "<" }, ({ i }) => {
-          const d = pos.element(neigh.element(i)).xyz.sub(pi);
+          const j = neigh.element(i);
+          const dj = max(float(offsets.element(j.add(1)).sub(offsets.element(j))), 1);
+          const d = pos.element(j).xyz.sub(pi);
           const dist = max(length(d), 1e-3);
-          f.addAssign(d.div(dist).mul(dist.sub(rest)).mul(spring).div(sqrt(deg)));
+          const share = dj.div(di.add(dj));
+          f.addAssign(d.div(dist).mul(dist.sub(rest)).mul(spring).mul(share).div(min(di, dj)));
         });
         f.subAssign(pi.mul(grav)); // centering
-        vi.addAssign(f.mul(uAlpha));
-        // jiggle keeps a settled graph alive
-        vi.addAssign(
-          vec3(
-            hash(idx.add(uFrame.mul(3))),
-            hash(idx.add(uFrame.mul(5)).add(7)),
-            hash(idx.add(uFrame.mul(11)).add(13))
-          )
-            .sub(0.5)
-            .mul(jig)
-        );
+        // nodes that predate the current re-heat move at a fraction of the force
+        const mob = idx.lessThan(uSettled).select(uOldMob, float(1));
+        vi.addAssign(f.mul(uAlpha).mul(mob));
         vi.mulAssign(damp);
         vi.z.mulAssign(uZOn);
         vi.mulAssign(min(float(1), clamp.div(max(length(vi), 1e-6)))); // speed clamp
@@ -300,13 +391,14 @@ export class GpuGraph {
   private syncCounts(): void {
     this.uCount.value = this.nodeCount;
     this.uCountF.value = this.nodeCount;
-    this.uRepK.value =
-      (this.cfg.repulsion * this.cfg.rest ** 3 * this.nodeCount) / this.cfg.samples;
-    this.uSize.value = nodeSize(this.cfg.rest, this.nodeCount);
+    this.uRepK.value = (this.cfg.repulsion * this.nodeCount) / this.cfg.samples;
     this.sprite.count = this.nodeCount;
     this.sprite.visible = this.nodeCount > 0;
-    this.lineGeo.setDrawRange(0, 2 * this.edgeCount);
-    this.lineMat.opacity = edgeOpacity(this.edgeCount);
+    this.shaftGeo.instanceCount = this.edgeCount;
+    this.arrowGeo.instanceCount = this.edgeCount;
+    const o = edgeOpacity(this.edgeCount, this.dark);
+    this.shaftMat.opacity = o;
+    this.arrowMat.opacity = Math.min(1, o + 0.15);
   }
 
   /** Forget everything (generation change). GPU contents of old nodes are overwritten on respawn. */
@@ -368,12 +460,45 @@ export class GpuGraph {
     markRanges(attrOf(this.colors), ranges, 4);
   }
 
-  /** Append store edges [from, to) to the edge index buffer (partial upload) and the draw count. */
-  addEdges(store: GraphStore, from: number, to: number): void {
+  /**
+   * Append store edges [from, to) whose endpoints are both inside the active window
+   * (index < nodeCount) to the edge index buffer (partial upload) and the draw count.
+   */
+  appendEdges(store: GraphStore, from: number, to: number): void {
     if (to <= from) return;
-    this.edgeCpu.set(store.edges.subarray(from * 2, to * 2), from * 2);
-    markRanges(attrOf(this.edgeIdx), [{ start: from * 2, end: to * 2 }], 1);
-    this.edgeCount = to;
+    const start = this.edgeCount;
+    this.edgeCount = appendWindowEdges(
+      store.edges,
+      from,
+      to,
+      this.nodeCount,
+      this.edgeCpu,
+      this.edgeCount
+    );
+    markRanges(attrOf(this.edgeIdx), [{ start: start * 2, end: this.edgeCount * 2 }], 1);
+    this.syncCounts();
+  }
+
+  /** Window changed: rebuild the whole windowed edge list (full upload). */
+  rescanEdges(store: GraphStore): void {
+    this.edgeCount = appendWindowEdges(
+      store.edges,
+      0,
+      store.edgeCount,
+      this.nodeCount,
+      this.edgeCpu,
+      0
+    );
+    const attr = attrOf(this.edgeIdx);
+    attr.clearUpdateRanges(); // a full upload must not be narrowed by stale partial ranges
+    attr.needsUpdate = true;
+    this.syncCounts();
+  }
+
+  /** Shrink the active window (nodes >= n are dropped from simulation and drawing). */
+  truncate(n: number): void {
+    this.nodeCount = Math.min(this.nodeCount, n);
+    this.pendingInit = false;
     this.syncCounts();
   }
 
@@ -393,25 +518,49 @@ export class GpuGraph {
   }
 
   setLook(dark: boolean): void {
-    const m = this.lineMat;
-    const blending = dark ? THREE.AdditiveBlending : THREE.NormalBlending;
-    if (m.blending !== blending) {
-      m.blending = blending;
-      m.needsUpdate = true;
-    }
-    m.color.set(dark ? 0x6f8fd0 : 0x4a5568);
+    this.dark = dark;
+    const color = dark ? 0x9db4e0 : 0x4a5568;
+    this.shaftMat.color.set(color);
+    this.arrowMat.color.set(color);
+    this.syncCounts();
   }
 
-  /** One frame of simulation: spawn pending nodes, then a force step. */
+  /** Node radius in world units. */
+  get radius(): number {
+    return nodeRadius(this.cfg.rest);
+  }
+
+  /**
+   * One frame: spawn pending nodes (always), then a force step only when `alpha > 0`
+   * (alpha 0 = frozen layout, zero GPU simulation cost).
+   */
   step(renderer: THREE.WebGPURenderer, alpha: number): void {
     if (this.nodeCount === 0) return;
-    this.uFrame.value = this.frame++;
-    this.uAlpha.value = alpha;
     if (this.pendingInit) {
+      this.uFrame.value = this.frame++;
       renderer.compute(this.initKernel);
       this.pendingInit = false;
     }
+    if (alpha <= 0) return;
+    this.uAlpha.value = alpha;
     renderer.compute(this.stepKernel);
+  }
+
+  /** Nodes with index < n move at `oldMobility` until the next call (re-heat bookkeeping). */
+  setSettled(n: number): void {
+    this.uSettled.value = n;
+    this.uOldMob.value = this.cfg.oldMobility;
+  }
+
+  /** New repulsion sample sets (graph restart). */
+  reseed(): void {
+    this.uSeed.value = this.uSeed.value + 1;
+  }
+
+  /** Read the first `count` positions (vec4 each) back to the CPU. */
+  async readPositions(renderer: THREE.WebGPURenderer, count: number): Promise<Float32Array> {
+    const buf = await renderer.getArrayBufferAsync(attrOf(this.pos), null, 0, count * 16);
+    return new Float32Array(buf);
   }
 
   /** Copy positions/velocities back to the CPU (rare path: capacity growth). */
@@ -426,9 +575,11 @@ export class GpuGraph {
   }
 
   dispose(): void {
-    this.scene.remove(this.sprite, this.lines);
-    this.lineGeo.dispose();
-    this.lineMat.dispose();
+    this.scene.remove(this.sprite, this.shaft, this.arrows);
+    this.shaftGeo.dispose();
+    this.arrowGeo.dispose();
+    this.shaftMat.dispose();
+    this.arrowMat.dispose();
     this.nodeMat.dispose();
     this.stepKernel.dispose();
     this.initKernel.dispose();

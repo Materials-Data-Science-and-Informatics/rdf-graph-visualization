@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  appendWindowEdges,
   buildCsr,
+  countToSlider,
+  sliderToCount,
   coalesceRanges,
   computeAnchors,
+  fitDistance,
+  fitFromPositions,
+  nextAlpha,
   growCapacity,
   jitterRadius,
   roundCapacity,
@@ -78,5 +84,79 @@ describe("coalesceRanges", () => {
   });
   it("returns [] for no input", () => {
     expect(coalesceRanges([])).toEqual([]);
+  });
+});
+
+describe("fitFromPositions", () => {
+  it("computes centroid and a percentile radius that ignores outliers", () => {
+    const n = 100;
+    const pos = new Float32Array(n * 4);
+    for (let i = 0; i < n; i++) pos.set([i % 2 ? 1 : -1, 0, 0, 1], i * 4);
+    pos.set([1000, 0, 0, 1], 0); // one outlier
+    const fit = fitFromPositions(pos, n, 4, 0.95);
+    expect(fit.center[0]).toBeGreaterThan(9); // mean pulled by the outlier
+    expect(fit.radius).toBeLessThan(20); // but radius is not 1000
+    const clean = new Float32Array([1, 0, 0, 1, -1, 0, 0, 1]);
+    const f2 = fitFromPositions(clean, 2);
+    expect(f2.center).toEqual([0, 0, 0]);
+    expect(f2.radius).toBeCloseTo(1);
+  });
+  it("handles empty input", () => {
+    expect(fitFromPositions(new Float32Array(0), 0).radius).toBe(0);
+  });
+});
+
+describe("fitDistance / nextAlpha", () => {
+  it("frames the sphere: r / sin(fov/2) * margin", () => {
+    expect(fitDistance(10, 60, 1)).toBeCloseTo(20);
+    expect(fitDistance(10, 60)).toBeCloseTo(22);
+  });
+  it("decays geometrically and freezes below the stop threshold", () => {
+    expect(nextAlpha(1, 0.97, 0.002)).toBeCloseTo(0.97);
+    expect(nextAlpha(0.002, 0.97, 0.002)).toBe(0);
+    let a = 1;
+    let frames = 0;
+    while (a > 0 && frames < 10_000) {
+      a = nextAlpha(a, 0.97, 0.002);
+      frames++;
+    }
+    expect(a).toBe(0);
+    expect(frames).toBeLessThan(250);
+  });
+});
+
+describe("node window", () => {
+  const edges = new Uint32Array([0, 1, 1, 2, 2, 7, 3, 3, 0, 9]);
+  it("keeps only edges with both endpoints inside the window", () => {
+    const dst = new Uint32Array(10);
+    const n = appendWindowEdges(edges, 0, 5, 3, dst, 0);
+    expect(n).toBe(2);
+    expect([...dst.slice(0, 4)]).toEqual([0, 1, 1, 2]);
+  });
+  it("appends after existing windowed edges", () => {
+    const dst = new Uint32Array(10);
+    let n = appendWindowEdges(edges, 0, 2, 10, dst, 0);
+    n = appendWindowEdges(edges, 2, 5, 10, dst, n);
+    expect(n).toBe(5);
+    expect([...dst.slice(4, 6)]).toEqual([2, 7]);
+  });
+  it("builds a CSR only from edges inside the window", () => {
+    const dst = new Uint32Array(10);
+    const n = appendWindowEdges(edges, 0, 5, 3, dst, 0);
+    const offsets = new Uint32Array(5);
+    const neigh = new Uint32Array(10);
+    expect(buildCsr(dst, n, 3, offsets, neigh)).toBe(4);
+    expect([...offsets]).toEqual([0, 1, 3, 4, 4]);
+  });
+});
+
+describe("log slider", () => {
+  it("maps the ends and round-trips the default", () => {
+    expect(sliderToCount(0)).toBe(500);
+    expect(sliderToCount(1)).toBe(100000);
+    expect(sliderToCount(countToSlider(5000))).toBe(5000);
+  });
+  it("is monotonic", () => {
+    expect(sliderToCount(0.3)).toBeLessThan(sliderToCount(0.6));
   });
 });
