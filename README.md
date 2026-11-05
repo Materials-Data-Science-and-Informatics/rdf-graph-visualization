@@ -42,6 +42,12 @@ npm run dev
 npm run build
 ```
 
+Git hooks (ruff, mypy, pylint, eslint, prettier, reuse, somesy; tests on push) are managed by pre-commit. Install once with:
+
+```bash
+uvx pre-commit install
+```
+
 The app talks to the backend API under `/api` (typed JSON, see `frontend/src/api/`).
 In development Vite proxies `/api` to `http://127.0.0.1:8000` (override with
 `API_PROXY_TARGET`); the Docker image proxies the same path via nginx.

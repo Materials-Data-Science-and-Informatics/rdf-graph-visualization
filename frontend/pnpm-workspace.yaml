@@ -4,8 +4,3 @@ overrides:
   three: 0.187.0
   # moderate minimatch ReDoS advisory (eslint, shadcn>ts-morph pull <11.0.1)
   minimatch: ">=11.0.1"
-
-# pnpm v10+ blocks dependency build/postinstall scripts by default.
-# Explicitly allow the ones we need (husky).
-allowBuilds:
-  husky: true

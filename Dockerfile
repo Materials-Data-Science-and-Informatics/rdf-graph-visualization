@@ -12,10 +12,6 @@ FROM node:24.22.2-trixie AS frontend-build
 WORKDIR /app
 # .dockerignore excludes node_modules/ and dist/.
 COPY frontend/ ./
-# No .git in the image: HUSKY=0 must be set BEFORE install so husky's
-# `prepare` script (present in frontend/package.json) exits 0 instead of
-# failing on the missing .git dir.
-ENV HUSKY=0
 # Frontend package manager is pnpm (the HKG convention); the npm fallback
 # covers a regression of the lockfile. If the package manager changes again,
 # update this stage.

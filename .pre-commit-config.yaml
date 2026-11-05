@@ -1,69 +1,132 @@
-# HKG convention (card F7): single pre-commit config covering both trees.
-# Setup:  pre-commit install   (or rely on husky: .husky/pre-commit runs `pre-commit run`)
-# Manual: pre-commit run --all-files
+# SPDX-License-Identifier: MIT
+#
+# Single pre-commit setup for the monorepo (backend/ Python + frontend/ TS),
+# modelled on the team's data_harvesting repo. pre-commit is the only hook
+# runner (no husky).
+#   Setup:   uvx pre-commit install      (installs pre-commit + pre-push hooks)
+#   Manual:  uvx pre-commit run --all-files
+#            uvx pre-commit run --all-files --hook-stage pre-push   (tests)
+default_install_hook_types: [pre-commit, pre-push]
+
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: v6.0.0
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
         args: [--allow-multiple-documents] # pnpm 12 lockfile has two documents
+      - id: check-json
+        exclude: ^frontend/tsconfig.*\.json$ # JSONC (comments), parsed by tsc
+      - id: check-toml
       - id: check-merge-conflict
       - id: mixed-line-ending
       - id: detect-private-key
+      - id: debug-statements
       - id: check-added-large-files
-        args: ["--maxkb=25000"]
+        args: ["--maxkb=10000"]
 
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.17.3 # keep in sync with ruff in backend/uv.lock
+    hooks:
+      - id: ruff-check
+        args: [--fix]
+        files: ^backend/
+      - id: ruff-format
+        files: ^backend/
+
+  - repo: https://github.com/astral-sh/uv-pre-commit
+    rev: 0.13.7
+    hooks:
+      - id: uv-lock # keeps backend/uv.lock in sync with backend/pyproject.toml
+        args: [--project, backend]
+        files: ^backend/(pyproject\.toml|uv\.lock)$
+
+  - repo: https://github.com/fsfe/reuse-tool
+    rev: v6.2.0
+    hooks:
+      - id: reuse-lint-file
+
+  - repo: https://github.com/Materials-Data-Science-and-Informatics/somesy
+    rev: v0.9.0
+    hooks:
+      - id: somesy
+
+  - repo: https://github.com/citation-file-format/cffconvert
+    # The 2.0.0 tag predates .pre-commit-hooks.yaml; pin the main commit that has it.
+    rev: b6045d78aac9e02b039703b030588d54d53262ac
+    hooks:
+      - id: validate-cff
+
+  # Local hooks: mypy and pylint need the real dependencies (fastapi,
+  # hkg-data-model, ...), so they run from the uv-locked env instead of an
+  # isolated mirror env that would need a duplicated additional_dependencies
+  # list. Frontend tools run from frontend/node_modules via pnpm.
   - repo: local
     hooks:
-      - id: ruff-format
-        name: ruff format (line-length 88)
-        entry: backend/.venv/bin/ruff format
-        language: system
-        types: [python]
-        files: ^backend/
-
-      - id: ruff-check
-        name: ruff check (line-length 88)
-        entry: backend/.venv/bin/ruff check --fix
-        language: system
-        types: [python]
-        files: ^backend/
-
       - id: mypy
-        name: mypy
-        entry: bash -c 'cd backend && .venv/bin/mypy $(for f in "$@"; do printf "%s " "${f#backend/}"; done)' _
+        name: mypy (uv-locked env)
+        entry: bash -c 'cd backend && uv run --frozen --extra dev mypy "${@#backend/}"' _
         language: system
         types: [python]
         # tests/ excluded to match [tool.mypy] exclude in backend/pyproject.toml
-        # (check.sh's `mypy .` honours the same exclusion).
         files: ^backend/app/
+        exclude: ^backend/tests/
+        require_serial: true
 
       - id: pylint
-        name: pylint
-        entry: bash -c 'cd backend && .venv/bin/pylint $(for f in "$@"; do printf "%s " "${f#backend/}"; done)' _
+        name: pylint (uv-locked env)
+        entry: bash -c 'cd backend && uv run --frozen --extra dev pylint "${@#backend/}"' _
         language: system
         types: [python]
         files: ^backend/app/
+        require_serial: true
 
       - id: eslint
         name: eslint (flat config)
-        entry: bash -c 'cd frontend && node_modules/.bin/eslint --max-warnings 0 $(for f in "$@"; do printf "%s " "${f#frontend/}"; done)' _
+        entry: bash -c 'cd frontend && pnpm exec eslint --max-warnings 0 "${@#frontend/}"' _
         language: system
         types_or: [javascript, ts, tsx]
         files: ^frontend/
+        require_serial: true
 
       - id: prettier
         name: prettier --check (100/2/es5, semi)
-        entry: bash -c 'cd frontend && node_modules/.bin/prettier --check $(for f in "$@"; do printf "%s " "${f#frontend/}"; done)' _
+        entry: bash -c 'cd frontend && pnpm exec prettier --check "${@#frontend/}"' _
         language: system
         types_or: [javascript, ts, tsx, html, json, yaml]
         files: ^frontend/
+        require_serial: true
 
       - id: pnpm-lockfile
         name: pnpm lockfile up to date
-        entry: bash -c 'cd frontend && pnpm install --frozen-lockfile --lockfile-only'
+        entry: pnpm --dir frontend install --frozen-lockfile --lockfile-only
         language: system
         pass_filenames: false
         files: ^frontend/(package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml)$
+
+      # Tests run on pre-push (not on every commit). scripts/check.sh stays the
+      # manual / CI aggregate.
+      - id: backend-pytest
+        name: backend pytest (coverage gate)
+        entry: bash -c 'cd backend && uv run --frozen --extra dev pytest -q --cov --cov-report=term-missing'
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      - id: frontend-tsc
+        name: frontend tsc
+        entry: pnpm --dir frontend exec tsc -b
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      - id: frontend-vitest
+        name: frontend vitest
+        entry: pnpm --dir frontend test
+        language: system
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]

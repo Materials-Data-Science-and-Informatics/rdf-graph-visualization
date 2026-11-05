@@ -2,8 +2,8 @@
 # SPDX-License-Identifier: MIT
 
 [config]
-# Root has no pyproject.toml and its package.json is a husky-only wrapper:
-# neither is a sync target. backend/ and frontend/ carry their own
+# Root has no pyproject.toml or package.json (pre-commit is the only hook
+# runner): neither is a sync target. backend/ and frontend/ carry their own
 # .somesy.toml because npm needs semver (1.0.0-dev.0) while the PEP 440
 # version (1.0.0.dev0) is not valid in package.json.
 no_sync_pyproject = true
