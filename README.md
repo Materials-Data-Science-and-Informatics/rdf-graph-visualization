@@ -1,87 +1,93 @@
-# RDF Graph Visualization
+# HKG Graph Explorer
 
 > [!WARNING]
-> 🚧 **In development**
->
-> This project is currently developed primarily for internal use. The public [GraphViz deployment](https://graphviz.unhide.helmholtz-metadaten.de/) is adapted to the Helmholtz KG internal data model, which limits its flexibility for other use cases.
->
-> We are aware of this limitation and are considering further development toward a more flexible GraphViz solution.
+> In development (version 1.0.0.dev0). The explorer is adapted to the Helmholtz Knowledge Graph (HKG) data model, which limits its flexibility for other data.
 
 ## Description
-This project is a TypeScript/React application that fetches bounded graph slices as typed JSON from a backend API and renders them as a 3D force-directed graph.
 
-The backend resolves the data model (types, groups, labels, relations) and serves pre-filtered, paginated slices, so the frontend stays a thin, typed client.
+HKG Graph Explorer is a service of [unhide](https://unhide.helmholtz-metadaten.de/) that shows the neighbourhood of an entity of the Helmholtz Knowledge Graph as an interactive graph. The default starting point is the Helmholtz Association (`https://ror.org/0281dp749`).
+
+The backend queries the HKG SPARQL endpoint (QLever), walks the graph breadth-first from the starting node and streams nodes and edges as NDJSON (`/api/stream`). The frontend is a typed client that lays the graph out and renders it.
 
 ## Features
-- Fetches a bounded, cursor-paginated graph slice as typed JSON (cancellable fetch with per-endpoint timeouts).
-- Creates nodes and edges for a 3D force-directed representation.
-- Filters and displays nodes based on user-selected criteria.
 
-## Installation
-1. Clone the repository.
+- 3D view: force layout computed on the GPU with three.js WebGPU. 2D view: cosmos.gl with communities (Louvain), hub labels and leaf nodes arranged around their hub.
+- Left click on a node: details card. Right click: make the node the starting point.
+- Search with autocomplete; choosing a result makes it the starting point.
+- Starting point: free IRI input or a dropdown of the Helmholtz centres.
+- Parameters: number of nodes, depth, connections per node (fan-out cap), 2D/3D. Settings are remembered in the browser (localStorage).
+- Structurally equivalent nodes are bundled into one node; the bundle card lists its members.
+- Share button copies a link to the current view ([URL parameters](#url-parameters)).
 
-```bash
-git clone https://github.com/Materials-Data-Science-and-Informatics/rdf-graph-visualization.git
-```
-2. Install dependencies:
+## Browser support
 
-```bash
-npm install
-```
+The 3D view needs WebGPU (current Chrome, Edge, Safari 26, Firefox 141+ on supported hardware). Without WebGPU the app opens in the 2D view.
 
-3. Create the `config.yml` file in the root directory and set it according to next section.
-4. You can run the application with:
+## Local development
+
+Requirements: [uv](https://docs.astral.sh/uv/), Node 24, pnpm 12.16.1 (`corepack enable`).
 
 ```bash
-npm run dev
+# backend (http://127.0.0.1:8000)
+cd backend && uv sync --extra dev
+uv run uvicorn app.main:app --port 8000
+
+# frontend (http://localhost:5173, Vite proxies /api to 127.0.0.1:8000;
+# override with API_PROXY_TARGET)
+cd frontend && pnpm install && pnpm dev
 ```
 
-5. Or you can build the application with below command and serve it with a web server.
+Checks:
 
 ```bash
-npm run build
+bash scripts/check.sh                  # backend (ruff, mypy, pylint, pytest) + frontend (tsc, eslint, prettier)
+cd frontend && pnpm test               # frontend unit tests (vitest)
+uvx pre-commit install                 # git hooks (also run on pre-push: tests)
+uvx pre-commit run --all-files
 ```
-
-Git hooks (ruff, mypy, pylint, eslint, prettier, reuse, somesy; tests on push) are managed by pre-commit. Install once with:
-
-```bash
-uvx pre-commit install
-```
-
-The app talks to the backend API under `/api` (typed JSON, see `frontend/src/api/`).
-In development Vite proxies `/api` to `http://127.0.0.1:8000` (override with
-`API_PROXY_TARGET`); the Docker image proxies the same path via nginx.
 
 ## Configuration
-Configuration file has the necessary information to show nodes and links in the graph. Since a 3D graph on the browser consumes a lot of resources, it is important to filter the data to show only the necessary information. Properties that are not in the yaml file will be ignored. You can check [example config file](examples/config.yml) for more information.
 
-The configuration file is a YAML file that has the following properties:
-```yaml
-# links will be created from these properties
-relationProperties:
-  - "http://schema.org/affiliation"
+Backend (environment variables, defaults in `backend/app/settings.py`):
 
-# labels will be created from these properties
-labelProperties:
-  - "http://schema.org/name"
+| Variable | Default | Meaning |
+| -------- | ------- | ------- |
+| `QLEVER_URL` | HKG QLever dev endpoint | SPARQL endpoint |
+| `QLEVER_TIMEOUT_S` | `30` | Per-request timeout |
+| `QLEVER_CONCURRENCY` | `4` | Parallel SPARQL requests |
+| `QLEVER_DEFAULT_LIMIT` / `QLEVER_MAX_LIMIT` | `500` / `5000` | Default and maximum result limit |
+| `STREAM_MAX_NODES` | `100000` | Upper bound for the `nodes` request parameter |
+| `STREAM_MAX_HOPS` | `8` | Upper bound for the depth |
+| `STREAM_MAX_TIME_BUDGET_S` | `300` | Upper bound for the time budget of one stream |
+| `STREAM_MULTI_RELATION` | `1` | One edge query per relation instead of one per chunk |
+| `STREAM_FANOUT` | `200` | Default cap of new neighbours per node and hop (0 = no cap) |
+| `DEFAULT_ROOT_IRI` | `https://ror.org/0281dp749` | Default starting point |
+| `DEFAULT_MAX_NODES` | `5000` | Node count of the prewarmed snapshots |
+| `PREWARM_ROOTS` | the 18 Helmholtz centres | Comma-separated extra roots to prewarm |
+| `STREAM_CACHE_DIR` | `backend/.cache/stream` (`/var/cache/hkg-stream` in the image) | Snapshot cache directory |
+| `STREAM_CACHE_TTL_S` | `21600` | Snapshot lifetime; `<= 0` disables cache and prewarm |
+| `STREAM_REFRESH_S` | `0.8 * TTL` | Prewarm rebuild interval (0 disables) |
+| `STREAM_CACHE_MAX_BYTES` | `1073741824` | Cache size limit |
 
-# groups will be created from these properties
-groups:
-  - name: 'Organization'
-    types:
-      - 'http://schema.org/Organization'
-    properties:
-        - 'http://schema.org/affiliation'
-    color: '#FF0000'
+Frontend: `VITE_ROOT_IRI` (build time) overrides the default starting point.
+
+## Container
+
+One image serves the frontend (nginx, port 80) and the API (uvicorn, proxied under `/api`), run by supervisord. Mount a volume at `/var/cache/hkg-stream` to keep the snapshot cache across restarts.
+
+```bash
+docker build -t hkg-graph-explorer .
+docker run -p 8080:80 hkg-graph-explorer
 ```
 
-- `relationProperties`: List of properties that will be used to create links between nodes.
-- `labelProperties`: List of properties that will be used to create labels for nodes.
-- `groups`: List of groups that will be created based on the properties. Each group has the following properties:
-  - `name`: Name of the group.
-  - `types`: List of types that will be included in the group.
-  - `properties`: List of properties that will be used to filter the data. **Can be empty.**
-  - `color`: Color of the group. Please use HEX color codes.
+GitHub Actions (`.github/workflows/`) run checks and build the image.
+
+## Project layout
+
+- `backend/app/`: FastAPI app (`main.py`, `stream.py` BFS streaming, `snapshot.py` cache, `search.py`, `node.py`, `settings.py`), tests in `backend/tests/`.
+- `frontend/src/`: `engine/` (WebGPU 3D), `engine2d/` (cosmos.gl 2D, communities), `components/`, `lib/` (API client, stores, URL parameters).
+- `docker/`: nginx and supervisord configuration. `scripts/check.sh`: aggregate check.
+- `.somesy.toml` (with `backend/` and `frontend/` variants): single source of project metadata, synced into `CITATION.cff`, `codemeta.json`, `pyproject.toml` and `package.json` (`uvx --from somesy==0.9.0 somesy sync`).
 
 ## URL parameters
 
@@ -90,9 +96,9 @@ The explorer can be opened with its settings in the query string. URL values app
 | Parameter | Meaning |
 | --------- | ------- |
 | `root`    | IRI (http/https) of the starting node |
-| `nodes`   | Number of nodes shown (500 to 100000) |
+| `nodes`   | Number of nodes shown (50 to 100000) |
 | `depth`   | Maximum hops from the root (1 to 8) |
-| `fanout`  | Connections per node (0 = no cap) |
+| `fanout`  | Connections per node (0 = no cap, up to 100000) |
 | `dim`     | `2` or `3` |
 | `select`  | IRI of a node whose details card opens once it is in the shown window |
 
@@ -110,11 +116,13 @@ We kindly thank all authors and contributors.
 
 ### Third-party Libraries
 
-This project uses the following open-source libraries:
+Main open-source libraries (see `frontend/package.json` and `backend/pyproject.toml` for the full list):
 
-- **react-force-graph-3d** by Vasco Asturiano - MIT License
-  - Repository: [react-force-graph](https://github.com/vasturiano/react-force-graph)
-  - A React component for 3D force directed graphs using ThreeJS/WebGL
+- [three.js](https://threejs.org/) (WebGPU renderer and compute) - MIT License
+- [cosmos.gl](https://github.com/cosmosgl/graph) (2D view) - MIT License
+- [graphology](https://graphology.github.io/) with Louvain community detection - MIT License
+- [React](https://react.dev/), [Tailwind CSS](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/) - MIT License
+- [FastAPI](https://fastapi.tiangolo.com/) and [hkg-data-model](https://codebase.helmholtz.cloud/hmc/helmholtz-kg/) (backend)
 
 ### Funding
 
