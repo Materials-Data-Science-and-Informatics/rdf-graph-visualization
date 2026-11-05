@@ -53,6 +53,25 @@ const idColor = (id: UintNode) => {
 /** Extra sprite room for the root's outline ring (the selection ring brings its own, bigger one). */
 const ROOT_RING_ROOM = 0.16;
 
+/** Smallest on-screen diameter (CSS px) of a leaf node; hubs get sqrt(size) times that. */
+export const MIN_NODE_PX = 6;
+
+/**
+ * Sprite diameter (world units) for `mult` x the base diameter: never below MIN_NODE_PX on screen
+ * (scaled by sqrt of the node's size multiplier so hubs stay bigger), but nearer nodes still
+ * grow with perspective because the floor only binds when the node would be smaller.
+ */
+function nodeDiameter(b: GpuBuffers, u: GpuUniforms, mult: number) {
+  // the floor scales with the sprite room (mult/2) so the drawn disc keeps MIN_NODE_PX
+  const sz = b.size.element(instanceIndex);
+  const dist = length(b.pos.toAttribute().xyz.sub(cameraPosition));
+  const floorD = dist
+    .mul(u.uPxWorld)
+    .mul(MIN_NODE_PX * (mult / 2))
+    .mul(sqrt(sz));
+  return max(u.uRad.mul(sz).mul(mult), floorD);
+}
+
 /** Per-instance sprite scale factor: 1 + 0.2 hovered + 0.35 selected / 0.16 root (vertex stage). */
 function highlightScale(u: GpuUniforms) {
   const hov = u.uHover.equal(instanceIndex).select(float(1), float(0));
@@ -142,7 +161,7 @@ export function createNodeMaterial(b: GpuBuffers, u: GpuUniforms): THREE.SpriteN
   mat.positionNode = b.pos.toAttribute().xyz;
   // sprite scale = diameter (degree-dependent); hovered nodes grow 20%, the selected one and the
   // root get room for a ring
-  mat.scaleNode = u.uRad.mul(b.size.element(instanceIndex)).mul(2).mul(highlightScale(u));
+  mat.scaleNode = nodeDiameter(b, u, 2).mul(highlightScale(u));
   mat.transparent = false;
   mat.depthWrite = true;
   const cAttr = b.colors.toAttribute();
@@ -231,7 +250,7 @@ export function createPickMaterials(b: GpuBuffers, u: GpuUniforms) {
   };
   const pickNodeMat = new THREE.SpriteNodeMaterial(pickBase);
   pickNodeMat.positionNode = b.pos.toAttribute().xyz;
-  pickNodeMat.scaleNode = u.uRad.mul(b.size.element(instanceIndex)).mul(2.4); // a bit generous: small nodes stay easy to hit
+  pickNodeMat.scaleNode = nodeDiameter(b, u, 2.4); // a bit generous: small nodes stay easy to hit
   const pAttr = b.colors.toAttribute();
   pickNodeMat.fragmentNode = Fn(() => {
     const q = uv().mul(2).sub(1);

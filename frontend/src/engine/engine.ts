@@ -1,6 +1,6 @@
 import * as THREE from "three/webgpu";
 import type { GraphStore } from "@/lib/graph-store";
-import { CameraRig } from "./camera-fit";
+import { CameraRig, FOV } from "./camera-fit";
 import { DEFAULT_CONFIG, type EngineConfig } from "./config";
 import { GpuGraph } from "./gpu-graph";
 import { GpuPicker } from "./gpu-picker";
@@ -36,6 +36,7 @@ export class Engine {
   private readonly input: PointerInput;
 
   private gpu: GpuGraph | null = null;
+  private viewH = 800;
   private rebuilding = false;
   private regrowFailed = false;
   private failed = false;
@@ -265,6 +266,8 @@ export class Engine {
     this.renderer.setSize(w, h, false);
     this.camera.aspect = w / h;
     this.camera.updateProjectionMatrix();
+    this.viewH = h;
+    this.gpu?.setViewport(h, FOV);
   }
 
   /** Background follows the app theme (`--background`, possibly oklch -> resolved via canvas). */
@@ -423,6 +426,7 @@ export class Engine {
   private adopt(gpu: GpuGraph): void {
     this.gpu = gpu;
     gpu.setDim(this.rig.dim);
+    gpu.setViewport(this.viewH, FOV);
     gpu.setLook(this.dark);
     this.applyHighlight();
     this.ingest.visibilityDirty = true;

@@ -375,6 +375,11 @@ export class GpuGraph {
     attr.needsUpdate = true;
   }
 
+  /** Keep the on-screen minimum node size right: world size of a CSS pixel per unit of distance. */
+  setViewport(heightPx: number, fovDeg: number): void {
+    this.u.uPxWorld.value = (2 * Math.tan((fovDeg * Math.PI) / 360)) / Math.max(1, heightPx);
+  }
+
   setLook(dark: boolean): void {
     this.dark = dark;
     this.u.uEdgeColor.value.set(dark ? 0x9db4e0 : 0x4a5568);

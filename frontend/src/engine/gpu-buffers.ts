@@ -82,6 +82,8 @@ export function createUniforms() {
     uRepK: uniform(0),
     /** Node radius in world units (rest/3 * user scale); drives sphere, edge width and arrow size. */
     uRad: uniform(1),
+    /** World size of one CSS pixel per unit of camera distance: 2*tan(fov/2)/viewportHeight. */
+    uPxWorld: uniform(0.002),
     uCurv: uniform(EDGE_CURVATURE),
     uInitStart: uniform(0, "uint"),
     uInitEnd: uniform(0, "uint"),
