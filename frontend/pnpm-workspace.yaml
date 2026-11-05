@@ -4,7 +4,6 @@ overrides:
   three: 0.187.0
 
 # pnpm v10+ blocks dependency build/postinstall scripts by default.
-# Explicitly allow the ones we need (esbuild, husky).
+# Explicitly allow the ones we need (husky).
 allowBuilds:
-  esbuild: true
   husky: true

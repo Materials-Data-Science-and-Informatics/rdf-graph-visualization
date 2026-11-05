@@ -32,10 +32,7 @@ concurrency:
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
-  # Match the lockfile generation exactly: the committed frontend install was
-  # made with pnpm 10.34.9 (lockfileVersion 9.0), and newer pnpm majors
-  # reject the frozen lockfile on the "overrides" field.
-  PNPM_VERSION: "10.34.9"
+  PNPM_VERSION: "12.16.1"
 
 jobs:
   frontend:

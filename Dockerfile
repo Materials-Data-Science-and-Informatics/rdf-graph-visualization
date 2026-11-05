@@ -19,7 +19,7 @@ ENV HUSKY=0
 # Frontend package manager is pnpm (the HKG convention); the npm fallback
 # covers a regression of the lockfile. If the package manager changes again,
 # update this stage.
-RUN npm install -g pnpm@10 --no-audit --no-fund && \
+RUN npm install -g pnpm@12.16.1 --no-audit --no-fund && \
     if [ -f pnpm-lock.yaml ]; then \
         pnpm install --frozen-lockfile; \
     else \

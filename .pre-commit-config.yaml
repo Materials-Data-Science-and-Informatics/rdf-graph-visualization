@@ -8,6 +8,7 @@ repos:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        args: [--allow-multiple-documents] # pnpm 12 lockfile has two documents
       - id: check-merge-conflict
       - id: mixed-line-ending
       - id: detect-private-key
