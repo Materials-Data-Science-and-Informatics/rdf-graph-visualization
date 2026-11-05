@@ -108,7 +108,10 @@ export class HubLabels {
       return;
     }
     const [sx, sy] = this.graph.spaceToScreenPosition(p);
-    const r = Math.max(4, this.graph.spaceToScreenRadius(this.graph.getPointRadiusByIndex(0) ?? 2));
+    const r = Math.min(
+      24,
+      Math.max(4, this.graph.spaceToScreenRadius(this.graph.getPointRadiusByIndex(0) ?? 2))
+    );
     const g = store.groups[0];
     m.style.background = g >= 0 && g < store.groupColors.length ? store.groupColors[g] : "#8a8f98";
     m.style.width = m.style.height = `${Math.round(2 * r)}px`;

@@ -5,6 +5,9 @@ import type { GpuGraph } from "./gpu-graph";
 import { fitDistance, fitFromPositions } from "./layout-utils";
 import type { Vec3 } from "./picking";
 
+/** Closest auto-fit camera distance, in link rest lengths. */
+const MIN_FIT_RESTS = 12;
+
 export const FOV = 60;
 const FIT_EASE = 0.08;
 
@@ -207,7 +210,8 @@ export class CameraRig {
           }
           this.fitCenter.set(...center);
           if (this.dim === 2) this.fitCenter.z = 0;
-          const d = fitDistance(r, FOV);
+          // small graphs: never closer than MIN_FIT_RESTS link lengths, or nodes become giant balls
+          const d = Math.max(fitDistance(r, FOV), this.cfg.rest * MIN_FIT_RESTS);
           const base = this.fitValid ? this.fitDist : this.distFloor;
           this.fitDist = final ? d : Math.max(d, base);
           this.fitValid = true;

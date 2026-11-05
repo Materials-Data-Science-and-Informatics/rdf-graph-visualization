@@ -27,6 +27,8 @@ const REGION_UNIT = 6;
 const INTER_LINK_STRENGTH = 0.02;
 const FIT_MS = 400;
 const FIT_EVERY_MS = 1000;
+/** Auto-fit never zooms in further than this (small graphs would show giant nodes). */
+const MAX_FIT_ZOOM = 3;
 /** While the layout moves, leaf discs are re-centred on their hubs at this interval. */
 const LEAF_EVERY_MS = 300;
 
@@ -60,6 +62,7 @@ export class CosmosView {
   private leafGroups: LeafGroups | null = null;
   private lastLeaves = 0;
   private linkCount = 0;
+  private fitCap: ReturnType<typeof setTimeout> | undefined;
   private readonly detector = new CommunityDetector((r) => this.applyCommunities(r));
   private store: GraphStore | null = null;
   private labels: HubLabels | null = null;
@@ -113,7 +116,7 @@ export class CosmosView {
       },
       onSimulationEnd: () => {
         this.recentreLeaves();
-        if (this.autoFit) this.graph.fitView(FIT_MS);
+        if (this.autoFit) this.fit();
       },
     });
     this.labels = new HubLabels(host, this.graph);
@@ -146,7 +149,7 @@ export class CosmosView {
 
   resetView(): void {
     this.autoFit = true;
-    this.graph.fitView(FIT_MS);
+    this.fit();
   }
 
   /** Cheap change check, meant to be called on a timer; pushes data only when the window changed. */
@@ -171,6 +174,7 @@ export class CosmosView {
   }
 
   destroy(): void {
+    clearTimeout(this.fitCap);
     this.themeObs.disconnect();
     this.labels?.destroy();
     this.labels = null;
@@ -328,11 +332,21 @@ export class CosmosView {
     this.graph.render();
   }
 
+  /** fitView, then cap the zoom so small graphs don't show giant nodes. */
+  private fit(): void {
+    const g = this.graph;
+    g.fitView(FIT_MS);
+    clearTimeout(this.fitCap);
+    this.fitCap = setTimeout(() => {
+      if (g.getZoomLevel() > MAX_FIT_ZOOM) g.setZoomLevel(MAX_FIT_ZOOM, 250);
+    }, FIT_MS + 30);
+  }
+
   private fitWhileRunning(): void {
     const now = performance.now();
     if (this.autoFit && this.nodes > 0 && this.settling && now - this.lastFit > FIT_EVERY_MS) {
       this.lastFit = now;
-      this.graph.fitView(FIT_MS);
+      this.fit();
     }
   }
 
