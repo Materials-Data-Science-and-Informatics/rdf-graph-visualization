@@ -1,12 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Maximize, Minimize, PanelLeftOpen, RotateCcw } from "lucide-react";
+import { Loader2, Maximize, Minimize, PanelLeftOpen, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchNode, type GraphGroupConfig, type NodeInfo } from "@/lib/api";
 import type { Engine } from "@/engine/engine";
 import { NODE_LIMIT_DEFAULT, NODE_LIMIT_MAX, NODE_LIMIT_MIN } from "@/engine/layout-utils";
 import { WEBGPU_NOTICE, WebGpuUnavailableError } from "@/engine/webgpu";
 import { DEFAULT_ROOT_IRI } from "@/lib/config";
-import { useGraphStream } from "@/lib/use-graph-stream";
+import { statusText, useGraphStream } from "@/lib/use-graph-stream";
 import { shortName } from "@/lib/graph-store";
 import {
   FANOUT_KEY,
@@ -433,6 +433,7 @@ export default function GraphView({
         .sort((a, b) => b.count - a.count),
     [relCounts, palette]
   );
+  const busy = !engineError && (status.phase === "streaming" || settling);
   const rootColor = groups.find((g) => g.name === rootInfo?.group)?.color ?? NO_GROUP_COLOR;
 
   return (
@@ -476,7 +477,27 @@ export default function GraphView({
         }}
       >
         <div ref={hostRef} className="absolute inset-0" data-slot="canvas-host" />
-        {hover && <GraphTooltip ref={tipRef} store={store} hit={hover} />}
+        {hover && !busy && <GraphTooltip ref={tipRef} store={store} hit={hover} />}
+        {busy && (
+          // Blocks camera input while loading/settling: the auto-fit stops at the first
+          // user interaction, so moving mid-load leaves the camera off the final layout.
+          <div
+            role="status"
+            aria-live="polite"
+            className="absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-transparent p-4"
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <div className="bg-background/90 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm shadow">
+              <Loader2 className="size-5 animate-spin" aria-hidden />
+              <div>
+                <div className="font-medium">
+                  {status.phase === "streaming" ? "Loading graph…" : "Arranging layout…"}
+                </div>
+                <div className="text-muted-foreground text-xs">{statusText(status)}</div>
+              </div>
+            </div>
+          </div>
+        )}
         {engineError && (
           <div
             role="alert"

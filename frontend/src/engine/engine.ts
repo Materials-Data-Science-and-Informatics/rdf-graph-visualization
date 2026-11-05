@@ -310,12 +310,23 @@ export class Engine {
     this.gpu?.setArrowsVisible(on);
   }
 
-  /** 2D = z locked via uniform (positions flatten within a few frames); camera looks down -z. */
+  /**
+   * 2D = z locked via uniform; camera looks straight down -z and left-drag pans (map-like).
+   * Switching re-runs the layout at full strength with every node mobile: a 3D layout
+   * squashed flat overlaps heavily and needs room to spread (and vice versa).
+   */
   setDim(dim: 2 | 3): void {
+    const changed = dim !== this.dim;
     this.dim = dim;
     this.gpu?.setDim(dim);
     this.controls.enableRotate = dim === 3;
-    this.alpha = Math.max(this.alpha, this.cfg.alphaBump); // let the z flattening/expansion animate
+    this.controls.mouseButtons.LEFT = dim === 2 ? THREE.MOUSE.PAN : THREE.MOUSE.ROTATE;
+    this.controls.touches.ONE = dim === 2 ? THREE.TOUCH.PAN : THREE.TOUCH.ROTATE;
+    if (changed) {
+      this.gpu?.setSettled(0);
+      this.alpha = this.cfg.alphaStart;
+      this.fitAfterFreeze = false;
+    }
     this.resetView();
   }
 
@@ -918,9 +929,12 @@ export class Engine {
           let center: Vec3 = fit.center;
           let r = radius;
           if (final) this.anchored = false;
-          if (this.anchored) {
-            // frame the graph around the root: radius grows by the root-to-centroid offset
-            center = [pos[0], pos[1], pos[2]];
+          else {
+            // While growing/settling the aim holds still (the carried root after a re-root,
+            // else the current target) and only the distance grows: chasing the moving
+            // centroid swung the view. The final fit after the freeze re-centres once.
+            const c = this.anchored ? this.fitCenter : this.controls.target;
+            center = [c.x, c.y, c.z];
             r += Math.hypot(
               center[0] - fit.center[0],
               center[1] - fit.center[1],
