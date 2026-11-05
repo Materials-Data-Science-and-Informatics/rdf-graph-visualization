@@ -15,7 +15,7 @@ Design rules carried over from research:
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
@@ -165,3 +165,115 @@ class ConfigResponse(BaseModel):
     skip_types: list[str]
     types: list[ConfigTypePreset]
     graph: GraphConfigResponse
+
+
+# -- /api/stream NDJSON events (documentation / consistency) -------------------
+#
+# One JSON object per line, flushed as produced. Nodes carry only id + group
+# (data-model class name, null = no mapped group, including skip-typed nodes);
+# labels arrive separately, edges carry their predicate IRI. Only the frontier
+# is expanded: edges among last-hop or max_nodes-truncated nodes are not fetched.
+
+#: ``max_nodes``: node budget reached. ``truncated``: an edge query hit its
+#: LIMIT (hub), so the result is partial although the BFS ran to exhaustion or
+#: ``max_hops``. ``exhausted`` / ``max_hops`` therefore mean a complete BFS.
+DoneReason = Literal[
+    "exhausted", "max_nodes", "max_hops", "time_budget", "truncated", "error"
+]
+
+
+class StreamMeta(BaseModel):
+    """First event: the effective (clamped) parameters."""
+
+    type: Literal["meta"] = "meta"
+    root: str
+    max_nodes: int
+    max_hops: int
+
+
+class StreamNode(BaseModel):
+    """A node as streamed: group is filled in later by a ``types`` event."""
+
+    id: str
+    group: str | None = None
+
+
+class StreamNodes(BaseModel):
+    """New nodes of one hop (hop 0 = the root)."""
+
+    type: Literal["nodes"] = "nodes"
+    hop: int
+    nodes: list[StreamNode]
+
+
+class StreamEdge(BaseModel):
+    """Directed edge ``s --p--> o`` (all IRIs)."""
+
+    s: str
+    p: str
+    o: str
+
+
+class StreamEdges(BaseModel):
+    """Edges of one hop; both endpoints were streamed before or with them."""
+
+    type: Literal["edges"] = "edges"
+    hop: int
+    edges: list[StreamEdge]
+
+
+class StreamTypes(BaseModel):
+    """Groups of a completed chunk (``null`` = no mapped group)."""
+
+    type: Literal["types"] = "types"
+    types: dict[str, str | None]
+
+
+class StreamLabels(BaseModel):
+    """Labels of a completed chunk (nodes without a label are absent)."""
+
+    type: Literal["labels"] = "labels"
+    labels: dict[str, str]
+
+
+class StreamProgress(BaseModel):
+    """Running totals after a hop."""
+
+    type: Literal["progress"] = "progress"
+    hop: int
+    nodes: int
+    edges: int
+
+
+class StreamError(BaseModel):
+    """A failed fetch; always followed by ``done`` with reason ``error``."""
+
+    type: Literal["error"] = "error"
+    message: str
+
+
+class StreamPing(BaseModel):
+    """Keep-alive after ~15s without other events; carries no data."""
+
+    type: Literal["ping"] = "ping"
+
+
+class StreamDone(BaseModel):
+    """Last event."""
+
+    type: Literal["done"] = "done"
+    reason: DoneReason
+
+
+StreamEvent = Annotated[
+    StreamMeta
+    | StreamNodes
+    | StreamEdges
+    | StreamTypes
+    | StreamLabels
+    | StreamProgress
+    | StreamError
+    | StreamPing
+    | StreamDone,
+    Field(discriminator="type"),
+]

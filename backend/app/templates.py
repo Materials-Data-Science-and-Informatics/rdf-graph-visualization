@@ -470,6 +470,41 @@ def edges_construct_query(
 }}{_limit_clause(limit)}"""
 
 
+def edges_multi_construct_query(
+    *,
+    frontier: Sequence[str],
+    relations: Sequence[str],
+    limit: int | None = None,
+) -> str:
+    """Edges over ALL *relations* touching a frontier chunk — one query.
+
+    Same shape as :func:`edges_construct_query` but with ``VALUES ?p`` as a
+    plain join inside each branch and ``CONSTRUCT { ?s ?p ?o }``. (The
+    VALUES-bound ``?p`` quirk above only bites inside ``OPTIONAL``.) Most
+    configured relations are literal-valued and match nothing here, so one
+    request replaces one per relation. *limit* caps the result rows (hub
+    protection).
+    """
+    _nonempty("frontier", frontier)
+    _nonempty("relations", relations)
+    nodes = iri_list(frontier)
+    preds = iri_list(relations)
+    return f"""CONSTRUCT {{ ?s ?p ?o }} WHERE {{
+  {{
+    VALUES ?s {{ {nodes} }}
+    VALUES ?p {{ {preds} }}
+    ?s ?p ?o .
+    FILTER(isIRI(?o))
+  }}
+  UNION {{
+    VALUES ?o {{ {nodes} }}
+    VALUES ?p {{ {preds} }}
+    ?s ?p ?o .
+    FILTER(isIRI(?s))
+  }}
+}}{_limit_clause(limit)}"""
+
+
 def types_query(*, nodes: Sequence[str], type_iris: Sequence[str] = ()) -> str:
     """Flat ``?n ?t`` rdf:type rows for a chunk of nodes.
 

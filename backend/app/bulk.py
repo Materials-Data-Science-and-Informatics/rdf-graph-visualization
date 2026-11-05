@@ -6,8 +6,10 @@ Edges and node attributes are fetched with flat queries over VALUES chunks
 of :data:`CHUNK` IRIs (see the notes in ``app.templates``), one query per
 (chunk, relation) for edges and per chunk for types/labels. Queries run on
 worker threads (the QLever client is synchronous) with concurrency capped by
-``QLEVER_CONCURRENCY`` (``Settings.qlever_concurrency``) — the endpoint
-is shared, so the cap is also a politeness limit.
+``QLEVER_CONCURRENCY`` (``Settings.qlever_concurrency``) both per call and
+process-wide (one shared executor, so concurrent streams cannot multiply the load)
+— the endpoint is shared, so the cap is also a politeness limit. The
+``iter_*`` variants yield per completed chunk for streaming.
 
 Failure policy: any failed chunk raises its :class:`app.qlever.QleverError`
 (including truncated bodies) out of the TaskGroup (unwrapped from the ExceptionGroup); no retry, no partial
@@ -17,9 +19,11 @@ result. The caller (B3) decides how to surface the error.
 from __future__ import annotations
 
 import asyncio
-from collections.abc import Callable, Iterable, Sequence
+import threading
+from collections.abc import AsyncIterator, Callable, Iterable, Sequence
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from typing import NamedTuple, TypeVar
+from typing import Any, NamedTuple, TypeVar
 
 from app import graph_config, qlever, templates
 from app.settings import Settings
@@ -47,52 +51,119 @@ def _chunks(items: Iterable[str], size: int = CHUNK) -> list[list[str]]:
     return [unique[i : i + size] for i in range(0, len(unique), size)]
 
 
-async def _run_all(
+#: Process-wide cap on concurrent QLever queries: ALL bulk queries (every
+#: stream request) run on this one dedicated executor, so its size is the cap
+#: and concurrent streams cannot multiply the load on the shared endpoint.
+#: Created lazily on first use and sized ONCE from ``Settings.qlever_concurrency``
+#: (a later env change needs a restart). Queued jobs are cancelled on failure
+#: or disconnect; a query already running cannot be interrupted.
+_executor: ThreadPoolExecutor | None = None  # pylint: disable=invalid-name
+_executor_lock = threading.Lock()
+
+
+def _get_executor() -> ThreadPoolExecutor:
+    global _executor  # pylint: disable=global-statement
+    with _executor_lock:
+        if _executor is None:
+            _executor = ThreadPoolExecutor(
+                max_workers=max(1, Settings.from_env().qlever_concurrency),
+                thread_name_prefix="qlever",
+            )
+        return _executor
+
+
+async def _run_iter(
     jobs: Sequence[Callable[[], _T]], concurrency: int | None
-) -> list[_T]:
-    """Run blocking *jobs* on threads, at most *concurrency* at once."""
+) -> AsyncIterator[tuple[int, _T]]:
+    """Run blocking *jobs* on the shared executor; yield ``(index, result)``
+    as each finishes. At most *concurrency* per call, and the executor's
+    size process-wide.
+
+    The first failure is raised (unwrapped) and every queued sibling is
+    cancelled — also when the consumer stops iterating early (client
+    disconnect, time budget): jobs still queued in the executor never run.
+    """
     cap = concurrency or Settings.from_env().qlever_concurrency
     sem = asyncio.Semaphore(max(1, cap))
-
+    executor = _get_executor()
+    loop = asyncio.get_running_loop()
     failed = False
 
-    async def one(job: Callable[[], _T]) -> _T:
+    async def one(index: int, job: Callable[[], _T]) -> tuple[int, _T]:
         nonlocal failed
         async with sem:
-            if failed:  # a sibling failed while we were queued: don't start
+            if failed:  # a sibling failed while we were queued
                 raise asyncio.CancelledError
             try:
-                return await asyncio.to_thread(job)
+                # cancelling this await cancels the queued executor future
+                return index, await loop.run_in_executor(executor, job)
             except Exception:
                 failed = True
                 raise
 
+    tasks = [asyncio.create_task(one(i, job)) for i, job in enumerate(jobs)]
     try:
-        # TaskGroup: after the first failure queued jobs are cancelled.
-        async with asyncio.TaskGroup() as tg:
-            tasks = [tg.create_task(one(job)) for job in jobs]
-    except ExceptionGroup as group:
-        raise group.exceptions[0] from None
-    return [t.result() for t in tasks]
+        for finished in asyncio.as_completed(tasks):
+            yield await finished
+    finally:
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
-async def fetch_edges(
+async def _run_all(
+    jobs: Sequence[Callable[[], _T]], concurrency: int | None
+) -> list[_T]:
+    """:func:`_run_iter` collected in job order."""
+    results: list[_T | None] = [None] * len(jobs)
+    async for index, result in _run_iter(jobs, concurrency):
+        results[index] = result
+    return results  # type: ignore[return-value]
+
+
+async def fetch_edges_ex(  # pylint: disable=too-many-arguments
     frontier: Iterable[str],
     relations: Sequence[str],
     *,
     client: qlever.QleverClient | None = None,
     concurrency: int | None = None,
     chunk_size: int = CHUNK,
-) -> list[tuple[str, str, str]]:
-    """Deduplicated ``(s, p, o)`` IRI edges touching *frontier* (both ways)."""
+    multi: bool = False,
+    limit: int | None = None,
+) -> tuple[list[tuple[str, str, str]], bool]:
+    """Deduplicated ``(s, p, o)`` IRI edges touching *frontier* (both ways),
+    plus a *saturated* flag: some query returned >= 95% of *limit* rows, so its
+    result may be incomplete.
+
+    ``multi=False``: one query per (chunk, relation). ``multi=True``: one
+    query per chunk over all *relations* (far fewer requests). *limit* caps
+    each query's result rows (hub protection).
+    """
     cli = client or qlever.get_client()
-    queries = [
-        templates.edges_construct_query(frontier=chunk, relation=rel)
-        for chunk in _chunks(frontier, chunk_size)
-        for rel in relations
-    ]
+    if multi:
+        queries = [
+            templates.edges_multi_construct_query(
+                frontier=chunk, relations=relations, limit=limit
+            )
+            for chunk in _chunks(frontier, chunk_size)
+        ]
+    else:
+        queries = [
+            templates.edges_construct_query(frontier=chunk, relation=rel, limit=limit)
+            for chunk in _chunks(frontier, chunk_size)
+            for rel in relations
+        ]
     results = await _run_all([partial(cli.construct, q) for q in queries], concurrency)
-    return list(dict.fromkeys(t for triples in results for t in triples))
+    # 95%: the count is after invalid-IRI filtering, slightly below the raw rows
+    saturated = limit is not None and any(len(r) >= 0.95 * limit for r in results)
+    return list(dict.fromkeys(t for triples in results for t in triples)), saturated
+
+
+async def fetch_edges(
+    frontier: Iterable[str], relations: Sequence[str], **kwargs: Any
+) -> list[tuple[str, str, str]]:
+    """:func:`fetch_edges_ex` without the saturation flag."""
+    return (await fetch_edges_ex(frontier, relations, **kwargs))[0]
 
 
 def _fold_types(
@@ -130,6 +201,25 @@ def _fold_labels(results: Iterable[qlever.SelectResult]) -> dict[str, str]:
     return {n: k[2] for n, k in best.items()}
 
 
+async def iter_types(
+    iris: Iterable[str],
+    *,
+    client: qlever.QleverClient | None = None,
+    concurrency: int | None = None,
+    chunk_size: int = CHUNK,
+) -> AsyncIterator[dict[str, NodeType]]:
+    """:func:`fetch_types`, yielding one ``iri -> NodeType`` dict per chunk as
+    each chunk completes (completion order; same fail-fast policy)."""
+    cfg = graph_config.load()
+    cli = client or qlever.get_client()
+    wanted = [*cfg.type_group(), *cfg.skip_iris()]
+    chunks = _chunks(iris, chunk_size)
+    queries = [templates.types_query(nodes=c, type_iris=wanted) for c in chunks]
+    jobs = [partial(cli.select_tsv, q) for q in queries]
+    async for index, res in _run_iter(jobs, concurrency):
+        yield _fold_types([res], chunks[index])
+
+
 async def fetch_types(
     iris: Iterable[str],
     *,
@@ -142,13 +232,31 @@ async def fetch_types(
     A node with several types gets the first group in the config's group
     order; ``skip`` is set when it has a ``skip_types`` type and no mapped group.
     """
-    cfg = graph_config.load()
+    out: dict[str, NodeType] = {}
+    async for part in iter_types(
+        iris, client=client, concurrency=concurrency, chunk_size=chunk_size
+    ):
+        out.update(part)
+    return out
+
+
+async def iter_labels(
+    iris: Iterable[str],
+    *,
+    client: qlever.QleverClient | None = None,
+    concurrency: int | None = None,
+    chunk_size: int = CHUNK,
+) -> AsyncIterator[dict[str, str]]:
+    """:func:`fetch_labels`, yielding one dict per completed chunk."""
+    label_iris = graph_config.load().label_iris()
     cli = client or qlever.get_client()
-    wanted = [*cfg.type_group(), *cfg.skip_iris()]
-    chunks = _chunks(iris, chunk_size)
-    queries = [templates.types_query(nodes=c, type_iris=wanted) for c in chunks]
-    results = await _run_all([partial(cli.select_tsv, q) for q in queries], concurrency)
-    return _fold_types(results, (n for c in chunks for n in c))
+    queries = [
+        templates.labels_query(nodes=c, label_iris=label_iris)
+        for c in _chunks(iris, chunk_size)
+    ]
+    jobs = [partial(cli.select_tsv, q) for q in queries]
+    async for _, res in _run_iter(jobs, concurrency):
+        yield _fold_labels([res])
 
 
 async def fetch_labels(
@@ -164,11 +272,9 @@ async def fetch_labels(
     an IRI-valued label; remaining ties pick the smallest string so the
     result is deterministic.
     """
-    label_iris = graph_config.load().label_iris()
-    cli = client or qlever.get_client()
-    queries = [
-        templates.labels_query(nodes=c, label_iris=label_iris)
-        for c in _chunks(iris, chunk_size)
-    ]
-    results = await _run_all([partial(cli.select_tsv, q) for q in queries], concurrency)
-    return _fold_labels(results)
+    out: dict[str, str] = {}
+    async for part in iter_labels(
+        iris, client=client, concurrency=concurrency, chunk_size=chunk_size
+    ):
+        out.update(part)
+    return out

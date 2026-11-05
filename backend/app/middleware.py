@@ -47,6 +47,8 @@ DEFAULT_CACHE_MAX_ENTRIES = 512
 DEFAULT_RATE_LIMIT_PER_MIN = 120
 #: Bound on distinct client keys the limiter tracks (prune when exceeded).
 DEFAULT_MAX_CLIENTS = 4096
+#: NDJSON stream: rate-limited but never cached/buffered (see ApiGuardMiddleware).
+STREAM_PATH = "/api/stream"
 
 Message = dict[str, Any]
 Scope = dict[str, Any]
@@ -208,6 +210,11 @@ def _guard_path(path: str) -> bool:
     return path.startswith("/api/") and path != "/api/health"
 
 
+def _cacheable(path: str) -> bool:
+    """False for streaming routes: caching would buffer the whole response."""
+    return path != STREAM_PATH
+
+
 def _client_host(scope: Mapping[str, Any]) -> str:
     client = scope.get("client")
     return client[0] if client else "unknown"
@@ -279,7 +286,8 @@ class ApiGuardMiddleware:
     Order per request: (1) rate-limit the client (429 + Retry-After when the
     bucket is dry), (2) serve GET requests from the TTL cache (X-Cache:
     HIT), (3) otherwise run the app, buffer the response, store 200s in the
-    cache (X-Cache: MISS) and re-emit it.
+    cache (X-Cache: MISS) and re-emit it. ``/api/stream`` is rate-limited
+    but passed through unbuffered and uncached.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -303,6 +311,9 @@ class ApiGuardMiddleware:
                     retry_after,
                 )
                 return
+        if not _cacheable(path):  # streamed straight through, unbuffered
+            await self.app(scope, receive, send)
+            return
         key = None
         if scope["method"] == "GET":
             key = _cache_key(path, scope.get("query_string") or b"")

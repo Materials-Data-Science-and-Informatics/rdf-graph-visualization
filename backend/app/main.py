@@ -16,6 +16,7 @@ from app.api_b2 import router as b2_router
 from app.middleware import ApiGuardMiddleware
 from app.search import router as search_router
 from app.settings import Settings
+from app.stream import router as stream_router
 
 app = FastAPI(title="HKG Graph Explorer API", version="0.4.0.dev0")
 
@@ -24,6 +25,7 @@ app.include_router(subgraph.router)
 app.include_router(aggregate_router)
 app.include_router(b2_router, prefix="/api")
 app.include_router(search_router)
+app.include_router(stream_router)
 
 
 @app.get("/api/health")

@@ -19,7 +19,7 @@ DEFAULT_QLEVER_URL = "https://sparql.unhide.helmholtz-metadaten.de/sparql"
 
 
 @dataclass(frozen=True)
-class Settings:
+class Settings:  # pylint: disable=too-many-instance-attributes
     """Environment-driven runtime settings (see module docstring)."""
 
     qlever_url: str
@@ -27,6 +27,12 @@ class Settings:
     default_limit: int
     max_limit: int
     qlever_concurrency: int = 4
+    #: /api/stream ceilings (query params are clamped to these) and switch
+    #: between the one-query-per-chunk and per-relation edge templates.
+    stream_max_nodes: int = 100_000
+    stream_max_hops: int = 8
+    stream_max_time_budget_s: float = 300.0
+    stream_multi_relation: bool = True
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -37,4 +43,11 @@ class Settings:
             default_limit=int(os.environ.get("QLEVER_DEFAULT_LIMIT", "500")),
             max_limit=int(os.environ.get("QLEVER_MAX_LIMIT", "5000")),
             qlever_concurrency=max(1, int(os.environ.get("QLEVER_CONCURRENCY", "4"))),
+            stream_max_nodes=max(1, int(os.environ.get("STREAM_MAX_NODES", "100000"))),
+            stream_max_hops=max(0, int(os.environ.get("STREAM_MAX_HOPS", "8"))),
+            stream_max_time_budget_s=max(
+                1.0, float(os.environ.get("STREAM_MAX_TIME_BUDGET_S", "300"))
+            ),
+            stream_multi_relation=os.environ.get("STREAM_MULTI_RELATION", "1")
+            not in ("0", "false", "no"),
         )
