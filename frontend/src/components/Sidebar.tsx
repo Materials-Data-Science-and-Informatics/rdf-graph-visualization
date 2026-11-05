@@ -1,32 +1,17 @@
 import { memo, useEffect, useState, type ReactNode } from "react";
-import { Check, Copy, PanelLeftClose } from "lucide-react";
+import { PanelLeftClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { NODE_LIMIT_DEFAULT, countToSlider, sliderToCount } from "@/engine/layout-utils";
 import { DEPTH_DEFAULT, DEPTH_MAX, DEPTH_MIN, clampDepth } from "@/lib/sidebar-settings";
 import { statusText, type StreamStatus } from "@/lib/use-graph-stream";
 import type { NodeInfo } from "@/lib/api";
-import { sortRelationCounts } from "@/lib/node-summary";
-
-export interface SelectedView {
-  iri: string;
-  status: "loading" | "ok" | "none" | "error";
-  info?: NodeInfo;
-  error?: string;
-}
-
-export interface LegendRow {
-  name: string;
-  color: string;
-  count: number;
-  visible: boolean;
-}
+import { CopyButton, Row, Swatch, type LegendRow } from "./shared";
 
 export interface SidebarProps {
   open: boolean;
   onToggle: () => void;
   rootIri: string;
-  selected: SelectedView | null;
   root: NodeInfo | null;
   rootColor: string;
   nodeLimit: number;
@@ -56,48 +41,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
       </h2>
       {children}
     </section>
-  );
-}
-
-function Row({ label, value }: { label: string; value: ReactNode }) {
-  return (
-    <div className="flex justify-between gap-2 text-xs">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right tabular-nums">{value}</span>
-    </div>
-  );
-}
-
-function CopyButton({ text }: { text: string }) {
-  const [done, setDone] = useState(false);
-  return (
-    <Button
-      variant="ghost"
-      size="icon"
-      className="size-7 shrink-0"
-      aria-label="Copy IRI"
-      onClick={() => {
-        navigator.clipboard
-          ?.writeText(text)
-          .then(() => {
-            setDone(true);
-            setTimeout(() => setDone(false), 1500);
-          })
-          .catch(() => undefined);
-      }}
-    >
-      {done ? <Check /> : <Copy />}
-    </Button>
-  );
-}
-
-function Swatch({ color }: { color: string }) {
-  return (
-    <span
-      aria-hidden
-      className="inline-block size-3 shrink-0 rounded-full border"
-      style={{ background: color }}
-    />
   );
 }
 
@@ -132,90 +75,9 @@ const Switch = ({
   </label>
 );
 
-function SelectedNode({ sel, legend }: { sel: SelectedView | null; legend: LegendRow[] }) {
-  if (!sel) return <p className="text-muted-foreground text-sm">Click a node to see details</p>;
-  const iri = (
-    <div className="flex items-center gap-1">
-      <code className="text-muted-foreground min-w-0 flex-1 truncate text-xs" title={sel.iri}>
-        {sel.iri}
-      </code>
-      <CopyButton text={sel.iri} />
-    </div>
-  );
-  if (sel.status === "loading")
-    return (
-      <div className="space-y-1" aria-busy="true">
-        <p className="text-muted-foreground text-sm">Loading details...</p>
-        {iri}
-      </div>
-    );
-  if (sel.status === "none")
-    return (
-      <div className="space-y-1">
-        <p className="text-muted-foreground text-sm">No details</p>
-        {iri}
-      </div>
-    );
-  if (sel.status === "error" || !sel.info)
-    return (
-      <div className="space-y-1">
-        <p role="alert" className="text-destructive text-sm break-words">
-          Could not load details: {sel.error ?? "unknown error"}
-        </p>
-        {iri}
-      </div>
-    );
-  const { info } = sel;
-  const color = legend.find((l) => l.name === info.group)?.color;
-  const rels = sortRelationCounts(info.relations);
-  return (
-    <div className="space-y-2">
-      <div className="flex items-center gap-2">
-        {color && <Swatch color={color} />}
-        <span className="text-sm font-medium break-words">{info.label ?? "(unlabelled)"}</span>
-      </div>
-      {info.group && <div className="text-muted-foreground text-xs">{info.group}</div>}
-      {iri}
-      {info.types.length > 0 && (
-        <ul className="text-muted-foreground space-y-0.5 text-xs">
-          {info.types.map((t) => (
-            <li key={t} className="truncate" title={t}>
-              {t}
-            </li>
-          ))}
-        </ul>
-      )}
-      {rels.length > 0 && (
-        <table className="w-full text-xs">
-          <thead className="text-muted-foreground text-left">
-            <tr>
-              <th className="font-normal">Relation</th>
-              <th className="text-right font-normal">out</th>
-              <th className="text-right font-normal">in</th>
-            </tr>
-          </thead>
-          <tbody className="tabular-nums">
-            {rels.map((r) => (
-              <tr key={r.predicate}>
-                <td className="max-w-0 truncate pr-2" title={r.predicate}>
-                  {r.predicate.slice(
-                    Math.max(r.predicate.lastIndexOf("/"), r.predicate.lastIndexOf("#")) + 1
-                  ) || r.predicate}
-                </td>
-                <td className="text-right">{r.out.toLocaleString()}</td>
-                <td className="text-right">{r.in.toLocaleString()}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}
-
 function Sidebar(p: SidebarProps) {
   const s = p.status;
-  const { open, onToggle, depth, onDepth } = p;
+  const { depth, onDepth } = p;
   const [draft, setDraft] = useState(String(depth));
   useEffect(() => setDraft(String(depth)), [depth]);
   const commitDepth = () => {
@@ -223,15 +85,6 @@ function Sidebar(p: SidebarProps) {
     setDraft(String(v));
     if (v !== depth) onDepth(v);
   };
-  // narrow screens: the sidebar is an overlay, Escape closes it
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && window.matchMedia("(max-width: 767px)").matches) onToggle();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, onToggle]);
   const phase =
     s.phase === "streaming"
       ? `streaming hop ${s.hop}`
@@ -425,13 +278,10 @@ function Sidebar(p: SidebarProps) {
           </Button>
         </Section>
 
-        <Section title="Selected node">
-          <SelectedNode sel={p.selected} legend={p.legend} />
-          <p className="text-muted-foreground border-t pt-2 text-xs">
-            Left-click: details &middot; Right-click: make root &middot; Drag: rotate &middot;
-            Scroll: zoom
-          </p>
-        </Section>
+        <p className="text-muted-foreground px-4 py-3 text-xs">
+          Left-click: details &middot; Right-click: make root &middot; Drag: rotate &middot; Scroll:
+          zoom
+        </p>
       </aside>
     </>
   );

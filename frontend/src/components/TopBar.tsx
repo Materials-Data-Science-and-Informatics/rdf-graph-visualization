@@ -1,6 +1,5 @@
 import InfoDialog from "./InfoDialog";
 import ThemeToggle from "./ThemeToggle";
-import { version } from "../../package.json";
 
 export default function TopBar() {
   return (
@@ -10,7 +9,6 @@ export default function TopBar() {
       <div className="mx-auto flex w-full max-w-md justify-center" data-slot="search">
         <span className="text-muted-foreground text-xs">Search (coming soon)</span>
       </div>
-      <span className="text-muted-foreground hidden text-xs sm:inline">v{version}</span>
       <InfoDialog />
       <ThemeToggle />
     </header>

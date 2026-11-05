@@ -1,6 +1,7 @@
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import GraphView from "@/components/GraphView";
+import Footer from "@/components/Footer";
 import TopBar from "@/components/TopBar";
 import { useConfig } from "@/lib/use-config";
 
@@ -25,6 +26,7 @@ export default function App() {
           )}
         </main>
       )}
+      <Footer />
     </div>
   );
 }

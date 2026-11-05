@@ -15,7 +15,8 @@ import {
   saveDepth,
 } from "@/lib/sidebar-settings";
 import type { PickHit } from "@/engine/picking";
-import Sidebar, { type SelectedView } from "./Sidebar";
+import Sidebar from "./Sidebar";
+import NodeDetails, { type SelectedView } from "./NodeDetails";
 import GraphTooltip from "./GraphTooltip";
 
 const NARROW = "(max-width: 767px)";
@@ -135,6 +136,25 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
     },
     [store, clearSelection, rootIri]
   );
+  const closeDetails = useCallback(() => {
+    clearSelection();
+    wrapRef.current?.focus();
+  }, [clearSelection]);
+  const escRef = useRef({ hasSel: false, sidebarOpen: false });
+  escRef.current = { hasSel: selected !== null, sidebarOpen };
+  // one global Escape: details card first, then the narrow-screen sidebar overlay
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      const t = e.target as HTMLElement | null;
+      if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
+      if (escRef.current.hasSel) closeDetails();
+      else if (escRef.current.sidebarOpen && window.matchMedia(NARROW).matches)
+        setSidebarOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [closeDetails]);
   const handlersRef = useRef({ selectNode, clearSelection, makeRoot });
   handlersRef.current = { selectNode, clearSelection, makeRoot };
 
@@ -280,7 +300,6 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
         open={sidebarOpen}
         onToggle={onToggleSidebar}
         rootIri={rootIri}
-        selected={selected}
         root={rootInfo}
         rootColor={rootColor}
         nodeLimit={nodeLimit}
@@ -303,7 +322,8 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
       />
       <div
         ref={wrapRef}
-        className="bg-background relative min-h-0 min-w-0 flex-1 overflow-hidden"
+        tabIndex={-1}
+        className="bg-background outline-none relative min-h-0 min-w-0 flex-1 overflow-hidden"
         onPointerMove={(e) => {
           pointerRef.current = { x: e.clientX, y: e.clientY };
           if (hover) placeTip();
@@ -318,6 +338,18 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
           >
             {engineError}
           </div>
+        )}
+        {selected && (
+          <NodeDetails
+            sel={selected}
+            legend={legend}
+            isRoot={selected.iri === rootIri}
+            onClose={closeDetails}
+            onMakeRoot={() => {
+              const i = store.nodeIds.indexOf(selected.iri);
+              if (i >= 0) makeRoot(i);
+            }}
+          />
         )}
         <div className="absolute top-3 left-3 flex gap-1">
           {!sidebarOpen && (
