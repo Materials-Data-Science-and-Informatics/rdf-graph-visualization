@@ -201,7 +201,7 @@ export default function SearchBox({
                     onMouseDown={(e) => e.preventDefault()}
                     onClick={() => choose(r, false)}
                   >
-                    <Swatch color={g?.color ?? "#8a8f98"} />
+                    <Swatch color={g?.color ?? "#8a8f98"} name={g?.name} />
                     <span className="min-w-0 flex-1">
                       <span className="block truncate">{r.label}</span>
                       <span className="text-muted-foreground block truncate text-xs">

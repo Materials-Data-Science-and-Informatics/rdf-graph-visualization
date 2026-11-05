@@ -18,7 +18,14 @@ export default function Footer() {
   return (
     <footer className="text-muted-foreground grid shrink-0 gap-y-0.5 border-t px-3 py-1 text-xs md:min-h-7 md:grid-cols-[1fr_auto_1fr] md:items-center md:gap-x-4 md:py-0">
       <p className={`${row} md:justify-start`}>
-        <A href={LINKS.hmc}>Helmholtz Metadata Collaboration</A>
+        <a href={LINKS.hmc} target="_blank" rel="noopener noreferrer" className="shrink-0">
+          {/* white logo: darkened in the light theme */}
+          <img
+            src="/branding/hmc-logo.png"
+            alt="Helmholtz Metadata Collaboration"
+            className="h-3.5 w-auto invert dark:invert-0"
+          />
+        </a>
         <Dot />
         <A href={LINKS.search}>Helmholtz Knowledge Graph</A>
       </p>

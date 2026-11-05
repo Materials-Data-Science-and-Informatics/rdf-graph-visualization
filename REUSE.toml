@@ -13,3 +13,10 @@ version = 1
 path = ["**"]
 SPDX-FileCopyrightText = "2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors"
 SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+# HKG / HMC logos, favicons and category icons, taken from the unhide UI
+# (codebase.helmholtz.cloud/hmc/hmc-public/unhide/unhide-ui, MIT).
+path = ["frontend/public/favicon*", "frontend/public/apple-touch-icon.png", "frontend/public/branding/**"]
+SPDX-FileCopyrightText = "Helmholtz Metadata Collaboration (HMC)"
+SPDX-License-Identifier = "MIT"

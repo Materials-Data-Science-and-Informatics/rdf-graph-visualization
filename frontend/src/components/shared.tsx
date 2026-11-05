@@ -40,7 +40,31 @@ export function CopyButton({ text }: { text: string }) {
   );
 }
 
-export function Swatch({ color }: { color: string }) {
+/** HKG category icons (from the unhide UI) per data-model class; white masks tinted with the class colour. */
+const CLASS_ICONS: Record<string, string> = {
+  Person: "Person",
+  Institution: "institutions",
+  Dataset: "datasets",
+  Document: "documents",
+  Software: "software",
+  Instrument: "instruments",
+  Project: "projects",
+  Event: "trainings",
+};
+
+/** Class colour marker: the HKG category icon in that colour when `name` has one, else a dot. */
+export function Swatch({ color, name }: { color: string; name?: string | null }) {
+  const icon = name ? CLASS_ICONS[name] : undefined;
+  if (icon) {
+    const mask = `url(/branding/category/${icon}.png) center / contain no-repeat`;
+    return (
+      <span
+        aria-hidden
+        className="inline-block size-4 shrink-0"
+        style={{ background: color, mask, WebkitMask: mask }}
+      />
+    );
+  }
   return (
     <span
       aria-hidden

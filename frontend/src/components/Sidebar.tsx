@@ -170,7 +170,7 @@ function LegendList({ title, rows }: { title: string; rows: LegendRow[] }) {
         <ul className="space-y-0.5">
           {rows.map((r) => (
             <li key={r.name} className="flex items-center gap-2 text-sm">
-              <Swatch color={r.color} />
+              <Swatch color={r.color} name={r.name} />
               <span className="flex-1 truncate" title={r.name}>
                 {r.name}
               </span>
@@ -243,7 +243,7 @@ function Sidebar(p: SidebarProps) {
             </select>
           </label>
           <div className="flex items-center gap-2">
-            <Swatch color={p.rootColor} />
+            <Swatch color={p.rootColor} name={p.root?.group} />
             <span className="min-w-0 text-sm font-medium break-words">
               {p.root?.label ?? "(unlabelled)"}
             </span>

@@ -35,7 +35,7 @@ export default function NodeDetails({ sel, legend, isRoot, onClose, onMakeRoot }
       className="bg-card text-card-foreground absolute z-10 flex flex-col overflow-hidden border shadow-lg max-md:inset-x-0 max-md:bottom-0 max-md:max-h-[55%] max-md:rounded-t-xl md:top-14 md:right-3 md:max-h-[calc(100%-4.5rem)] md:w-[340px] md:rounded-xl"
     >
       <div className="flex items-start gap-2 border-b px-3 py-2">
-        {color && <Swatch color={color} />}
+        {color && <Swatch color={color} name={info?.group} />}
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-medium break-words">
             {sel.status === "ok" && info ? (info.label ?? "(unlabelled)") : "Selected node"}
