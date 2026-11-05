@@ -221,6 +221,7 @@ export class GpuGraph {
   /**
    * Activate nodes [from, to) of `store`: write colours (partial upload) and schedule the
    * spawn kernel next to each node's anchor. `colorOf` maps a group index (-1 = none) to rgb.
+   * Returns the (ascending) indices that got a carried-over position.
    */
   addNodes(
     store: GraphStore,
@@ -230,8 +231,8 @@ export class GpuGraph {
     edgeTo: number,
     colorOf: (group: number) => readonly [number, number, number],
     carry?: ReadonlyMap<string, Vec3> | null
-  ): void {
-    if (to <= from) return;
+  ): number[] {
+    if (to <= from) return [];
     const { anchor, depth } = computeAnchors(store.edges, edgeFrom, edgeTo, from, to);
     const orphanRadius = this.cfg.rest * (1 + Math.cbrt(to) * 0.6) * 0.5;
     for (let i = from; i < to; i++) {
@@ -258,6 +259,7 @@ export class GpuGraph {
     this.pendingInit = true;
     this.nodeCount = to;
     this.syncCounts();
+    return carried;
   }
 
   /** Recolour existing nodes (types arrive after nodes): partial colour upload only. */

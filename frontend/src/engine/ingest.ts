@@ -4,7 +4,7 @@ import type { CameraRig } from "./camera-fit";
 import type { EngineConfig } from "./config";
 import type { GpuGraph } from "./gpu-graph";
 import { NODE_LIMIT_DEFAULT } from "./layout-utils";
-import type { Vec3 } from "./picking";
+import { settledPrefix, type Vec3 } from "./picking";
 
 export type Rgb = readonly [number, number, number];
 
@@ -15,6 +15,8 @@ export interface CarrySnapshot {
 }
 
 const CARRY_WAIT_MS = 300;
+/** Share of a new generation's first batch that must carry positions to start gently. */
+const CARRY_KEEP = 0.5;
 
 export function rgbOf(css: string): Rgb {
   const c = new THREE.Color(css); // sRGB hex -> linear working space, as in the prototype
@@ -121,11 +123,13 @@ export class StreamIngest {
         gpu.addNodes(store, prevNodes, target, 0, store.edgeCount, this.colorOf, carry); // anchors from all edges
       gpu.rescanEdges(store, this.relColor);
       this.edgesScanned = store.edgeCount;
-      heat = this.cfg.alphaLimitChange;
+      // raising the limit past what is loaded changes nothing: no re-heat
+      heat = target === prevNodes ? 0 : this.cfg.alphaLimitChange;
       gpu.setSettled(Math.min(prevNodes, target));
     } else {
+      let carried: number[] = [];
       if (target > prevNodes) {
-        gpu.addNodes(
+        carried = gpu.addNodes(
           store,
           prevNodes,
           target,
@@ -143,8 +147,11 @@ export class StreamIngest {
         // Re-heat modestly. Nodes that existed before this growth keep only `oldMobility`
         // of the force, so a settled layout barely moves while newcomers find their place
         // (one uniform comparison, no per-node state). First batch: everyone is new.
-        gpu.setSettled(prevNodes);
-        heat = prevNodes === 0 ? this.cfg.alphaStart : this.cfg.alphaBump;
+        // A new generation that kept the positions of most of its first batch (re-root, display
+        // rebuild) is a re-heat too, not a fresh start: those nodes count as settled.
+        const kept = prevNodes === 0 && carried.length >= CARRY_KEEP * target;
+        gpu.setSettled(kept ? settledPrefix(carried) : prevNodes);
+        heat = prevNodes === 0 && !kept ? this.cfg.alphaStart : this.cfg.alphaBump;
       }
     }
     if (ch.recoloredNodes.length) {

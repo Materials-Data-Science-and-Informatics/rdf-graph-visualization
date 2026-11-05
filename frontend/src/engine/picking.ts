@@ -123,3 +123,14 @@ export function applyCarry(
   }
   return carried;
 }
+
+/**
+ * Length of the longest prefix [0, p) of node indices in which at least 90% of the nodes were
+ * carried (`carried` is ascending): those are the nodes that count as settled after a carry-over.
+ */
+export function settledPrefix(carried: readonly number[]): number {
+  let p = 0;
+  for (let k = 0; k < carried.length; k++)
+    if ((k + 1) / (carried[k] + 1) >= 0.9) p = carried[k] + 1;
+  return p;
+}

@@ -59,7 +59,7 @@ export const DEFAULT_CONFIG: EngineConfig = {
   alphaDecay: 0.9772,
   alphaBump: 0.3,
   alphaLimitChange: 0.5,
-  oldMobility: 0.5,
+  oldMobility: 0.06,
   fitIntervalMs: 500,
   fitPercentile: 0.95,
   viewElevationDeg: 22,

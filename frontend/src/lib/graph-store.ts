@@ -80,6 +80,8 @@ export class GraphStore {
   private readonly index = new Map<string, number>();
   private readonly predIndex = new Map<string, number>();
   private readonly groupIndex = new Map<string, number>();
+  /** Edge dedup: (subject, object) pair -> predicate index, or the list of them when several. */
+  private readonly edgeKeys = new Map<number, number | number[]>();
 
   private takenNodes = 0;
   private takenEdges = 0;
@@ -120,6 +122,7 @@ export class GraphStore {
     this.bundles.clear();
     this.memberIndex.clear();
     this.predIndex.clear();
+    this.edgeKeys.clear();
     this.nodeIds = [];
     this.labels = [];
     this.predicates = [];
@@ -307,6 +310,8 @@ export class GraphStore {
     // The backend emits a node before its edges; tolerate violations lazily.
     const si = this.ensureNode(s, hop);
     const oi = this.ensureNode(o, hop);
+    const pi = this.predicateId(p);
+    if (this.seenEdge(si, pi, oi)) return; // re-streamed prefix (bucket growth): already known
     const e = this.edgeCount++;
     if (e >= this.edgePredicate.length) {
       const cap = this.edgePredicate.length * 2;
@@ -315,6 +320,21 @@ export class GraphStore {
     }
     this.edges[2 * e] = si;
     this.edges[2 * e + 1] = oi;
-    this.edgePredicate[e] = this.predicateId(p);
+    this.edgePredicate[e] = pi;
+  }
+
+  /** Records (si, pi, oi); true when it was already recorded. Numeric keys (si < 2^27) keep memory low. */
+  private seenEdge(si: number, pi: number, oi: number): boolean {
+    const key = si * 0x4000000 + oi;
+    const cur = this.edgeKeys.get(key);
+    if (cur === undefined) this.edgeKeys.set(key, pi);
+    else if (typeof cur === "number") {
+      if (cur === pi) return true;
+      this.edgeKeys.set(key, [cur, pi]);
+    } else {
+      if (cur.includes(pi)) return true;
+      cur.push(pi);
+    }
+    return false;
   }
 }

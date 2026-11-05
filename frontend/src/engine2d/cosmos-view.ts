@@ -7,8 +7,13 @@ import type { GraphStore } from "@/lib/graph-store";
 import type { Communities } from "./communities";
 import { CommunityDetector } from "./community-detector";
 import { HubLabels } from "./hub-labels";
-import { placeNodes } from "./placement";
-import { communityRegions, fittingUnit, moveIntoRegions } from "./community-layout";
+import { CARRY_KEEP, placeCarried, placeNodes } from "./placement";
+import {
+  communityCentroids,
+  communityRegions,
+  fittingUnit,
+  moveIntoRegions,
+} from "./community-layout";
 import { findLeafGroups, leafIndices, placeLeafDiscs, type LeafGroups } from "./leaf-rings";
 import { computeDegrees, computePointSizes } from "@/engine/node-size";
 
@@ -49,6 +54,8 @@ export class CosmosView {
   private palette: ReadonlyMap<string, string> = new Map();
   private paletteVersion = 0;
   private generation = -1;
+  /** ids of the shown nodes (the store's array at the last push; a reset replaces it). */
+  private shownIds: readonly string[] = [];
   private nodes = 0;
   private edges = 0;
   private limit = 0;
@@ -57,6 +64,8 @@ export class CosmosView {
   private autoFit = true;
   private lastFit = 0;
   private communities: Communities | null = null;
+  /** The last push kept an already community-arranged layout: re-detection must not re-place regions. */
+  private keepLayout = false;
   private clusterCenters: number[] = [];
   private linkPairs = new Uint32Array(0);
   private degrees: Uint32Array<ArrayBufferLike> = new Uint32Array(0);
@@ -195,8 +204,32 @@ export class CosmosView {
   private push(store: GraphStore, n: number, nodeLimit: number, fresh: boolean): void {
     const g = this.graph;
     const prevCount = fresh ? 0 : Math.min(this.nodes, n);
-    const prev = prevCount > 0 ? g.getPointPositionsArray() : new Float32Array(0);
-    const pos = placeNodes(prev, prevCount, n, store.edges, store.edgeCount, CENTER);
+    const prev = this.nodes > 0 ? g.getPointPositionsArray() : new Float32Array(0);
+    let pos: Float32Array<ArrayBufferLike> = new Float32Array(0);
+    // a new generation (re-root, bundling) keeps the layout when most nodes are known by IRI
+    let kept = false;
+    if (fresh && this.nodes > 0) {
+      const r = placeCarried(
+        prev,
+        this.shownIds,
+        this.nodes,
+        store.nodeIds.slice(0, n),
+        store.edges,
+        store.edgeCount,
+        CENTER
+      );
+      kept = r.carried >= CARRY_KEEP * n;
+      pos = r.pos;
+    }
+    if (!kept)
+      pos = placeNodes(
+        fresh ? new Float32Array(0) : prev,
+        prevCount,
+        n,
+        store.edges,
+        store.edgeCount,
+        CENTER
+      );
     const win = new Uint32Array(store.edgeCount * 2);
     const m = appendWindowEdges(store.edges, 0, store.edgeCount, n, win, 0);
     const links = new Float32Array(m * 2);
@@ -218,6 +251,7 @@ export class CosmosView {
       const c = this.rgb(typed ? store.groupColors[grp] : NO_GROUP_COLOR);
       colors.set([c[0], c[1], c[2], typed ? 1 : UNTYPED_ALPHA], 4 * i);
     }
+    this.keepLayout = this.communities !== null && (fresh ? kept : prevCount > 0);
     if (fresh) this.labels?.clear();
     if (fresh && this.communities) this.clearCommunities(n);
     this.degrees = computeDegrees(n, store.edges, store.edgeCount);
@@ -248,8 +282,10 @@ export class CosmosView {
       this.autoFit = true;
       g.setConfigPartial({ focusedPointIndex: undefined });
     }
-    g.render(fresh ? ALPHA_FRESH : undefined, 0);
-    g.start(fresh || prevCount === 0 ? ALPHA_FRESH : ALPHA_GROWTH);
+    const restart = (fresh && !kept) || prevCount === 0;
+    g.render(fresh && !kept ? ALPHA_FRESH : undefined, 0);
+    g.start(restart ? ALPHA_FRESH : ALPHA_GROWTH);
+    this.shownIds = store.nodeIds;
     this.generation = store.generation;
     this.nodes = n;
     this.labels?.setCandidates(store, this.communities, n);
@@ -286,12 +322,17 @@ export class CosmosView {
     const unit = fittingUnit(r.sizes, REGION_UNIT, SPACE_SIZE * 0.42, 1.25);
     const regions = communityRegions(r.sizes, CENTER, unit, 1.25);
     const pos = this.graph.getPointPositionsArray();
-    if (pos.length >= this.nodes * 2) {
-      moveIntoRegions(pos, r.community, regions);
-      if (this.leafGroups) placeLeafDiscs(pos, this.leafGroups, this.sizes);
-      this.graph.setPointPositions(pos, true);
+    if (this.keepLayout && pos.length >= this.nodes * 2) {
+      // growth / carried layout: communities stay where they are, the cluster force holds them there
+      this.clusterCenters = communityCentroids(pos, r.community, r.sizes.length);
+    } else {
+      if (pos.length >= this.nodes * 2) {
+        moveIntoRegions(pos, r.community, regions);
+        if (this.leafGroups) placeLeafDiscs(pos, this.leafGroups, this.sizes);
+        this.graph.setPointPositions(pos, true);
+      }
+      this.clusterCenters = Array.from(regions.centers);
     }
-    this.clusterCenters = Array.from(regions.centers);
     this.setClusters(this.nodes);
     this.graph.render();
     this.graph.start(ALPHA_CLUSTER);

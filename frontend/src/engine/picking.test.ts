@@ -6,6 +6,7 @@ import {
   classifyPointer,
   decodePickId,
   encodePickId,
+  settledPrefix,
 } from "./picking";
 
 const put = (px: Uint8Array, p: number, v: number) => {
@@ -74,5 +75,13 @@ describe("position carry-over", () => {
     const init = new Float32Array(8);
     expect(applyCarry(["a", "a"], 1, 2, carry, pos, init)).toEqual([1]);
     expect(pos[0]).toBe(0);
+  });
+});
+
+describe("settledPrefix", () => {
+  it("covers the densely carried prefix only", () => {
+    expect(settledPrefix([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 50, 51])).toBe(10);
+    expect(settledPrefix([])).toBe(0);
+    expect(settledPrefix([3, 4])).toBe(0);
   });
 });

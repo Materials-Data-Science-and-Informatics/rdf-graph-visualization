@@ -61,12 +61,21 @@ export function useGraphStream(groups: readonly Pick<GraphGroupConfig, "name" | 
   }, []);
 
   const start = useCallback(
-    (root: string, opts: { maxNodes?: number; maxHops?: number; maxFanout?: number } = {}) => {
+    (
+      root: string,
+      opts: { maxNodes?: number; maxHops?: number; maxFanout?: number; grow?: boolean } = {}
+    ) => {
       abort();
       const ctrl = new AbortController();
       ctrlRef.current = ctrl;
-      store.reset();
-      display.reset();
+      // `grow`: same root/depth/fanout with a bigger node budget. The backend replays the same BFS
+      // prefix, so re-applied nodes/edges are no-ops and only new ones append (no reset, no new
+      // generation). A bundled display is left alone: `useDisplayStore` rebuilds it after `done`.
+      const mirror = !opts.grow || display.bundles.size === 0;
+      if (!opts.grow) {
+        store.reset();
+        display.reset();
+      }
       let local: StreamStatus = { ...IDLE, phase: "streaming" };
       let lastPush = 0;
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -87,7 +96,7 @@ export function useGraphStream(groups: readonly Pick<GraphGroupConfig, "name" | 
         (e) => {
           if (ctrl.signal.aborted) return;
           store.apply(e);
-          display.apply(e);
+          if (mirror) display.apply(e);
           const next = reduceStatus(local, e);
           if (next === local && e.type !== "nodes" && e.type !== "edges") return;
           local = next;

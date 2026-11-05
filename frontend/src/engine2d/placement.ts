@@ -52,3 +52,64 @@ export function placeNodes(
   }
   return out;
 }
+
+/** Share of a new generation's nodes that must keep their position for the layout to carry over. */
+export const CARRY_KEEP = 0.5;
+
+/**
+ * Positions for a new graph of `total` nodes (`ids`) seeded from the previous layout by IRI:
+ * nodes whose id is in `prevIds[0, prevCount)` keep their `prev` position, others spawn next to a
+ * placed neighbour (repeated over the edges, so whole chains follow) or near `center`.
+ * `carried` is the number of nodes that kept a position.
+ */
+export function placeCarried(
+  prev: Float32Array,
+  prevIds: readonly string[],
+  prevCount: number,
+  ids: readonly string[],
+  edges: Uint32Array,
+  edgeCount: number,
+  center: number,
+  rnd: () => number = Math.random
+): { pos: Float32Array; carried: number } {
+  const old = new Map<string, number>();
+  for (let i = 0; i < prevCount; i++) old.set(prevIds[i], i);
+  const total = ids.length;
+  const pos = new Float32Array(total * 2);
+  const placed = new Uint8Array(total);
+  let carried = 0;
+  for (let i = 0; i < total; i++) {
+    const j = old.get(ids[i]);
+    if (j === undefined) continue;
+    pos[2 * i] = prev[2 * j];
+    pos[2 * i + 1] = prev[2 * j + 1];
+    placed[i] = 1;
+    carried++;
+  }
+  const spawn = (i: number, from: number) => {
+    const angle = rnd() * 2 * Math.PI;
+    const r = SPAWN_RADIUS * (0.8 + 0.4 * rnd());
+    pos[2 * i] = pos[2 * from] + Math.cos(angle) * r;
+    pos[2 * i + 1] = pos[2 * from + 1] + Math.sin(angle) * r;
+    placed[i] = 1;
+  };
+  for (let pass = 0, changed = true; changed && pass < 8; pass++) {
+    changed = false;
+    for (let e = 0; e < edgeCount; e++) {
+      const a = edges[2 * e];
+      const b = edges[2 * e + 1];
+      if (a >= total || b >= total || placed[a] === placed[b]) continue;
+      if (placed[a]) spawn(b, a);
+      else spawn(a, b);
+      changed = true;
+    }
+  }
+  for (let i = 0; i < total; i++) {
+    if (placed[i]) continue;
+    const angle = rnd() * 2 * Math.PI;
+    const r = LOOSE_RADIUS * Math.sqrt(rnd());
+    pos[2 * i] = center + Math.cos(angle) * r;
+    pos[2 * i + 1] = center + Math.sin(angle) * r;
+  }
+  return { pos, carried };
+}

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { StreamEvent } from "./api";
 import { GraphStore, OTHER_PREDICATE, shortName } from "./graph-store";
 
 const groups = [
@@ -130,7 +131,7 @@ describe("GraphStore robustness", () => {
     const edges = Array.from({ length: OTHER_PREDICATE + 3 }, (_, i) => ({
       s: "a",
       p: `http://x/p${i}`,
-      o: "b",
+      o: `b${i}`, // distinct objects: edges of the shared (other) slot are not duplicates
     }));
     s.apply({ type: "edges", hop: 1, edges });
     expect(s.predicates).toHaveLength(OTHER_PREDICATE + 1);
@@ -148,5 +149,25 @@ describe("GraphStore robustness", () => {
     expect(s.relationsOf(0)).toHaveLength(1);
     s.apply(nodes(1, "c"));
     expect(s.relationsOf(2)).toEqual([]);
+  });
+
+  it("ignores edges it already has (re-streamed prefix)", () => {
+    const s = new GraphStore(groups);
+    const ev: StreamEvent = {
+      type: "edges",
+      hop: 1,
+      edges: [
+        { s: "a", p: "p", o: "b" },
+        { s: "a", p: "q", o: "b" },
+      ],
+    };
+    s.apply(ev);
+    s.apply(ev);
+    expect(s.edgeCount).toBe(2);
+    s.apply({ type: "edges", hop: 1, edges: [{ s: "a", p: "r", o: "b" }] });
+    expect(s.edgeCount).toBe(3);
+    s.reset();
+    s.apply(ev);
+    expect(s.edgeCount).toBe(2);
   });
 });

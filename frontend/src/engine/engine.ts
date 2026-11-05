@@ -363,7 +363,8 @@ export class Engine {
     this.gpu?.clear();
     this.regrowFailed = false;
     this.gpu?.reseed();
-    this.alpha = this.cfg.alphaStart;
+    // with a carry the first batch decides (ingest): gentle re-heat if positions carried, else full start
+    this.alpha = hadSnapshot ? 0 : this.cfg.alphaStart;
     this.rig.resetForGeneration(hadSnapshot);
   }
 

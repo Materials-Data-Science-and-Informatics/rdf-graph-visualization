@@ -93,3 +93,17 @@ export function moveIntoRegions(pos: Float32Array, community: Int32Array, region
     pos[2 * i + 1] = regions.centers[2 * c + 1] + (pos[2 * i + 1] - sy[c] / cnt[c]) * s;
   }
 }
+
+/** Centroid per community [x0, y0, ...] of the current positions (for keeping a layout in place). */
+export function communityCentroids(pos: Float32Array, community: Int32Array, k: number): number[] {
+  const sum = new Float64Array(k * 2);
+  const cnt = new Uint32Array(k);
+  for (let i = 0; i < community.length; i++) {
+    const c = community[i];
+    if (c < 0 || c >= k) continue;
+    sum[2 * c] += pos[2 * i];
+    sum[2 * c + 1] += pos[2 * i + 1];
+    cnt[c]++;
+  }
+  return Array.from(sum, (v, j) => v / Math.max(1, cnt[j >> 1]));
+}

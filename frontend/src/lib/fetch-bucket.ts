@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 /** Debounce for settings that restart the stream (depth, fanout, fetch bucket). */
 export const DEPTH_DEBOUNCE_MS = 500;
@@ -19,14 +19,10 @@ export function bucketParam(bucket: number): number | undefined {
 
 /**
  * The bucket to stream. Lowering `nodeLimit` never changes it (client-side window); raising it above
- * the current bucket switches to the bigger one after a debounce, calling `beforeRaise` first so the
- * caller can capture positions. A new `streamKey` (root/depth/fanout) starts over at the needed bucket.
+ * the current bucket switches to the bigger one after a debounce (the stream then grows the graph
+ * in place, see `useGrowTracker`). A new `streamKey` (root/depth/fanout) starts over at the needed bucket.
  */
-export function useFetchBucket(
-  nodeLimit: number,
-  streamKey: string,
-  beforeRaise: () => void
-): number {
+export function useFetchBucket(nodeLimit: number, streamKey: string): number {
   const [st, setSt] = useState(() => ({ key: streamKey, bucket: fetchBucket(nodeLimit) }));
   let cur = st;
   if (st.key !== streamKey) {
@@ -34,18 +30,27 @@ export function useFetchBucket(
     cur = { key: streamKey, bucket: fetchBucket(nodeLimit) };
     setSt(cur);
   }
-  const beforeRef = useRef(beforeRaise);
-  useEffect(() => {
-    beforeRef.current = beforeRaise;
-  });
   const wanted = fetchBucket(nodeLimit);
   useEffect(() => {
     if (wanted <= cur.bucket) return;
     const t = setTimeout(() => {
-      beforeRef.current();
       setSt({ key: streamKey, bucket: wanted });
     }, DEPTH_DEBOUNCE_MS);
     return () => clearTimeout(t);
   }, [wanted, cur.bucket, streamKey]);
   return cur.bucket;
+}
+
+/**
+ * Returns `(streamKey, bucket) => grow`: true when only the bucket got bigger since the previous call
+ * (same root/depth/fanout), i.e. the new stream is a longer prefix of the same BFS and can be merged
+ * into the existing graph instead of replacing it.
+ */
+export function useGrowTracker(): (streamKey: string, bucket: number) => boolean {
+  const last = useRef<{ key: string; bucket: number } | null>(null);
+  return useCallback((key, bucket) => {
+    const grow = last.current?.key === key && bucket > last.current.bucket;
+    last.current = { key, bucket };
+    return grow;
+  }, []);
 }

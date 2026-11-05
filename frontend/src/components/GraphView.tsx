@@ -30,7 +30,7 @@ import {
 import type { PickHit } from "@/engine/picking";
 import { keepIfSameCounts, keepIfSameMap, windowStats } from "@/lib/graph-stats";
 import { relationPalette } from "@/lib/relation-colors";
-import { DEPTH_DEBOUNCE_MS, bucketParam, useFetchBucket } from "@/lib/fetch-bucket";
+import { DEPTH_DEBOUNCE_MS, bucketParam, useFetchBucket, useGrowTracker } from "@/lib/fetch-bucket";
 import Sidebar from "./Sidebar";
 import NodeDetails, { type SelectedView } from "./NodeDetails";
 import GraphTooltip from "./GraphTooltip";
@@ -102,18 +102,18 @@ export default function GraphView({
   // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   settingsRef.current = { dim };
 
-  // Depth changes restart the stream; omitted max_hops (default 6) keeps the cached snapshot key.
-  // A bigger node count than the fetched bucket restarts the stream (positions carry over).
+  // New root/depth/fanout restarts the stream; a bigger fetch bucket grows the graph in place.
   const streamKey = `${rootIri}|${appliedDepth}|${appliedFanout}`;
-  const bucket = useFetchBucket(nodeLimit, streamKey, () => engineRef.current?.captureForReroot());
+  const bucket = useFetchBucket(nodeLimit, streamKey);
+  const isGrow = useGrowTracker();
   useEffect(() => {
     start(rootIri, {
+      grow: isGrow(streamKey, bucket),
       maxNodes: bucketParam(bucket),
       maxHops: depthToMaxHops(appliedDepth),
       maxFanout: fanoutParam(appliedFanout),
     });
-  }, [start, appliedDepth, appliedFanout, rootIri, bucket]);
-
+  }, [start, appliedDepth, appliedFanout, rootIri, bucket, streamKey, isGrow]);
   useEffect(() => {
     const t = setTimeout(() => {
       setAppliedDepth(depth);
