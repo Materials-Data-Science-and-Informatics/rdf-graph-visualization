@@ -27,6 +27,7 @@ import {
 } from "three/tsl";
 import type { GraphStore } from "@/lib/graph-store";
 import { edgeOpacity, nodeRadius, type EngineConfig } from "./config";
+import { applyCarry, type Vec3 } from "./picking";
 import {
   buildCsr,
   coalesceRanges,
@@ -43,6 +44,7 @@ export interface GpuSeed {
   vel: Float32Array;
   colors: Float32Array;
   edges: Uint32Array;
+  edgeStore: Uint32Array;
   nodeCount: number;
   edgeCount: number;
 }
@@ -92,6 +94,15 @@ function markRanges(attr: THREE.BufferAttribute, ranges: IndexRange[], itemSize:
  * draw objects (sprite impostors, line segments). Node/edge counts are uniforms/draw
  * counts, so growth within capacity never recompiles anything.
  */
+const NONE = 0xffffffff;
+type UintNode = THREE.Node<"uint">;
+
+/** uint id -> RGBA8 colour (little-endian bytes), exact through an rgba8unorm target. */
+const idColor = (id: UintNode) => {
+  const byte = (shift: number) => float(id.shiftRight(uint(shift)).bitAnd(uint(255))).div(255);
+  return vec4(byte(0), byte(8), byte(16), byte(24));
+};
+
 export class GpuGraph {
   readonly nodeCap: number;
   readonly edgeCap: number;
@@ -101,6 +112,8 @@ export class GpuGraph {
   // CPU mirrors that are only ever written partially (never hold live positions).
   readonly colorCpu: Float32Array;
   readonly edgeCpu: Uint32Array;
+  /** GPU edge-list index -> GraphStore edge index (for predicate lookup on pick). */
+  readonly edgeStoreCpu: Uint32Array;
   private readonly initCpu: Float32Array;
   private readonly offsetsCpu: Uint32Array;
   private readonly neighCpu: Uint32Array;
@@ -127,6 +140,16 @@ export class GpuGraph {
   private dark = true;
   private opacityScale = 1;
   private readonly uInitStart = uniform(0, "uint");
+  // highlight state (instance indices; NONE = no highlight)
+  private readonly uHover = uniform(NONE, "uint");
+  private readonly uSel = uniform(NONE, "uint");
+  private readonly uHoverEdge = uniform(NONE, "uint");
+  private readonly uRing = uniform(new THREE.Color(1, 1, 1));
+  private readonly uEdgeColor = uniform(new THREE.Color(0x9db4e0));
+  private readonly uHoverColor = uniform(new THREE.Color("#f5b82e"));
+  private readonly uShaftOp = uniform(0.5);
+  private readonly uArrowOp = uniform(0.65);
+  private readonly posCpu: Float32Array;
   private readonly uInitEnd = uniform(0, "uint");
 
   private readonly stepKernel: ComputeNodeT;
@@ -139,6 +162,11 @@ export class GpuGraph {
   private readonly shaftMat: THREE.MeshBasicNodeMaterial;
   private readonly arrowMat: THREE.MeshBasicNodeMaterial;
   private readonly nodeMat: THREE.SpriteNodeMaterial;
+  /** ID-colour copies of the node/edge draws (same buffers, same counts) for GPU picking. */
+  readonly pickScene = new THREE.Scene();
+  private readonly pickSprite: THREE.Sprite;
+  private readonly pickArrows: THREE.Mesh;
+  private readonly pickMats: THREE.Material[] = [];
   private pendingInit = false;
   private frame = 0;
 
@@ -155,6 +183,7 @@ export class GpuGraph {
     const velArr = new Float32Array(nodeCap * 4);
     this.colorCpu = new Float32Array(nodeCap * 4);
     this.edgeCpu = new Uint32Array(edgeCap * 2);
+    this.edgeStoreCpu = new Uint32Array(edgeCap);
     this.initCpu = new Float32Array(nodeCap * 4);
     this.offsetsCpu = new Uint32Array(nodeCap + 1);
     this.neighCpu = new Uint32Array(edgeCap * 2);
@@ -163,10 +192,12 @@ export class GpuGraph {
       velArr.set(seed.vel.subarray(0, seed.nodeCount * 4));
       this.colorCpu.set(seed.colors.subarray(0, seed.nodeCount * 4));
       this.edgeCpu.set(seed.edges.subarray(0, seed.edgeCount * 2));
+      this.edgeStoreCpu.set(seed.edgeStore.subarray(0, seed.edgeCount));
       this.nodeCount = seed.nodeCount;
       this.edgeCount = seed.edgeCount;
     }
 
+    this.posCpu = posArr;
     this.pos = vec4Buf(posArr);
     this.vel = vec4Buf(velArr);
     this.colors = vec4Buf(this.colorCpu);
@@ -181,22 +212,36 @@ export class GpuGraph {
     // nodes: one instanced draw, sphere impostor shaded in the fragment stage
     this.nodeMat = new THREE.SpriteNodeMaterial();
     this.nodeMat.positionNode = this.pos.toAttribute().xyz;
-    this.nodeMat.scaleNode = this.uRad.mul(2); // sprite scale = diameter
+    // sprite scale = diameter; hovered nodes grow 20%, the selected one gets room for a ring
+    this.nodeMat.scaleNode = this.uRad.mul(2).mul(this.highlightScale());
     this.nodeMat.transparent = false;
     this.nodeMat.depthWrite = true;
     const cAttr = this.colors.toAttribute();
+    const { uHover, uSel, uRing } = this;
     this.nodeMat.fragmentNode = Fn(() => {
+      const hov = uHover.equal(instanceIndex).select(float(1), float(0));
+      const sel = uSel.equal(instanceIndex).select(float(1), float(0));
+      const k = float(1).add(sel.mul(0.35)).add(hov.mul(0.2)).div(hov.mul(0.2).add(1));
       const q = uv().mul(2).sub(1);
-      const r2 = dot(q, q);
-      Discard(r2.greaterThan(1));
+      const rq2 = dot(q, q);
+      Discard(rq2.greaterThan(1));
+      const qq = q.mul(k); // sphere coordinates (shrunk inside the sprite when selected)
+      const r2 = dot(qq, qq);
+      const outside = r2.greaterThan(1);
+      Discard(outside.and(rq2.lessThan(0.7744))); // gap between sphere and selection ring
       const z = sqrt(max(float(1).sub(r2), 0));
-      const nrm = vec3(q.x, q.y, z);
+      const nrm = vec3(qq.x, qq.y, z);
       const L = normalize(vec3(-0.4, 0.6, 0.7));
       const diff = max(dot(nrm, L), 0);
       const spec = pow(max(dot(nrm, normalize(L.add(vec3(0, 0, 1)))), 0), 32).mul(0.45);
       const rim = pow(float(1).sub(z), 3).mul(0.35);
       Discard(cAttr.w.lessThan(0.5)); // w = group visibility (see applyVisibility)
-      return vec4(cAttr.xyz.mul(diff.mul(0.85).add(0.3)).add(spec).add(rim), 1);
+      const lit = cAttr.xyz
+        .mul(diff.mul(0.85).add(0.3))
+        .add(spec)
+        .add(rim)
+        .mul(hov.mul(0.35).add(1));
+      return vec4(outside.select(uRing as unknown as typeof lit, lit), 1);
     })();
     this.sprite = new THREE.Sprite(this.nodeMat);
     this.sprite.count = 0;
@@ -231,9 +276,17 @@ export class GpuGraph {
     };
     this.shaftMat = new THREE.MeshBasicNodeMaterial(matOpts);
     this.arrowMat = new THREE.MeshBasicNodeMaterial(matOpts);
-    const { shaftPos, arrowPos } = this.edgeShaders();
+    const { shaftPos, arrowPos } = this.edgeShaders(false);
     this.shaftMat.positionNode = shaftPos;
     this.arrowMat.positionNode = arrowPos;
+    const hovE = () => this.uHoverEdge.equal(instanceIndex);
+    for (const [mat, op] of [
+      [this.shaftMat, this.uShaftOp],
+      [this.arrowMat, this.uArrowOp],
+    ] as const) {
+      mat.colorNode = Fn(() => hovE().select(this.uHoverColor, this.uEdgeColor))();
+      mat.opacityNode = Fn(() => hovE().select(float(1), op))();
+    }
     this.shaft = new THREE.Mesh(quad, this.shaftMat);
     this.arrows = new THREE.Mesh(tri, this.arrowMat);
     for (const m of [this.shaft, this.arrows]) {
@@ -241,11 +294,54 @@ export class GpuGraph {
       this.scene.add(m);
     }
     this.uRad.value = nodeRadius(cfg.rest);
+
+    // GPU picking: id-colour twins of the three draws, rendered on demand by the engine
+    const pickBase = {
+      transparent: false,
+      depthWrite: true,
+      blending: THREE.NoBlending,
+      toneMapped: false,
+    };
+    const pickNodeMat = new THREE.SpriteNodeMaterial(pickBase);
+    pickNodeMat.positionNode = this.pos.toAttribute().xyz;
+    pickNodeMat.scaleNode = this.uRad.mul(2.4); // a bit generous: small nodes stay easy to hit
+    const pAttr = this.colors.toAttribute();
+    pickNodeMat.fragmentNode = Fn(() => {
+      const q = uv().mul(2).sub(1);
+      Discard(dot(q, q).greaterThan(1));
+      Discard(pAttr.w.lessThan(0.5));
+      return idColor(instanceIndex.add(uint(1)));
+    })();
+    this.pickSprite = new THREE.Sprite(pickNodeMat);
+    this.pickSprite.frustumCulled = false;
+    this.pickSprite.count = 0;
+    const edgePick = this.edgeShaders(true);
+    const pickShaftMat = new THREE.MeshBasicNodeMaterial({ ...pickBase, side: THREE.DoubleSide });
+    const pickArrowMat = new THREE.MeshBasicNodeMaterial({ ...pickBase, side: THREE.DoubleSide });
+    pickShaftMat.positionNode = edgePick.shaftPos;
+    pickArrowMat.positionNode = edgePick.arrowPos;
+    const edgeId = Fn(() => idColor(instanceIndex.add(uint(1)).bitOr(uint(0x80000000))))();
+    pickShaftMat.fragmentNode = edgeId;
+    pickArrowMat.fragmentNode = edgeId;
+    const pickShaft = new THREE.Mesh(quad, pickShaftMat);
+    this.pickArrows = new THREE.Mesh(tri, pickArrowMat);
+    this.pickMats.push(pickNodeMat, pickShaftMat, pickArrowMat);
+    for (const m of [this.pickSprite, pickShaft, this.pickArrows]) {
+      m.frustumCulled = false;
+      this.pickScene.add(m);
+    }
     this.syncCounts();
   }
 
+  /** Per-instance sprite scale factor: 1 + 0.2 hovered + 0.35 selected (vertex stage). */
+  private highlightScale() {
+    const hov = this.uHover.equal(instanceIndex).select(float(1), float(0));
+    const sel = this.uSel.equal(instanceIndex).select(float(1), float(0));
+    return float(1).add(hov.mul(0.2)).add(sel.mul(0.35));
+  }
+
   /** World-space vertex positions of the edge quads / arrowheads (see constructor comment). */
-  private edgeShaders() {
+  private edgeShaders(forPick: boolean) {
     const { pos, colors, edgeIdx, uRad } = this;
     const i = instanceIndex;
     const ia = edgeIdx.element(i.mul(2));
@@ -262,16 +358,21 @@ export class GpuGraph {
     const start = a.add(dn.mul(uRad));
     const arrowLen = clamp(len.sub(uRad.mul(2)), 0, uRad.mul(1.4)); // shrinks on very short edges
     const shaftEnd = tip.sub(dn.mul(arrowLen));
-    const shaftW = uRad.mul(0.2);
+    const hovE = this.uHoverEdge.equal(i);
+    // picking quads are 3x wider; the hovered edge is drawn 2.5x wider
+    const shaftW = uRad
+      .mul(forPick ? 0.6 : 0.2)
+      .mul(forPick ? float(1) : hovE.select(float(2.5), float(1)));
     const t = positionGeometry.x;
     const s = positionGeometry.y;
     const shaftPos = hidden.select(
       a,
       start.add(shaftEnd.sub(start).mul(t)).add(side.mul(s.mul(shaftW)))
     );
+    const arrowW = forPick ? float(1.2) : hovE.select(float(1.3), float(0.8));
     const arrowPos = hidden.select(
       a,
-      tip.sub(dn.mul(arrowLen.mul(float(1).sub(t)))).add(side.mul(s.mul(arrowLen).mul(0.8)))
+      tip.sub(dn.mul(arrowLen.mul(float(1).sub(t)))).add(side.mul(s.mul(arrowLen).mul(arrowW)))
     );
     return { shaftPos, arrowPos };
   }
@@ -383,17 +484,20 @@ export class GpuGraph {
       const idx = instanceIndex;
       If(idx.greaterThanEqual(uInitStart).and(idx.lessThan(uInitEnd)), () => {
         const info = initInfo.element(idx);
-        const base = vec3(0).toVar();
-        If(info.x.greaterThanEqual(0), () => {
-          base.assign(pos.element(info.x.toUint()).xyz);
+        // info.z = 1: carried-over position (already uploaded), keep it and only zero the velocity
+        If(info.z.lessThan(0.5), () => {
+          const base = vec3(0).toVar();
+          If(info.x.greaterThanEqual(0), () => {
+            base.assign(pos.element(info.x.toUint()).xyz);
+          });
+          const seed = idx.add(uFrame.mul(7919));
+          const rnd = vec3(hash(seed.mul(3)), hash(seed.mul(5).add(1)), hash(seed.mul(11).add(2)))
+            .mul(2)
+            .sub(1);
+          const p = base.add(rnd.mul(info.y)).toVar();
+          p.z.mulAssign(uZOn);
+          pos.element(idx).assign(vec4(p, 1));
         });
-        const seed = idx.add(uFrame.mul(7919));
-        const rnd = vec3(hash(seed.mul(3)), hash(seed.mul(5).add(1)), hash(seed.mul(11).add(2)))
-          .mul(2)
-          .sub(1);
-        const p = base.add(rnd.mul(info.y)).toVar();
-        p.z.mulAssign(uZOn);
-        pos.element(idx).assign(vec4(p, 1));
         vel.element(idx).assign(vec4(0, 0, 0, 0));
       });
     }, this.nodeCap);
@@ -404,12 +508,13 @@ export class GpuGraph {
     this.uCountF.value = this.nodeCount;
     this.uRepK.value = (this.cfg.repulsion * this.nodeCount) / this.cfg.samples;
     this.sprite.count = this.nodeCount;
+    this.pickSprite.count = this.nodeCount;
     this.sprite.visible = this.nodeCount > 0;
     this.shaftGeo.instanceCount = this.edgeCount;
     this.arrowGeo.instanceCount = this.edgeCount;
     const o = Math.min(1, edgeOpacity(this.edgeCount, this.dark) * this.opacityScale);
-    this.shaftMat.opacity = o;
-    this.arrowMat.opacity = Math.min(1, o + 0.15);
+    this.uShaftOp.value = o;
+    this.uArrowOp.value = Math.min(1, o + 0.15);
   }
 
   /** Forget everything (generation change). GPU contents of old nodes are overwritten on respawn. */
@@ -432,7 +537,8 @@ export class GpuGraph {
     to: number,
     edgeFrom: number,
     edgeTo: number,
-    colorOf: (group: number) => readonly [number, number, number]
+    colorOf: (group: number) => readonly [number, number, number],
+    carry?: ReadonlyMap<string, Vec3> | null
   ): void {
     if (to <= from) return;
     const { anchor, depth } = computeAnchors(store.edges, edgeFrom, edgeTo, from, to);
@@ -445,6 +551,11 @@ export class GpuGraph {
       const [r, g, b] = colorOf(store.groups[i]);
       this.colorCpu.set([r, g, b, 1], i * 4);
     }
+    const carried = carry
+      ? applyCarry(store.nodeIds, from, to, carry, this.posCpu, this.initCpu)
+      : [];
+    if (!carry) for (let i = from; i < to; i++) this.initCpu[i * 4 + 2] = 0;
+    markRanges(attrOf(this.pos), coalesceRanges(carried), 4);
     const range = [{ start: from, end: to }];
     markRanges(attrOf(this.initInfo), range, 4);
     markRanges(attrOf(this.colors), range, 4);
@@ -478,6 +589,7 @@ export class GpuGraph {
   appendEdges(store: GraphStore, from: number, to: number): void {
     if (to <= from) return;
     const start = this.edgeCount;
+    this.mapStoreEdges(store, from, to, start);
     this.edgeCount = appendWindowEdges(
       store.edges,
       from,
@@ -490,8 +602,19 @@ export class GpuGraph {
     this.syncCounts();
   }
 
+  /** Record the store index of every edge in [from, to) that appendWindowEdges will keep (same filter). */
+  private mapStoreEdges(store: GraphStore, from: number, to: number, dstCount: number): void {
+    let n = dstCount;
+    for (let e = from; e < to; e++) {
+      if (store.edges[2 * e] < this.nodeCount && store.edges[2 * e + 1] < this.nodeCount) {
+        this.edgeStoreCpu[n++] = e;
+      }
+    }
+  }
+
   /** Window changed: rebuild the whole windowed edge list (full upload). */
   rescanEdges(store: GraphStore): void {
+    this.mapStoreEdges(store, 0, store.edgeCount, 0);
     this.edgeCount = appendWindowEdges(
       store.edges,
       0,
@@ -536,6 +659,7 @@ export class GpuGraph {
 
   setArrowsVisible(on: boolean): void {
     this.arrows.visible = on;
+    this.pickArrows.visible = on;
   }
 
   /**
@@ -551,9 +675,8 @@ export class GpuGraph {
 
   setLook(dark: boolean): void {
     this.dark = dark;
-    const color = dark ? 0x9db4e0 : 0x4a5568;
-    this.shaftMat.color.set(color);
-    this.arrowMat.color.set(color);
+    this.uEdgeColor.value.set(dark ? 0x9db4e0 : 0x4a5568);
+    this.uRing.value.set(dark ? 0xffffff : 0x111827);
     this.syncCounts();
   }
 
@@ -589,6 +712,20 @@ export class GpuGraph {
     this.uSeed.value = this.uSeed.value + 1;
   }
 
+  /** Highlight indices (null = none): hovered node, selected node, hovered edge (GPU edge-list index). */
+  setHighlight(hover: number | null, selected: number | null, hoverEdge: number | null): void {
+    this.uHover.value = hover ?? NONE;
+    this.uSel.value = selected ?? NONE;
+    this.uHoverEdge.value = hoverEdge ?? NONE;
+  }
+
+  /** Current xyz of one node. */
+  async readNode(renderer: THREE.WebGPURenderer, i: number): Promise<[number, number, number]> {
+    const buf = await renderer.getArrayBufferAsync(attrOf(this.pos), null, i * 16, 16);
+    const f = new Float32Array(buf);
+    return [f[0], f[1], f[2]];
+  }
+
   /** Read the first `count` positions (vec4 each) back to the CPU. */
   async readPositions(renderer: THREE.WebGPURenderer, count: number): Promise<Float32Array> {
     const buf = await renderer.getArrayBufferAsync(attrOf(this.pos), null, 0, count * 16);
@@ -613,6 +750,7 @@ export class GpuGraph {
     this.shaftMat.dispose();
     this.arrowMat.dispose();
     this.nodeMat.dispose();
+    for (const m of this.pickMats) m.dispose();
     this.stepKernel.dispose();
     this.initKernel.dispose();
     for (const n of [

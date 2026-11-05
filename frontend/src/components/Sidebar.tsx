@@ -2,10 +2,18 @@ import { memo, useEffect, useState, type ReactNode } from "react";
 import { Check, Copy, PanelLeftClose } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { countToSlider, sliderToCount } from "@/engine/layout-utils";
-import { DEPTH_MAX, DEPTH_MIN, clampDepth } from "@/lib/sidebar-settings";
+import { NODE_LIMIT_DEFAULT, countToSlider, sliderToCount } from "@/engine/layout-utils";
+import { DEPTH_DEFAULT, DEPTH_MAX, DEPTH_MIN, clampDepth } from "@/lib/sidebar-settings";
 import { statusText, type StreamStatus } from "@/lib/use-graph-stream";
 import type { NodeInfo } from "@/lib/api";
+import { sortRelationCounts } from "@/lib/node-summary";
+
+export interface SelectedView {
+  iri: string;
+  status: "loading" | "ok" | "none" | "error";
+  info?: NodeInfo;
+  error?: string;
+}
 
 export interface LegendRow {
   name: string;
@@ -18,6 +26,7 @@ export interface SidebarProps {
   open: boolean;
   onToggle: () => void;
   rootIri: string;
+  selected: SelectedView | null;
   root: NodeInfo | null;
   rootColor: string;
   nodeLimit: number;
@@ -123,6 +132,87 @@ const Switch = ({
   </label>
 );
 
+function SelectedNode({ sel, legend }: { sel: SelectedView | null; legend: LegendRow[] }) {
+  if (!sel) return <p className="text-muted-foreground text-sm">Click a node to see details</p>;
+  const iri = (
+    <div className="flex items-center gap-1">
+      <code className="text-muted-foreground min-w-0 flex-1 truncate text-xs" title={sel.iri}>
+        {sel.iri}
+      </code>
+      <CopyButton text={sel.iri} />
+    </div>
+  );
+  if (sel.status === "loading")
+    return (
+      <div className="space-y-1" aria-busy="true">
+        <p className="text-muted-foreground text-sm">Loading details...</p>
+        {iri}
+      </div>
+    );
+  if (sel.status === "none")
+    return (
+      <div className="space-y-1">
+        <p className="text-muted-foreground text-sm">No details</p>
+        {iri}
+      </div>
+    );
+  if (sel.status === "error" || !sel.info)
+    return (
+      <div className="space-y-1">
+        <p role="alert" className="text-destructive text-sm break-words">
+          Could not load details: {sel.error ?? "unknown error"}
+        </p>
+        {iri}
+      </div>
+    );
+  const { info } = sel;
+  const color = legend.find((l) => l.name === info.group)?.color;
+  const rels = sortRelationCounts(info.relations);
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        {color && <Swatch color={color} />}
+        <span className="text-sm font-medium break-words">{info.label ?? "(unlabelled)"}</span>
+      </div>
+      {info.group && <div className="text-muted-foreground text-xs">{info.group}</div>}
+      {iri}
+      {info.types.length > 0 && (
+        <ul className="text-muted-foreground space-y-0.5 text-xs">
+          {info.types.map((t) => (
+            <li key={t} className="truncate" title={t}>
+              {t}
+            </li>
+          ))}
+        </ul>
+      )}
+      {rels.length > 0 && (
+        <table className="w-full text-xs">
+          <thead className="text-muted-foreground text-left">
+            <tr>
+              <th className="font-normal">Relation</th>
+              <th className="text-right font-normal">out</th>
+              <th className="text-right font-normal">in</th>
+            </tr>
+          </thead>
+          <tbody className="tabular-nums">
+            {rels.map((r) => (
+              <tr key={r.predicate}>
+                <td className="max-w-0 truncate pr-2" title={r.predicate}>
+                  {r.predicate.slice(
+                    Math.max(r.predicate.lastIndexOf("/"), r.predicate.lastIndexOf("#")) + 1
+                  ) || r.predicate}
+                </td>
+                <td className="text-right">{r.out.toLocaleString()}</td>
+                <td className="text-right">{r.in.toLocaleString()}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+}
+
 function Sidebar(p: SidebarProps) {
   const s = p.status;
   const { open, onToggle, depth, onDepth } = p;
@@ -180,7 +270,7 @@ function Sidebar(p: SidebarProps) {
         <Section title="Root">
           <div className="flex items-center gap-2">
             <Swatch color={p.rootColor} />
-            <span className="truncate text-sm font-medium" title={p.root?.label ?? undefined}>
+            <span className="min-w-0 text-sm font-medium break-words">
               {p.root?.label ?? "(unlabelled)"}
             </span>
           </div>
@@ -230,6 +320,17 @@ function Sidebar(p: SidebarProps) {
               onKeyDown={(e) => e.key === "Enter" && commitDepth()}
             />
           </label>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full"
+            onClick={() => {
+              p.onNodeLimit(NODE_LIMIT_DEFAULT);
+              onDepth(DEPTH_DEFAULT);
+            }}
+          >
+            Reset to defaults
+          </Button>
         </Section>
 
         <Section title="Status">
@@ -325,7 +426,11 @@ function Sidebar(p: SidebarProps) {
         </Section>
 
         <Section title="Selected node">
-          <p className="text-muted-foreground text-sm">Click a node to see details</p>
+          <SelectedNode sel={p.selected} legend={p.legend} />
+          <p className="text-muted-foreground border-t pt-2 text-xs">
+            Left-click: details &middot; Right-click: make root &middot; Drag: rotate &middot;
+            Scroll: zoom
+          </p>
         </Section>
       </aside>
     </>

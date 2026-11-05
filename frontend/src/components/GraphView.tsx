@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Maximize, Minimize, PanelLeftOpen, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fetchNode, type GraphGroupConfig, type NodeInfo } from "@/lib/api";
@@ -14,7 +14,9 @@ import {
   loadDepth,
   saveDepth,
 } from "@/lib/sidebar-settings";
-import Sidebar from "./Sidebar";
+import type { PickHit } from "@/engine/picking";
+import Sidebar, { type SelectedView } from "./Sidebar";
+import GraphTooltip from "./GraphTooltip";
 
 const NARROW = "(max-width: 767px)";
 const DEPTH_DEBOUNCE_MS = 500;
@@ -46,6 +48,12 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
   const [depth, setDepth] = useState(loadDepth);
   const [appliedDepth, setAppliedDepth] = useState(depth);
   const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia(NARROW).matches);
+  const [rootIri, setRootIri] = useState(DEFAULT_ROOT_IRI);
+  const [selected, setSelected] = useState<SelectedView | null>(null);
+  const selectAbort = useRef<AbortController | null>(null);
+  const [hover, setHover] = useState<PickHit | null>(null);
+  const tipRef = useRef<HTMLDivElement>(null);
+  const pointerRef = useRef({ x: 0, y: 0 });
   const [rootInfo, setRootInfo] = useState<NodeInfo | null>(null);
   const [shown, setShown] = useState(0);
   const [counts, setCounts] = useState<number[]>([]);
@@ -59,8 +67,8 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
 
   // Depth changes restart the stream; omitted max_hops (default 6) keeps the cached snapshot key.
   useEffect(() => {
-    start(DEFAULT_ROOT_IRI, { maxHops: depthToMaxHops(appliedDepth) });
-  }, [start, appliedDepth]);
+    start(rootIri, { maxHops: depthToMaxHops(appliedDepth) });
+  }, [start, appliedDepth, rootIri]);
 
   useEffect(() => {
     const t = setTimeout(() => setAppliedDepth(depth), DEPTH_DEBOUNCE_MS);
@@ -75,11 +83,75 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
 
   useEffect(() => {
     const ctrl = new AbortController();
-    fetchNode(DEFAULT_ROOT_IRI, ctrl.signal)
+    fetchNode(rootIri, ctrl.signal)
       .then(setRootInfo)
       .catch(() => undefined);
     return () => ctrl.abort();
+  }, [rootIri]);
+
+  const clearSelection = useCallback(() => {
+    selectAbort.current?.abort();
+    selectAbort.current = null;
+    setSelected(null);
+    engineRef.current?.setSelected(null);
   }, []);
+
+  const selectNode = useCallback(
+    (index: number) => {
+      const iri = store.nodeIds[index];
+      if (iri === undefined) return;
+      selectAbort.current?.abort();
+      const ctrl = new AbortController();
+      selectAbort.current = ctrl;
+      engineRef.current?.setSelected(index);
+      setSelected({ iri, status: "loading" });
+      fetchNode(iri, ctrl.signal)
+        .then((info) => {
+          if (ctrl.signal.aborted) return;
+          setSelected({ iri, status: info ? "ok" : "none", info: info ?? undefined });
+        })
+        .catch((err: unknown) => {
+          if (ctrl.signal.aborted) return;
+          setSelected({
+            iri,
+            status: "error",
+            error: err instanceof Error ? err.message : String(err),
+          });
+        });
+    },
+    [store]
+  );
+
+  /** Right click: the node becomes the new root; positions of known nodes carry over. */
+  const makeRoot = useCallback(
+    (index: number) => {
+      const iri = store.nodeIds[index];
+      if (iri === undefined || iri === rootIri) return;
+      engineRef.current?.captureForReroot();
+      clearSelection();
+      setHover(null);
+      setRootInfo(null);
+      setRootIri(iri);
+    },
+    [store, clearSelection, rootIri]
+  );
+  const handlersRef = useRef({ selectNode, clearSelection, makeRoot });
+  handlersRef.current = { selectNode, clearSelection, makeRoot };
+
+  // hover card follows the pointer (direct style writes, no re-render per move)
+  const placeTip = useCallback(() => {
+    const tip = tipRef.current;
+    const wrap = wrapRef.current;
+    if (!tip || !wrap) return;
+    const r = wrap.getBoundingClientRect();
+    let x = pointerRef.current.x - r.left + 14;
+    let y = pointerRef.current.y - r.top + 14;
+    if (x + tip.offsetWidth > r.width - 4) x = pointerRef.current.x - r.left - 14 - tip.offsetWidth;
+    if (y + tip.offsetHeight > r.height - 4)
+      y = pointerRef.current.y - r.top - 14 - tip.offsetHeight;
+    tip.style.transform = `translate(${Math.max(4, x)}px, ${Math.max(4, y)}px)`;
+  }, []);
+  useLayoutEffect(placeTip, [hover, placeTip]);
 
   const onGroupVisible = useCallback((index: number, visible: boolean) => {
     const next = new Set(hiddenRef.current);
@@ -129,6 +201,20 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
         engine = e;
         engineRef.current = e;
         e.onError = setEngineError;
+        e.onGenerationReset = () => handlersRef.current.clearSelection();
+        e.setHandlers({
+          onHover: (hit, at) => {
+            if (hit) pointerRef.current = at;
+            setHover(hit);
+          },
+          onClick: (hit) => {
+            if (hit?.kind === "node") handlersRef.current.selectNode(hit.index);
+            else handlersRef.current.clearSelection();
+          },
+          onContextMenu: (hit) => {
+            if (hit?.kind === "node") handlersRef.current.makeRoot(hit.index);
+          },
+        });
         e.setNodeLimit(nodeLimitRef.current);
         const st = settingsRef.current;
         if (st.dim !== 3) e.setDim(st.dim);
@@ -193,7 +279,8 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
       <Sidebar
         open={sidebarOpen}
         onToggle={onToggleSidebar}
-        rootIri={DEFAULT_ROOT_IRI}
+        rootIri={rootIri}
+        selected={selected}
         root={rootInfo}
         rootColor={rootColor}
         nodeLimit={nodeLimit}
@@ -214,8 +301,16 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
         onArrows={onArrows}
         onResetView={onResetView}
       />
-      <div ref={wrapRef} className="bg-background relative min-h-0 min-w-0 flex-1 overflow-hidden">
+      <div
+        ref={wrapRef}
+        className="bg-background relative min-h-0 min-w-0 flex-1 overflow-hidden"
+        onPointerMove={(e) => {
+          pointerRef.current = { x: e.clientX, y: e.clientY };
+          if (hover) placeTip();
+        }}
+      >
         <div ref={hostRef} className="absolute inset-0" data-slot="canvas-host" />
+        {hover && <GraphTooltip ref={tipRef} store={store} hit={hover} />}
         {engineError && (
           <div
             role="alert"

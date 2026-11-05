@@ -12,14 +12,45 @@ import {
   nextAlpha,
   roundCapacity,
 } from "./layout-utils";
+import {
+  CLICK_MAX_MOVE_PX,
+  DOUBLE_TAP_MS,
+  DOUBLE_TAP_PX,
+  TOUCH_TAP_MAX_MS,
+  buildCarryMap,
+  choosePick,
+  classifyPointer,
+  type PickHit,
+  type PointerSample,
+  type Vec3,
+} from "./picking";
 import { WebGpuUnavailableError, assertWebGpu, cssToRgb } from "./webgpu";
 
-/** TODO(F4/F5): picking. Node index = store index; `null` = nothing under the pointer. */
-export interface EngineHandlers {
-  onHover?: (index: number | null) => void;
-  onClick?: (index: number | null, event: PointerEvent) => void;
-  onContextMenu?: (index: number | null, event: MouseEvent) => void;
+/** Client-space pointer position. */
+export interface PointerAt {
+  x: number;
+  y: number;
 }
+
+/**
+ * Picking callbacks. `hit` is null over empty space; node hits carry the store index.
+ * `onClick` = left click / tap, `onContextMenu` = right click / long-press.
+ */
+export interface EngineHandlers {
+  onHover?: (hit: PickHit | null, at: PointerAt) => void;
+  onClick?: (hit: PickHit | null, at: PointerAt) => void;
+  onContextMenu?: (hit: PickHit | null, at: PointerAt) => void;
+}
+
+/** Previous graph's node ids + (async) positions, for re-root position carry-over. */
+interface CarrySnapshot {
+  map: Map<string, Vec3> | null;
+  failed: boolean;
+}
+const CARRY_WAIT_MS = 300;
+const PICK_N = 9; // pick window (device px): +-4 px around the pointer
+const HOVER_INTERVAL_MS = 33;
+const LONG_PRESS_MS = 600;
 
 type Rgb = readonly [number, number, number];
 const FIT_EASE = 0.08;
@@ -69,9 +100,41 @@ export class Engine {
   private fitBusy = false;
   private lastFitRead = 0;
   private fitAfterFreeze = false;
+  /** Camera distance never drops below this until the final (post-freeze) fit; avoids zoom oscillation. */
+  private distFloor = 0;
+  /** After a re-root: keep the orbit target on the (carried) root until the final fit. */
+  private anchored = false;
+  private anchorPending = false;
   private viewDir = new THREE.Vector3(0, 0, 1);
-  /** TODO(F4/F5): read by the picking code once it exists. */
   handlers: EngineHandlers = {};
+  private readonly pickRT = new THREE.RenderTarget(PICK_N, PICK_N, {
+    depthBuffer: true,
+    type: THREE.UnsignedByteType,
+    format: THREE.RGBAFormat,
+    minFilter: THREE.NearestFilter,
+    magFilter: THREE.NearestFilter,
+    generateMipmaps: false,
+  });
+  private readonly pickSize = new THREE.Vector2();
+  private readonly pickClear = new THREE.Color();
+  private hoverHit: PickHit | null = null;
+  private hoverPos: PointerAt | null = null; // client coords of the latest pointer move
+  private hoverDirty = false;
+  private hoverBusy = false;
+  private lastHoverPick = 0;
+  private selected: number | null = null;
+  private down: (PointerSample & { button: number; touch: boolean }) | null = null;
+  private readonly pointers = new Set<number>();
+  private longTimer: ReturnType<typeof setTimeout> | undefined;
+  private longFired = false;
+  private readonly unbind: (() => void)[] = [];
+  /** Positions of the previous graph for a re-root (see captureForReroot). */
+  private snapshot: CarrySnapshot | null = null; // taken by captureForReroot, consumed by resetGeneration
+  private carry: { entry: CarrySnapshot; generation: number; since: number } | null = null;
+  private focusTarget: THREE.Vector3 | null = null;
+  private focusDist = 0;
+  /** Graph radius (world units) used for the clip planes and zoom limits; refined by the fit. */
+  private graphRadius = 0;
   private readonly hidden = new Set<number>(); // hidden group indices (-1 = unclassified)
   private visibilityDirty = false;
   private visibilityStale = false;
@@ -103,6 +166,8 @@ export class Engine {
     this.controls.addEventListener("start", () => (this.fitting = false));
     this.setViewDir();
     this.camera.position.copy(this.viewDir).multiplyScalar(this.estimateDist(1));
+
+    this.bindPointer(canvas);
 
     this.resizeObs = new ResizeObserver(() => this.resize());
     this.resizeObs.observe(host);
@@ -154,7 +219,67 @@ export class Engine {
   }
 
   setHandlers(h: EngineHandlers): void {
-    this.handlers = h; // TODO(F4/F5): raycast/GPU-pick and call these
+    this.handlers = h;
+  }
+
+  /** Highlight a node as selected (store index; null clears). */
+  setSelected(index: number | null): void {
+    this.selected = index;
+    this.applyHighlight();
+  }
+
+  private applyHighlight(): void {
+    const h = this.hoverHit;
+    this.gpu?.setHighlight(
+      h?.kind === "node" ? h.index : null,
+      this.selected,
+      h?.kind === "edge" ? h.index : null
+    );
+  }
+
+  /**
+   * Call right BEFORE restarting the stream with a new root: snapshots the current node
+   * ids and reads their positions back (async); nodes of the next generation whose id was
+   * present spawn at their old position. Nodes arriving before the readback resolves use
+   * normal anchor placement.
+   */
+  captureForReroot(): void {
+    const store = this.store;
+    const gpu = this.gpu;
+    if (!store || !gpu || gpu.nodeCount === 0) {
+      this.snapshot = null;
+      return;
+    }
+    const ids = store.nodeIds.slice(0, gpu.nodeCount);
+    const entry: CarrySnapshot = { map: null, failed: false };
+    this.snapshot = entry;
+    gpu
+      .readPositions(this.renderer, ids.length)
+      .then((pos) => {
+        entry.map = buildCarryMap(ids, pos);
+      })
+      .catch((err: unknown) => {
+        console.warn("position carry-over readback failed", err);
+        entry.failed = true;
+      });
+  }
+
+  /** Smoothly move the orbit target to node `index` (and zoom in if far away). */
+  focusOn(index: number): void {
+    const gpu = this.gpu;
+    if (!gpu || index < 0 || index >= gpu.nodeCount) return;
+    gpu
+      .readNode(this.renderer, index)
+      .then(([x, y, z]) => {
+        if (this.disposed || this.gpu !== gpu) return;
+        this.fitting = false;
+        this.focusTarget = new THREE.Vector3(x, y, this.dim === 2 ? 0 : z);
+        this.focusDist = Math.min(
+          this.camera.position.distanceTo(this.controls.target),
+          this.cfg.rest * 6
+        );
+      })
+      .catch((err: unknown) => console.warn("focus readback failed", err));
   }
 
   /**
@@ -190,6 +315,8 @@ export class Engine {
   /** Re-frame the whole graph and resume auto-fit while the graph grows. */
   resetView(): void {
     this.fitting = true;
+    this.distFloor = 0;
+    this.anchored = false;
     this.setViewDir();
     const d = this.camera.position.distanceTo(this.controls.target) || this.estimateDist(1);
     this.camera.position.copy(this.controls.target).addScaledVector(this.viewDir, d);
@@ -227,6 +354,9 @@ export class Engine {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    clearTimeout(this.longTimer);
+    this.unbind.forEach((u) => u());
+    this.pickRT.dispose();
     this.renderer.setAnimationLoop(null);
     this.resizeObs.disconnect();
     this.themeObs.disconnect();
@@ -306,8 +436,236 @@ export class Engine {
       }
     }
     this.updateFit(now);
+    this.updateFocus();
+    this.updateClip();
     this.controls.update();
     void this.renderer.render(this.scene, this.camera);
+    if (this.hoverDirty && !this.hoverBusy && now - this.lastHoverPick >= HOVER_INTERVAL_MS) {
+      this.hoverDirty = false;
+      this.lastHoverPick = now;
+      this.pickHover();
+    }
+  }
+
+  /**
+   * Clip planes and zoom limits follow the current zoom every frame (fixed planes blacked
+   * out the graph when zooming in past `near` or out past `far`).
+   */
+  private updateClip(): void {
+    const nodeR = this.gpu?.radius ?? this.cfg.rest / 6;
+    const radius = Math.max(this.graphRadius, this.estimateDist(1) / 4, nodeR * 4);
+    const dist = this.camera.position.distanceTo(this.controls.target);
+    const near = Math.max(0.05, dist * 0.002);
+    const far = dist + radius * 4;
+    this.controls.minDistance = nodeR * 1.5;
+    this.controls.maxDistance = Math.max(radius * 20, dist);
+    const c = this.camera;
+    if (Math.abs(near - c.near) > c.near * 0.05 || Math.abs(far - c.far) > c.far * 0.05) {
+      c.near = near;
+      c.far = far;
+      c.updateProjectionMatrix();
+    }
+  }
+
+  /** Ease the orbit target (camera shifts with it) towards `focusTarget`. */
+  private updateFocus(): void {
+    const t = this.focusTarget;
+    if (!t) return;
+    const target = this.controls.target;
+    const offset = this.camera.position.clone().sub(target);
+    const dist = offset.length() || this.focusDist;
+    target.lerp(t, 0.12);
+    offset.setLength(dist + (this.focusDist - dist) * 0.12);
+    this.camera.position.copy(target).add(offset);
+    if (
+      target.distanceTo(t) < 1e-2 * Math.max(1, this.focusDist) &&
+      Math.abs(dist - this.focusDist) < 1e-2 * this.focusDist
+    ) {
+      this.focusTarget = null;
+    }
+  }
+
+  // ---- picking -----------------------------------------------------------------
+
+  /**
+   * GPU pick at client position: renders the id twins of the nodes/edges into a 9x9 target
+   * (camera view offset = the window around the pointer, so only ~81 fragments are shaded;
+   * vertex work equals one cheap extra frame of the instanced draws), then reads the 324
+   * bytes back asynchronously. Resolves with the nearest node, else the nearest edge.
+   */
+  private pickAt(clientX: number, clientY: number): Promise<PickHit | null> {
+    const gpu = this.gpu;
+    if (!gpu || gpu.nodeCount === 0 || this.failed || this.disposed) return Promise.resolve(null);
+    const gen = this.generation;
+    const nodes = gpu.nodeCount;
+    const edges = gpu.edgeCount;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.renderer.getDrawingBufferSize(this.pickSize);
+    const sx = this.pickSize.x / Math.max(1, rect.width);
+    const sy = this.pickSize.y / Math.max(1, rect.height);
+    const px = Math.floor((clientX - rect.left) * sx);
+    const py = Math.floor((clientY - rect.top) * sy);
+    const r = this.renderer;
+    const half = (PICK_N - 1) / 2;
+    const prevAlpha = r.getClearAlpha();
+    r.getClearColor(this.pickClear);
+    const prevRT = r.getRenderTarget();
+    this.camera.setViewOffset(
+      this.pickSize.x,
+      this.pickSize.y,
+      px - half,
+      py - half,
+      PICK_N,
+      PICK_N
+    );
+    r.setClearColor(0x000000, 0);
+    r.setRenderTarget(this.pickRT);
+    try {
+      void r.render(gpu.pickScene, this.camera);
+    } finally {
+      r.setRenderTarget(prevRT);
+      r.setClearColor(this.pickClear, prevAlpha);
+      this.camera.clearViewOffset();
+    }
+    return r.readRenderTargetPixelsAsync(this.pickRT, 0, 0, PICK_N, PICK_N).then((buf) => {
+      if (this.disposed || this.gpu !== gpu || this.generation !== gen) return null;
+      const c = choosePick(buf as unknown as Uint8Array, PICK_N);
+      if (!c) return null;
+      if (c.kind === "node") return c.index < nodes ? { kind: "node", index: c.index } : null;
+      if (c.index >= edges) return null;
+      return {
+        kind: "edge",
+        index: c.index,
+        src: gpu.edgeCpu[2 * c.index],
+        dst: gpu.edgeCpu[2 * c.index + 1],
+        storeEdge: gpu.edgeStoreCpu[c.index],
+      };
+    });
+  }
+
+  private pickHover(): void {
+    const at = this.hoverPos;
+    if (!at) return;
+    this.hoverBusy = true;
+    const gen = this.generation;
+    this.pickAt(at.x, at.y)
+      .then((hit) => {
+        if (gen !== this.generation || !this.hoverPos) return;
+        const prev = this.hoverHit;
+        const same = prev?.kind === hit?.kind && prev?.index === hit?.index;
+        if (same && hit) return;
+        if (!hit && !prev) return;
+        this.hoverHit = hit;
+        this.applyHighlight();
+        this.handlers.onHover?.(hit, this.hoverPos ?? at);
+      })
+      .catch((err: unknown) => console.warn("pick failed", err))
+      .finally(() => (this.hoverBusy = false));
+  }
+
+  private clearHover(): void {
+    this.hoverDirty = false;
+    this.hoverPos = null;
+    if (!this.hoverHit) return;
+    this.hoverHit = null;
+    this.applyHighlight();
+    this.handlers.onHover?.(null, { x: 0, y: 0 });
+  }
+
+  private bindPointer(canvas: HTMLCanvasElement): void {
+    const on = <K extends keyof HTMLElementEventMap>(
+      type: K,
+      fn: (e: HTMLElementEventMap[K]) => void
+    ) => {
+      canvas.addEventListener(type, fn);
+      this.unbind.push(() => canvas.removeEventListener(type, fn));
+    };
+    const cancelLong = () => clearTimeout(this.longTimer);
+    let lastTap: PointerSample | null = null;
+    const resetPointers = () => {
+      this.pointers.clear();
+      this.down = null;
+      cancelLong();
+    };
+    window.addEventListener("blur", resetPointers);
+    this.unbind.push(() => window.removeEventListener("blur", resetPointers));
+    on("lostpointercapture", (e) => this.pointers.delete(e.pointerId));
+    on("wheel", () => (this.focusTarget = null));
+    const sample = (e: PointerEvent) => ({ x: e.clientX, y: e.clientY, t: performance.now() });
+    const fire = (kind: "onClick" | "onContextMenu", at: PointerAt) =>
+      void this.pickAt(at.x, at.y)
+        .then((hit) => this.handlers[kind]?.(hit, at))
+        .catch((err: unknown) => console.warn("pick failed", err));
+
+    on("pointerdown", (e) => {
+      this.pointers.add(e.pointerId);
+      this.focusTarget = null; // user takes over the camera
+      this.clearHover();
+      cancelLong();
+      if (this.pointers.size > 1) {
+        this.down = null; // multi-touch = camera gesture
+        return;
+      }
+      this.down = { ...sample(e), button: e.button, touch: e.pointerType === "touch" };
+      this.longFired = false;
+      if (e.pointerType === "touch") {
+        const at = { x: e.clientX, y: e.clientY };
+        this.longTimer = setTimeout(() => {
+          if (!this.down) return;
+          this.longFired = true;
+          fire("onContextMenu", at);
+        }, LONG_PRESS_MS);
+      }
+    });
+    on("pointermove", (e) => {
+      if (this.down) {
+        if (Math.hypot(e.clientX - this.down.x, e.clientY - this.down.y) > CLICK_MAX_MOVE_PX) {
+          cancelLong();
+        }
+        return;
+      }
+      if (e.pointerType === "touch" || e.buttons !== 0) return;
+      this.hoverPos = { x: e.clientX, y: e.clientY };
+      this.hoverDirty = true;
+    });
+    const end = (e: PointerEvent) => {
+      this.pointers.delete(e.pointerId);
+      cancelLong();
+      const d = this.down;
+      this.down = null;
+      if (!d) return;
+      if (this.longFired || e.type === "pointercancel") return;
+      const up = sample(e);
+      if (
+        classifyPointer(d, up, CLICK_MAX_MOVE_PX, d.touch ? TOUCH_TAP_MAX_MS : Infinity) !== "click"
+      )
+        return;
+      const at = { x: e.clientX, y: e.clientY };
+      if (d.touch && d.button === 0) {
+        const prev = lastTap;
+        if (
+          prev &&
+          up.t - prev.t <= DOUBLE_TAP_MS &&
+          Math.hypot(up.x - prev.x, up.y - prev.y) <= DOUBLE_TAP_PX
+        ) {
+          lastTap = null;
+          void this.pickAt(at.x, at.y).then((hit) => {
+            if (hit?.kind === "node") this.focusOn(hit.index);
+          });
+        } else lastTap = up;
+      }
+      if (d.button === 0) fire("onClick", at);
+      else if (d.button === 2) fire("onContextMenu", at);
+    };
+    on("pointerup", end);
+    on("pointercancel", end);
+    on("pointerleave", () => this.clearHover());
+    on("contextmenu", (e) => e.preventDefault());
+    on("dblclick", (e) => {
+      void this.pickAt(e.clientX, e.clientY).then((hit) => {
+        if (hit?.kind === "node") this.focusOn(hit.index);
+      });
+    });
   }
 
   /** Apply store deltas to the GPU (partial uploads only; existing nodes keep simulating). */
@@ -321,6 +679,24 @@ export class Engine {
     const gpu = this.gpu;
     if (!gpu) return;
 
+    if (this.carry && store.generation !== this.carry.generation) this.carry = null;
+    let carry: Map<string, Vec3> | null = null;
+    if (this.carry) {
+      const { entry, since } = this.carry;
+      if (entry.map) {
+        carry = entry.map;
+        if (this.anchorPending && store.nodeCount > 0) {
+          this.anchorPending = false;
+          const root = entry.map.get(store.nodeIds[0]);
+          if (root && this.fitting) {
+            this.anchored = true;
+            this.fitCenter.set(...root);
+            if (this.dim === 2) this.fitCenter.z = 0;
+          }
+        }
+      } else if (entry.failed || now - since >= CARRY_WAIT_MS) this.carry = null;
+      else return; // readback pending: hold the new nodes back (they stay queued in the store)
+    }
     const ch = store.takeChanges(); // recolours; node/edge cursors are tracked here (windowed)
     const target = Math.min(this.windowN, store.nodeCount);
     const prevNodes = gpu.nodeCount;
@@ -330,14 +706,22 @@ export class Engine {
       this.windowDirty = false;
       if (target < prevNodes) gpu.truncate(target);
       else if (target > prevNodes)
-        gpu.addNodes(store, prevNodes, target, 0, store.edgeCount, this.colorOf); // anchors from all edges
+        gpu.addNodes(store, prevNodes, target, 0, store.edgeCount, this.colorOf, carry); // anchors from all edges
       gpu.rescanEdges(store);
       this.edgesScanned = store.edgeCount;
       heat = this.cfg.alphaLimitChange;
       gpu.setSettled(Math.min(prevNodes, target));
     } else {
       if (target > prevNodes) {
-        gpu.addNodes(store, prevNodes, target, this.edgesScanned, store.edgeCount, this.colorOf);
+        gpu.addNodes(
+          store,
+          prevNodes,
+          target,
+          this.edgesScanned,
+          store.edgeCount,
+          this.colorOf,
+          carry
+        );
       }
       if (store.edgeCount > this.edgesScanned) {
         gpu.appendEdges(store, this.edgesScanned, store.edgeCount);
@@ -382,8 +766,16 @@ export class Engine {
   }
 
   private resetGeneration(store: GraphStore): void {
-    this.onGenerationReset?.(this.gpu?.nodeCount ?? 0); // TODO(F5): carry positions over
+    this.onGenerationReset?.(this.gpu?.nodeCount ?? 0);
     this.generation = store.generation;
+    this.selected = null;
+    this.clearHover();
+    this.focusTarget = null;
+    const snap = this.snapshot;
+    this.snapshot = null;
+    this.carry = snap
+      ? { entry: snap, generation: store.generation, since: performance.now() }
+      : null;
     this.gpu?.clear();
     this.csrDirty = false;
     this.regrowFailed = false;
@@ -392,7 +784,14 @@ export class Engine {
     this.windowDirty = false;
     this.gpu?.reseed();
     this.alpha = this.cfg.alphaStart;
-    this.resetView();
+    // Keep the orbit direction and distance (no jump): the fit only grows the distance while
+    // streaming, optionally anchored on the carried root, with one final fit at freeze.
+    this.fitting = true;
+    this.fitAfterFreeze = false;
+    this.lastFitRead = 0;
+    this.anchored = false;
+    this.anchorPending = snap !== null;
+    this.distFloor = this.camera.position.distanceTo(this.controls.target);
   }
 
   /**
@@ -430,6 +829,7 @@ export class Engine {
         vel,
         colors: old.colorCpu,
         edges: old.edgeCpu,
+        edgeStore: old.edgeStoreCpu,
         nodeCount: old.nodeCount,
         edgeCount: old.edgeCount,
       });
@@ -454,6 +854,7 @@ export class Engine {
     gpu.setLook(this.dark);
     gpu.setEdgeOpacityScale(this.edgeOpacityScale);
     gpu.setArrowsVisible(this.arrowsOn);
+    this.applyHighlight();
     this.visibilityDirty = true;
     this.csrDirty = true;
   }
@@ -473,6 +874,7 @@ export class Engine {
       this.lastFitRead === 0;
     if (due && !this.fitBusy && !this.rebuilding) {
       this.fitBusy = true;
+      const final = this.fitAfterFreeze;
       this.fitAfterFreeze = false;
       this.lastFitRead = now;
       const gen = this.generation;
@@ -483,20 +885,33 @@ export class Engine {
           if (this.disposed || this.gpu !== gpu || gen !== this.generation) return;
           const fit = fitFromPositions(pos, count, 4, this.cfg.fitPercentile);
           const radius = Math.max(fit.radius + gpu.radius, this.cfg.rest); // include sphere size
-          this.fitCenter.set(...fit.center);
+          let center: Vec3 = fit.center;
+          let r = radius;
+          if (final) this.anchored = false;
+          if (this.anchored) {
+            // frame the graph around the root: radius grows by the root-to-centroid offset
+            center = [pos[0], pos[1], pos[2]];
+            r += Math.hypot(
+              center[0] - fit.center[0],
+              center[1] - fit.center[1],
+              center[2] - fit.center[2]
+            );
+          }
+          this.fitCenter.set(...center);
           if (this.dim === 2) this.fitCenter.z = 0;
-          this.fitDist = fitDistance(radius, FOV);
+          const d = fitDistance(r, FOV);
+          const base = this.fitValid ? this.fitDist : this.distFloor;
+          this.fitDist = final ? d : Math.max(d, base);
           this.fitValid = true;
-          this.camera.near = Math.max(0.01, radius * 0.01);
-          this.camera.far = Math.max(1000, (this.fitDist + radius) * 10);
-          this.camera.updateProjectionMatrix();
-          this.controls.maxDistance = this.fitDist * 20;
+          this.graphRadius = radius;
         })
         .catch((err: unknown) => console.warn("camera fit readback failed", err))
         .finally(() => (this.fitBusy = false));
     }
-    const center = this.fitValid ? this.fitCenter : this.controls.target;
-    const want = this.fitValid ? this.fitDist : this.estimateDist(gpu.nodeCount);
+    const center = this.fitValid || this.anchored ? this.fitCenter : this.controls.target;
+    const want = this.fitValid
+      ? this.fitDist
+      : Math.max(this.estimateDist(gpu.nodeCount), this.distFloor);
     const target = this.controls.target;
     const offset = this.camera.position.clone().sub(target);
     const dist = offset.length() || want;
