@@ -90,7 +90,8 @@ class ConfigResponse(BaseModel):
 # is expanded: edges among last-hop or max_nodes-truncated nodes are not fetched.
 
 #: ``max_nodes``: node budget reached. ``truncated``: an edge query hit its
-#: LIMIT (hub), so the result is partial although the BFS ran to exhaustion or
+#: LIMIT (hub) or the per-node ``max_fanout`` cap dropped neighbours, so the
+#: result is partial although the BFS ran to exhaustion or
 #: ``max_hops``. ``exhausted`` / ``max_hops`` therefore mean a complete BFS.
 DoneReason = Literal[
     "exhausted", "max_nodes", "max_hops", "time_budget", "truncated", "error"
@@ -124,6 +125,8 @@ class StreamMeta(BaseModel):
     root: str
     max_nodes: int
     max_hops: int
+    #: New neighbours taken per node and hop (0 = no cap).
+    max_fanout: int = 0
     #: Set on a replay from the snapshot cache (``built_at``: ISO UTC build time).
     cached: bool | None = None
     built_at: str | None = None

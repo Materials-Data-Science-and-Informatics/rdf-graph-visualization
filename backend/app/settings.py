@@ -22,6 +22,28 @@ DEFAULT_STREAM_CACHE_DIR = str(
     Path(__file__).resolve().parents[1] / ".cache" / "stream"
 )
 DEFAULT_ROOT_IRI = "https://ror.org/0281dp749"
+#: Root presets whose default view is prewarmed: the Helmholtz Association and its
+#: 18 centres (ROR; same list as the frontend's ``lib/centers.ts``).
+HELMHOLTZ_CENTRE_IRIS = (
+    "https://ror.org/032e6b942",  # AWI
+    "https://ror.org/02njgxr09",  # CISPA
+    "https://ror.org/01js2sh04",  # DESY
+    "https://ror.org/04cdgtt98",  # DKFZ
+    "https://ror.org/04bwf3e34",  # DLR
+    "https://ror.org/043j0f473",  # DZNE
+    "https://ror.org/02nv7yv05",  # FZJ
+    "https://ror.org/02h2x0161",  # GEOMAR
+    "https://ror.org/04z8jg394",  # GFZ
+    "https://ror.org/02k8cbn47",  # GSI
+    "https://ror.org/00cfam450",  # Helmholtz Munich
+    "https://ror.org/03qjp1d79",  # Hereon
+    "https://ror.org/02aj13c28",  # HZB
+    "https://ror.org/01zy2cs03",  # HZDR
+    "https://ror.org/03d0p2685",  # HZI
+    "https://ror.org/04t3en479",  # KIT
+    "https://ror.org/04p5ggc03",  # MDC
+    "https://ror.org/000h6jb29",  # UFZ
+)
 
 
 @dataclass(frozen=True)
@@ -39,6 +61,10 @@ class Settings:  # pylint: disable=too-many-instance-attributes
     stream_max_hops: int = 8
     stream_max_time_budget_s: float = 300.0
     stream_multi_relation: bool = True
+    #: Max new neighbours taken per node and hop (0 = no cap): spends the node
+    #: budget on deeper hops instead of one hub's leaves.
+    stream_default_fanout: int = 200
+    stream_max_fanout: int = 100_000
     #: /api/stream snapshot cache (see ``app.snapshot``): TTL <= 0 disables it
     #: (and the prewarm); the prewarm rebuilds the default view every
     #: ``stream_refresh_s`` (default 0.8 * TTL, clamped to <= 0.9 * TTL so the old
@@ -49,6 +75,8 @@ class Settings:  # pylint: disable=too-many-instance-attributes
     stream_cache_max_bytes: int = 1 << 30
     default_root_iri: str = DEFAULT_ROOT_IRI
     default_max_nodes: int = 100_000
+    #: Extra roots prewarmed after the default root (PREWARM_ROOTS, comma-separated).
+    prewarm_roots: tuple[str, ...] = HELMHOLTZ_CENTRE_IRIS
 
     @classmethod
     def from_env(cls) -> Settings:
@@ -70,6 +98,7 @@ class Settings:  # pylint: disable=too-many-instance-attributes
             ),
             stream_multi_relation=os.environ.get("STREAM_MULTI_RELATION", "1")
             not in ("0", "false", "no"),
+            stream_default_fanout=max(0, int(os.environ.get("STREAM_FANOUT", "200"))),
             stream_cache_dir=os.environ.get("STREAM_CACHE_DIR")
             or DEFAULT_STREAM_CACHE_DIR,
             stream_cache_ttl_s=ttl,
@@ -80,5 +109,12 @@ class Settings:  # pylint: disable=too-many-instance-attributes
             default_root_iri=os.environ.get("DEFAULT_ROOT_IRI", DEFAULT_ROOT_IRI),
             default_max_nodes=max(
                 1, int(os.environ.get("DEFAULT_MAX_NODES", "100000"))
+            ),
+            prewarm_roots=tuple(
+                r.strip()
+                for r in os.environ.get(
+                    "PREWARM_ROOTS", ",".join(HELMHOLTZ_CENTRE_IRIS)
+                ).split(",")
+                if r.strip()
             ),
         )

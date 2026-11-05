@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Snapshot cache + single-flight builds behind ``/api/stream``.
 
-Key = ``(root, effective max_nodes, effective max_hops)``. A run that ends
+Key = ``(root, effective max_nodes, effective max_hops, effective max_fanout)``. A run that ends
 with a ``done`` reason in ``CACHEABLE`` is stored as gzip NDJSON (the recorded
 events, ``ping`` excluded) in ``STREAM_CACHE_DIR``; ``error``/``time_budget``
 runs are never stored. Files are written to a temp name and renamed
@@ -40,7 +40,7 @@ from typing import Any
 log = logging.getLogger("uvicorn.error")  # same handlers as the server log
 
 Event = dict[str, Any]
-Key = tuple[str, int, int]
+Key = tuple[str, int, int, int]
 
 CACHEABLE = frozenset({"exhausted", "max_nodes", "max_hops", "truncated"})
 #: Concurrent builds (distinct keys) per process.

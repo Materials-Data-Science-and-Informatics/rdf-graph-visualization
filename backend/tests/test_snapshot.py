@@ -29,7 +29,7 @@ from app.main import app
 from tests.test_stream import FakeClient, R, run, url
 
 EVENT = TypeAdapter(contract.StreamEvent)
-KEY = (R, 1000, 6)
+KEY = (R, 1000, 6, 200)
 
 
 @pytest.fixture()
@@ -62,7 +62,7 @@ def test_miss_builds_then_hit_replays_identical_events(cache, fake_client) -> No
     assert queries > 0 and first[-1]["reason"] == "exhausted"
     assert "cached" not in first[0]
     assert [f.name for f in files(cache)] == [
-        snapshot.path_for(cache, (R, 100000, 6)).name
+        snapshot.path_for(cache, (R, 100000, 6, 200)).name
     ]  # hashed name, no leftovers
 
     second, resp = run(url(max_hops=6))
@@ -86,7 +86,7 @@ def test_replay_is_batched(cache, fake_client, monkeypatch) -> None:
     chunks = []
 
     async def go() -> None:
-        replay = await snapshot.open_fresh(cache, (R, 100000, 6), 3600)
+        replay = await snapshot.open_fresh(cache, (R, 100000, 6, 200), 3600)
         assert replay is not None
         chunks.extend([c async for c in replay])
 
@@ -151,7 +151,7 @@ def test_ttl_zero_disables_cache(cache, fake_client, monkeypatch) -> None:
 
 
 def test_unreadable_snapshot_is_a_miss(cache, fake_client) -> None:
-    path = snapshot.path_for(cache, (R, 100000, 6))
+    path = snapshot.path_for(cache, (R, 100000, 6, 200))
     path.write_bytes(b"not gzip")
     events, _ = run(url())
     assert events[-1]["reason"] == "exhausted" and "cached" not in events[0]
@@ -204,7 +204,7 @@ def test_build_survives_subscriber_disconnect_and_is_stored(cache) -> None:
 
     async def go() -> None:
         cfg = stream.Settings.from_env()
-        build = stream._ensure_build(cfg, (R, 100000, 6))  # pylint: disable=protected-access
+        build = stream._ensure_build(cfg, (R, 100000, 6, 200))  # pylint: disable=protected-access
         assert build and build.task
         gen = snapshot.follow(build, deadline=time.monotonic() + 30, heartbeat_s=5)
         await anext(gen)
@@ -291,8 +291,10 @@ def test_sweep_drops_expired_and_stale_tmp(cache) -> None:
     past = time.time() - 7200
     for f in (old, stale):
         os.utime(f, (past, past))
-    snapshot.write(cache, (R, 5, 1), lines("exhausted"), 3600)
-    assert [f.name for f in files(cache)] == [snapshot.path_for(cache, (R, 5, 1)).name]
+    snapshot.write(cache, (R, 5, 1, 200), lines("exhausted"), 3600)
+    assert [f.name for f in files(cache)] == [
+        snapshot.path_for(cache, (R, 5, 1, 200)).name
+    ]
 
 
 # -- prewarm / lifespan --------------------------------------------------------------
@@ -431,13 +433,13 @@ def test_gzip_client_gets_stored_bytes_that_decode_to_the_events(
 
 def test_total_bytes_cap_evicts_oldest(cache) -> None:
     for i, hops in enumerate((1, 2, 3)):
-        snapshot.write(cache, (R, 5, hops), lines("exhausted"), 3600, 10**9)
+        snapshot.write(cache, (R, 5, hops, 200), lines("exhausted"), 3600, 10**9)
         past = time.time() - 100 + i  # distinct, ascending mtimes
-        os.utime(snapshot.path_for(cache, (R, 5, hops)), (past, past))
-    size = snapshot.path_for(cache, (R, 5, 3)).stat().st_size
-    snapshot.write(cache, (R, 5, 4), lines("exhausted"), 3600, size * 2)
+        os.utime(snapshot.path_for(cache, (R, 5, hops, 200)), (past, past))
+    size = snapshot.path_for(cache, (R, 5, 3, 200)).stat().st_size
+    snapshot.write(cache, (R, 5, 4, 200), lines("exhausted"), 3600, size * 2)
     assert {f.name for f in files(cache)} == {
-        snapshot.path_for(cache, (R, 5, h)).name for h in (3, 4)
+        snapshot.path_for(cache, (R, 5, h, 200)).name for h in (3, 4)
     }
 
 

@@ -25,6 +25,7 @@ from app import bulk, contract, graph_config, middleware, qlever, stream, templa
 from app.main import app
 from app.qlever import Binding as B
 from app.qlever import QleverServerError, SelectResult
+from app.settings import Settings
 
 CFG = graph_config.load()
 REL, REL2 = CFG.relation_iris()[:2]
@@ -136,7 +137,13 @@ def test_stream_events_order_shapes_and_multi_hop(fake) -> None:
     assert resp.headers["content-type"].startswith("application/x-ndjson")
     for e in events:
         EVENT.validate_python(e)  # every line matches the documented contract
-    assert events[0] == {"type": "meta", "root": R, "max_nodes": 100000, "max_hops": 6}
+    assert events[0] == {
+        "type": "meta",
+        "root": R,
+        "max_nodes": 100000,
+        "max_hops": 6,
+        "max_fanout": 200,
+    }
     assert events[-1] == {"type": "done", "reason": "exhausted"}
     assert [nodes_of(events, h) for h in range(4)] == [[R], [A, Bn], [C], [D]]
     edges = [
@@ -237,7 +244,13 @@ def test_params_are_clamped_to_settings(fake, monkeypatch) -> None:
     monkeypatch.setenv("STREAM_MAX_NODES", "50")
     monkeypatch.setenv("STREAM_MAX_HOPS", "1")
     events, _ = run(url(max_nodes=999999, max_hops=99))
-    assert events[0] == {"type": "meta", "root": R, "max_nodes": 50, "max_hops": 1}
+    assert events[0] == {
+        "type": "meta",
+        "root": R,
+        "max_nodes": 50,
+        "max_hops": 1,
+        "max_fanout": 200,
+    }
 
 
 def test_invalid_root_is_422_before_streaming(fake) -> None:
@@ -452,3 +465,28 @@ def test_multi_relation_template_shape() -> None:
         templates.edges_multi_construct_query(frontier=[A], relations=[])
     with pytest.raises(ValueError):
         templates.edges_multi_construct_query(frontier=["a> }"], relations=[REL])
+
+
+def test_fanout_caps_new_neighbours_per_frontier_node() -> None:
+    # pylint: disable=protected-access
+    hub, other = "https://x/hub", "https://x/other"
+    leaves = [f"https://x/l{i:02d}" for i in range(10)]
+    edges = [(hub, "p", leaf) for leaf in leaves] + [(leaves[0], "p", other)]
+    seen = {hub}
+    new, fresh, truncated, fanned = stream._fold_hop(
+        edges, seen, set(), 100, frontier=[hub], fanout=3
+    )
+    assert new == leaves[:3]  # sorted first three; budget not hit
+    assert (truncated, fanned) == (False, True)
+    assert fresh == sorted((hub, "p", leaf) for leaf in leaves[:3])
+    # no cap: every neighbour of the frontier is kept
+    new, _, _, fanned = stream._fold_hop(edges, {hub}, set(), 100, frontier=[hub])
+    assert len(new) == 11 and not fanned
+
+
+def test_prewarm_keys_cover_default_root_and_presets(monkeypatch) -> None:
+    monkeypatch.setenv("PREWARM_ROOTS", f"https://ror.org/02nv7yv05, {R}, not an iri")
+    monkeypatch.setenv("DEFAULT_ROOT_IRI", R)
+    keys = stream.prewarm_keys(Settings.from_env())
+    assert [k[0] for k in keys] == [R, "https://ror.org/02nv7yv05"]
+    assert all(k[1:] == (100000, 6, 200) for k in keys)

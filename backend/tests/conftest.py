@@ -26,6 +26,7 @@ def stream_cache_off(monkeypatch):
     """No snapshot cache / prewarm unless a test opts in (STREAM_CACHE_TTL_S)."""
     monkeypatch.setenv("STREAM_CACHE_TTL_S", "0")
     monkeypatch.setenv("STREAM_REFRESH_S", "0")
+    monkeypatch.setenv("PREWARM_ROOTS", "")  # prewarm tests cover the default root only
     snapshot.reset_state()
     yield
     snapshot.reset_state()

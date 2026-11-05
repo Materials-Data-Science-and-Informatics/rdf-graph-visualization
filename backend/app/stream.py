@@ -28,8 +28,14 @@ once the response has started. Time budget and client disconnect cancel all
 outstanding work.
 
 Snapshot cache (``app.snapshot``): the endpoint replays a fresh stored run, or
-attaches to the single in-flight build of the same (root, max_nodes, max_hops)
-key, or starts one; ``start_prewarm`` keeps the default view's snapshot warm.
+attaches to the single in-flight build of the same (root, max_nodes, max_hops,
+max_fanout) key, or starts one; ``start_prewarm`` keeps the default view of the
+default root and of ``Settings.prewarm_roots`` warm.
+
+Fan-out: ``max_fanout`` caps the NEW neighbours taken per frontier node and hop
+(sorted, deterministic; 0 = no cap), so a hub with thousands of leaves does not
+use the whole node budget in hop 1. A capped hop does not stop the BFS; the run
+ends with ``done(truncated)`` like a LIMIT hit.
 A shared build ignores a subscriber's disconnect (see ``app.snapshot``) and
 uses the maximum time budget; a subscriber's own ``time_budget_s`` only ends
 its response. With ``STREAM_CACHE_TTL_S <= 0`` the live path above is used.
@@ -105,24 +111,52 @@ async def _attrs(
         raise group.exceptions[0] from None
 
 
-def _fold_hop(
+def _cap_fanout(
+    edges: list[tuple[str, str, str]],
+    frontier: Iterable[str],
+    found: set[str],
+    fanout: int,
+) -> set[str]:
+    """The *found* nodes kept when each frontier node takes at most *fanout* of
+    them (its sorted first ones; a node already taken by an earlier frontier
+    node does not count again)."""
+    front = set(frontier)
+    children: dict[str, set[str]] = {}
+    for s, _, o in edges:
+        if s in front and o in found:
+            children.setdefault(s, set()).add(o)
+        if o in front and s in found:
+            children.setdefault(o, set()).add(s)
+    kept: set[str] = set()
+    for parent in sorted(children):
+        fresh = sorted(children[parent] - kept)
+        kept.update(fresh[:fanout])
+    return kept
+
+
+def _fold_hop(  # pylint: disable=too-many-arguments
     edges: list[tuple[str, str, str]],
     seen: set[str],
     seen_edges: set[tuple[str, str, str]],
     budget: int,
-) -> tuple[list[str], list[tuple[str, str, str]], bool]:
+    *,
+    frontier: Iterable[str] = (),
+    fanout: int = 0,
+) -> tuple[list[str], list[tuple[str, str, str]], bool, bool]:
     """Update *seen*/*seen_edges* with one hop's edges.
 
-    Returns ``(new nodes, new edges, truncated)``: at most *budget* new nodes
-    (the sorted first ones — deterministic) and only edges whose endpoints
-    are both kept.
+    Returns ``(new nodes, new edges, truncated, fanned)``: at most *fanout* new
+    nodes per *frontier* node (``fanned`` = some were dropped; 0 = no cap), then
+    at most *budget* (the sorted first ones — deterministic; ``truncated``), and
+    only edges whose endpoints are both kept.
     """
     found = {x for s, _, o in edges for x in (s, o)} - seen
-    new = sorted(found)[:budget]
+    kept = _cap_fanout(edges, frontier, found, fanout) if fanout > 0 else found
+    new = sorted(kept)[:budget]
     seen.update(new)
     fresh = sorted({e for e in edges if e[0] in seen and e[2] in seen} - seen_edges)
     seen_edges.update(fresh)
-    return new, fresh, len(new) < len(found)
+    return new, fresh, len(new) < len(kept), len(kept) < len(found)
 
 
 def _hop_events(
@@ -157,13 +191,15 @@ async def _fail_fast(main: asyncio.Task[Any], others: list[asyncio.Task[Any]]) -
         await asyncio.gather(main, return_exceptions=True)
 
 
-async def _bfs(  # pylint: disable=too-many-locals
+async def _bfs(  # pylint: disable=too-many-locals,too-many-arguments
     root: str,
     max_nodes: int,
     max_hops: int,
     client: qlever.QleverClient | None,
     multi: bool,
     emit: Emit,
+    *,
+    fanout: int = 0,
 ) -> str:
     """Run the BFS, emitting events; return the ``done`` reason."""
     relations = graph_config.load().relation_iris()
@@ -193,8 +229,11 @@ async def _bfs(  # pylint: disable=too-many-locals
                     )
                 )
                 edges, saturated = await _fail_fast(fetch, attr_tasks)
-                new, fresh, truncated = _fold_hop(edges, seen, seen_edges, budget)
-                capped = capped or saturated  # a LIMIT hit may hide nodes/edges
+                new, fresh, truncated, fanned = _fold_hop(
+                    edges, seen, seen_edges, budget, frontier=frontier, fanout=fanout
+                )
+                # a LIMIT hit or the fan-out cap hides nodes/edges
+                capped = capped or saturated or fanned
                 for event in _hop_events(hop, new, fresh):
                     await emit(event)
                 await emit(
@@ -226,7 +265,7 @@ async def _bfs(  # pylint: disable=too-many-locals
     return reason
 
 
-async def stream_events(
+async def stream_events(  # pylint: disable=too-many-arguments
     root: str,
     *,
     max_nodes: int,
@@ -234,14 +273,23 @@ async def stream_events(
     time_budget_s: float,
     client: qlever.QleverClient | None = None,
     multi: bool = True,
+    max_fanout: int = 0,
 ) -> AsyncGenerator[Event, None]:
     """The event sequence of one stream (see module doc)."""
-    yield {"type": "meta", "root": root, "max_nodes": max_nodes, "max_hops": max_hops}
+    yield {
+        "type": "meta",
+        "root": root,
+        "max_nodes": max_nodes,
+        "max_hops": max_hops,
+        "max_fanout": max_fanout,
+    }
     queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=QUEUE_MAX)
 
     async def drive() -> None:
         try:
-            reason = await _bfs(root, max_nodes, max_hops, client, multi, queue.put)
+            reason = await _bfs(
+                root, max_nodes, max_hops, client, multi, queue.put, fanout=max_fanout
+            )
             await queue.put({"type": "done", "reason": reason})
         except Exception as exc:  # pylint: disable=broad-exception-caught
             log.warning("stream from %s failed", root, exc_info=True)
@@ -290,9 +338,17 @@ PREWARM_RETRY_S = 300.0
 
 
 def effective_key(
-    cfg: Settings, root: str, max_nodes: int | None, max_hops: int | None
+    cfg: Settings,
+    root: str,
+    max_nodes: int | None,
+    max_hops: int | None,
+    max_fanout: int | None = None,
 ) -> snapshot.Key:
     """Cache key: the root and the clamped limits (see ``stream``)."""
+    fanout = min(
+        max(cfg.stream_default_fanout if max_fanout is None else max_fanout, 0),
+        cfg.stream_max_fanout,
+    )
     nodes = min(
         max(cfg.stream_max_nodes if max_nodes is None else max_nodes, 1),
         cfg.stream_max_nodes,
@@ -301,17 +357,18 @@ def effective_key(
         max(DEFAULT_MAX_HOPS if max_hops is None else max_hops, 0),
         cfg.stream_max_hops,
     )
-    return root, nodes, hops
+    return root, nodes, hops, fanout
 
 
 def _build_events(
     cfg: Settings, key: snapshot.Key
 ) -> Callable[[], AsyncGenerator[Event, None]]:
-    root, nodes, hops = key
+    root, nodes, hops, fanout = key
     return lambda: stream_events(
         root,
         max_nodes=nodes,
         max_hops=hops,
+        max_fanout=fanout,
         time_budget_s=cfg.stream_max_time_budget_s,
         multi=cfg.stream_multi_relation,
     )
@@ -327,29 +384,53 @@ def _ensure_build(cfg: Settings, key: snapshot.Key) -> snapshot.Build | None:
     )
 
 
+def prewarm_keys(cfg: Settings) -> list[snapshot.Key]:
+    """Default-view keys of the default root, then the preset roots (valid, unique)."""
+    roots = dict.fromkeys((cfg.default_root_iri, *cfg.prewarm_roots))
+    return [
+        effective_key(cfg, r, cfg.default_max_nodes, None)
+        for r in roots
+        if templates.is_valid_iri(r)
+    ]
+
+
+async def _warm_one(cfg: Settings, key: snapshot.Key) -> bool:
+    """Build *key* unless its snapshot is fresh; True when a fresh file exists."""
+    age = snapshot.age_s(cfg.stream_cache_dir, key)
+    if age is not None and age < cfg.stream_refresh_s:
+        return True
+    ok = False
+    try:
+        build = _ensure_build(cfg, key)
+        if build and build.task:
+            await asyncio.wait({build.task})
+            ok = build.stored  # the file exists (a failed write must back off)
+        log.info(
+            "stream prewarm %s %s: %s",
+            key[0],
+            "ok" if ok else "failed",
+            build and build.reason,
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        log.warning("stream prewarm of %s failed", key[0], exc_info=True)
+    return ok
+
+
 async def _prewarm(cfg: Settings) -> None:
-    """Keep the default view's snapshot fresh (never raises, retries)."""
-    key = effective_key(cfg, cfg.default_root_iri, cfg.default_max_nodes, None)
+    """Keep the preset views' snapshots fresh, one build at a time (never
+    raises; failed ones are retried after ``PREWARM_RETRY_S``)."""
+    keys = prewarm_keys(cfg)
     refresh = cfg.stream_refresh_s
     while True:
-        age = snapshot.age_s(cfg.stream_cache_dir, key)
-        if age is not None and age < refresh:
-            await asyncio.sleep(refresh - age)
-        ok = False
-        try:
-            build = _ensure_build(cfg, key)
-            if build and build.task:
-                await asyncio.wait({build.task})
-                ok = build.stored  # the file exists (a failed write must back off)
-            log.info(
-                "stream prewarm %s: %s",
-                "ok" if ok else "failed",
-                build and build.reason,
-            )
-        except Exception:  # pylint: disable=broad-exception-caught
-            log.warning("stream prewarm failed", exc_info=True)
-        if not ok:
-            await asyncio.sleep(min(refresh, PREWARM_RETRY_S))
+        all_ok = True
+        for key in keys:  # sequential: politeness towards the shared endpoint
+            all_ok = await _warm_one(cfg, key) and all_ok
+        ages = [snapshot.age_s(cfg.stream_cache_dir, k) for k in keys]
+        oldest = max((a for a in ages if a is not None), default=refresh)
+        wait = max(refresh - oldest, 1.0)
+        if not all_ok:
+            wait = min(wait, PREWARM_RETRY_S)
+        await asyncio.sleep(wait)
 
 
 def start_prewarm(cfg: Settings | None = None) -> asyncio.Task[None] | None:
@@ -380,6 +461,9 @@ async def stream(  # pylint: disable=too-many-locals
     root: str = Query(description="Root entity IRI (hop 0)."),
     max_nodes: int | None = Query(default=None),
     max_hops: int | None = Query(default=None),
+    max_fanout: int | None = Query(
+        default=None, description="New neighbours per node and hop (0 = no cap)."
+    ),
     time_budget_s: float | None = Query(default=None),
 ) -> Response:
     """Progressive BFS from *root* as ``application/x-ndjson``."""
@@ -388,8 +472,8 @@ async def stream(  # pylint: disable=too-many-locals
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     cfg = Settings.from_env()
-    key = effective_key(cfg, root, max_nodes, max_hops)
-    _, nodes, hops = key
+    key = effective_key(cfg, root, max_nodes, max_hops, max_fanout)
+    _, nodes, hops, fanout = key
     budget = min(
         max(120.0 if time_budget_s is None else time_budget_s, 1.0),
         cfg.stream_max_time_budget_s,
@@ -400,6 +484,7 @@ async def stream(  # pylint: disable=too-many-locals
             root,
             max_nodes=nodes,
             max_hops=hops,
+            max_fanout=fanout,
             time_budget_s=budget,
             multi=cfg.stream_multi_relation,
         ):
