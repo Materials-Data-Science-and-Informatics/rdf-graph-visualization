@@ -1,4 +1,5 @@
 /** Pure helpers for the GPU engine (no three / WebGPU imports, unit-tested). */
+import { UNTYPED_ALPHA } from "./curve";
 
 export const DEFAULT_CAPACITY = 100_000;
 const CAPACITY_ALIGN = 4096;
@@ -215,7 +216,7 @@ export function countToSlider(n: number): number {
 }
 
 /**
- * Write per-node visibility (1 shown / 0 hidden) into the alpha slot of an rgba array.
+ * Write per-node visibility (0 hidden, 1 typed, UNTYPED_ALPHA untyped) into the alpha slot of an rgba array.
  * Group indices outside [0, groupCount) count as -1 (unclassified).
  */
 export function fillVisibility(
@@ -227,6 +228,7 @@ export function fillVisibility(
 ): void {
   for (let i = 0; i < count; i++) {
     const g = groups[i];
-    rgba[i * 4 + 3] = hidden.has(g >= 0 && g < groupCount ? g : -1) ? 0 : 1;
+    const typed = g >= 0 && g < groupCount;
+    rgba[i * 4 + 3] = hidden.has(typed ? g : -1) ? 0 : typed ? 1 : UNTYPED_ALPHA;
   }
 }

@@ -30,6 +30,8 @@ export interface SidebarProps {
   onEdgeOpacity: (v: number) => void;
   arrows: boolean;
   onArrows: (v: boolean) => void;
+  curved: boolean;
+  onCurved: (v: boolean) => void;
   onResetView: () => void;
 }
 
@@ -266,13 +268,7 @@ function Sidebar(p: SidebarProps) {
             />
           </label>
           <Switch label="Arrows" checked={p.arrows} onChange={p.onArrows} />
-          <Switch
-            label="Curved edges"
-            checked={false}
-            onChange={() => undefined}
-            disabled
-            hint="coming next"
-          />
+          <Switch label="Curved edges" checked={p.curved} onChange={p.onCurved} />
           <Button variant="outline" size="sm" className="w-full" onClick={p.onResetView}>
             Reset view
           </Button>

@@ -11,7 +11,9 @@ import {
   clampDepth,
   depthToMaxHops,
   groupCounts,
+  loadCurved,
   loadDepth,
+  saveCurved,
   saveDepth,
 } from "@/lib/sidebar-settings";
 import type { PickHit } from "@/engine/picking";
@@ -63,8 +65,9 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
   const [dim, setDimState] = useState<2 | 3>(3);
   const [edgeOpacity, setEdgeOpacity] = useState(1);
   const [arrows, setArrows] = useState(true);
-  const settingsRef = useRef({ dim, edgeOpacity, arrows });
-  settingsRef.current = { dim, edgeOpacity, arrows };
+  const [curved, setCurved] = useState(loadCurved);
+  const settingsRef = useRef({ dim, edgeOpacity, arrows, curved });
+  settingsRef.current = { dim, edgeOpacity, arrows, curved };
 
   // Depth changes restart the stream; omitted max_hops (default 6) keeps the cached snapshot key.
   useEffect(() => {
@@ -193,6 +196,11 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
     setArrows(v);
     engineRef.current?.setArrowsVisible(v);
   }, []);
+  const onCurved = useCallback((v: boolean) => {
+    setCurved(v);
+    saveCurved(v);
+    engineRef.current?.setCurved(v);
+  }, []);
   const onResetView = useCallback(() => engineRef.current?.resetView(), []);
   const onToggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
 
@@ -240,6 +248,7 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
         if (st.dim !== 3) e.setDim(st.dim);
         e.setEdgeOpacityScale(st.edgeOpacity);
         e.setArrowsVisible(st.arrows);
+        e.setCurved(st.curved);
         hiddenRef.current.forEach((g) => e.setGroupVisible(g, false));
         e.attach(store);
         setEngineError(null);
@@ -318,6 +327,8 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
         onEdgeOpacity={onEdgeOpacity}
         arrows={arrows}
         onArrows={onArrows}
+        curved={curved}
+        onCurved={onCurved}
         onResetView={onResetView}
       />
       <div

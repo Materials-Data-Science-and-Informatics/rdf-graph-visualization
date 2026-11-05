@@ -44,3 +44,22 @@ export function groupCounts(groups: Int16Array, shown: number, groupCount: numbe
   }
   return out;
 }
+
+export const CURVED_KEY = "hkg-curved-edges";
+
+/** Curved edges default to on. */
+export function loadCurved(): boolean {
+  try {
+    return localStorage.getItem(CURVED_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+
+export function saveCurved(v: boolean): void {
+  try {
+    localStorage.setItem(CURVED_KEY, v ? "1" : "0");
+  } catch {
+    /* storage unavailable: the choice just is not remembered */
+  }
+}

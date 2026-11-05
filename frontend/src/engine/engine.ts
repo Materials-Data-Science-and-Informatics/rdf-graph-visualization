@@ -141,6 +141,7 @@ export class Engine {
   private lastVisibility = 0;
   private edgeOpacityScale = 1;
   private arrowsOn = true;
+  private curvedOn = true;
   private readonly frameTimes: number[] = [];
   private lastFrame = 0;
 
@@ -296,6 +297,11 @@ export class Engine {
   setEdgeOpacityScale(scale: number): void {
     this.edgeOpacityScale = scale;
     this.gpu?.setEdgeOpacityScale(scale);
+  }
+
+  setCurved(on: boolean): void {
+    this.curvedOn = on;
+    this.gpu?.setCurved(on);
   }
 
   setArrowsVisible(on: boolean): void {
@@ -854,6 +860,7 @@ export class Engine {
     gpu.setLook(this.dark);
     gpu.setEdgeOpacityScale(this.edgeOpacityScale);
     gpu.setArrowsVisible(this.arrowsOn);
+    gpu.setCurved(this.curvedOn);
     this.applyHighlight();
     this.visibilityDirty = true;
     this.csrDirty = true;

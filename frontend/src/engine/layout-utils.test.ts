@@ -14,6 +14,7 @@ import {
   roundCapacity,
   fillVisibility,
 } from "./layout-utils";
+import { UNTYPED_ALPHA } from "./curve";
 
 describe("capacity", () => {
   it("rounds up with headroom to a multiple of 4096", () => {
@@ -167,5 +168,10 @@ describe("fillVisibility", () => {
     const rgba = new Float32Array(16).fill(1);
     fillVisibility(rgba, Int16Array.from([0, -1, 7, 1]), 4, 2, new Set([-1, 1]));
     expect([3, 7, 11, 15].map((i) => rgba[i])).toEqual([1, 0, 0, 0]);
+  });
+  it("marks visible untyped nodes with UNTYPED_ALPHA", () => {
+    const rgba = new Float32Array(12);
+    fillVisibility(rgba, Int16Array.from([0, -1, 9]), 3, 2, new Set());
+    expect([3, 7, 11].map((i) => rgba[i])).toEqual([1, UNTYPED_ALPHA, UNTYPED_ALPHA]);
   });
 });

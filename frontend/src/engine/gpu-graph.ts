@@ -24,9 +24,13 @@ import {
   cameraPosition,
   cross,
   clamp,
+  abs,
+  sign,
+  varying,
 } from "three/tsl";
 import type { GraphStore } from "@/lib/graph-store";
 import { edgeOpacity, nodeRadius, type EngineConfig } from "./config";
+import { EDGE_CURVATURE, EDGE_SEGMENTS, TYPED_THRESHOLD, UNTYPED_ALPHA } from "./curve";
 import { applyCarry, type Vec3 } from "./picking";
 import {
   buildCsr,
@@ -61,6 +65,22 @@ type ComputeNodeT = ReturnType<Vec4Buf["compute"]>;
  */
 const vec4Buf = (data: Float32Array): Vec4Buf => instancedArray(data, "vec4");
 const uintBuf = (data: Uint32Array): UintBuf => instancedArray(data, "uint") as unknown as UintBuf;
+
+/** Instanced strip: (segments+1) columns x 2 rows, position.x = t along 0..1, y = -0.5/0.5 across. */
+function stripGeometry(segments: number): THREE.InstancedBufferGeometry {
+  const g = new THREE.InstancedBufferGeometry();
+  const p: number[] = [];
+  const idx: number[] = [];
+  for (let k = 0; k <= segments; k++) p.push(k / segments, -0.5, 0, k / segments, 0.5, 0);
+  for (let k = 0; k < segments; k++) {
+    const v = k * 2;
+    idx.push(v, v + 2, v + 3, v, v + 3, v + 1);
+  }
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(p), 3));
+  g.setIndex(idx);
+  g.instanceCount = 0;
+  return g;
+}
 
 /** `Fn(...)()` is typed as a plain Node upstream although it is a callable kernel with `.compute`. */
 function kernel(body: () => void, threads: number): ComputeNodeT {
@@ -139,6 +159,9 @@ export class GpuGraph {
   private readonly uRad = uniform(1);
   private dark = true;
   private opacityScale = 1;
+  private readonly uCurv = uniform(EDGE_CURVATURE);
+  private readonly pickShaft: THREE.Mesh;
+  private readonly straightQuad: THREE.InstancedBufferGeometry;
   private readonly uInitStart = uniform(0, "uint");
   // highlight state (instance indices; NONE = no highlight)
   private readonly uHover = uniform(NONE, "uint");
@@ -222,20 +245,38 @@ export class GpuGraph {
       const hov = uHover.equal(instanceIndex).select(float(1), float(0));
       const sel = uSel.equal(instanceIndex).select(float(1), float(0));
       const k = float(1).add(sel.mul(0.35)).add(hov.mul(0.2)).div(hov.mul(0.2).add(1));
+      // alpha: 0 hidden, UNTYPED_ALPHA visible without group (box), 1 visible typed (sphere)
+      const box = cAttr.w.lessThan(TYPED_THRESHOLD);
       const q = uv().mul(2).sub(1);
       const rq2 = dot(q, q);
-      Discard(rq2.greaterThan(1));
-      const qq = q.mul(k); // sphere coordinates (shrunk inside the sprite when selected)
+      const mq0 = max(abs(q.x), abs(q.y));
+      Discard(cAttr.w.lessThan(0.5)); // group visibility (see applyVisibility)
+      Discard(box.select(float(0), rq2.sub(1)).greaterThan(0));
+      const qq = q.mul(k); // shape coordinates (shrunk inside the sprite when selected)
       const r2 = dot(qq, qq);
-      const outside = r2.greaterThan(1);
-      Discard(outside.and(rq2.lessThan(0.7744))); // gap between sphere and selection ring
+      const mqq = max(abs(qq.x), abs(qq.y));
+      const outside = box.select(mqq.greaterThan(0.8), r2.greaterThan(1));
+      const ringZone = box.select(
+        sel.greaterThan(0.5).and(mq0.greaterThan(0.88)),
+        rq2.greaterThanEqual(0.7744)
+      );
+      Discard(outside.and(ringZone.not())); // gap between shape and selection ring
       const z = sqrt(max(float(1).sub(r2), 0));
-      const nrm = vec3(qq.x, qq.y, z);
+      // box: flat top with bevelled edges (normal tilts toward the nearest edge)
+      const u = qq.div(0.8);
+      const ax = abs(u.x);
+      const ay = abs(u.y);
+      const bev = (v: typeof ax) => clamp(v.sub(0.65).div(0.35), 0, 1).mul(1.2);
+      const xDom = ax.greaterThanEqual(ay);
+      const nx = xDom.select(bev(ax).mul(sign(u.x)), float(0));
+      const ny = xDom.select(float(0), bev(ay).mul(sign(u.y)));
+      const nrm = box.select(normalize(vec3(nx, ny, 1)), vec3(qq.x, qq.y, z));
       const L = normalize(vec3(-0.4, 0.6, 0.7));
       const diff = max(dot(nrm, L), 0);
-      const spec = pow(max(dot(nrm, normalize(L.add(vec3(0, 0, 1)))), 0), 32).mul(0.45);
-      const rim = pow(float(1).sub(z), 3).mul(0.35);
-      Discard(cAttr.w.lessThan(0.5)); // w = group visibility (see applyVisibility)
+      const spec = pow(max(dot(nrm, normalize(L.add(vec3(0, 0, 1)))), 0), 32)
+        .mul(0.45)
+        .mul(box.select(float(0.25), float(1)));
+      const rim = box.select(float(0), pow(float(1).sub(z), 3).mul(0.35));
       const lit = cAttr.xyz
         .mul(diff.mul(0.85).add(0.3))
         .add(spec)
@@ -252,14 +293,9 @@ export class GpuGraph {
     // Edges: camera-facing quads (WebGPU lines are always 1px) plus flat arrowhead
     // triangles at the target end: 2 instanced draws, one instance per edge. Endpoints come
     // from the position buffer via the edge index buffer; geometry holds only the unit
-    // quad / triangle. Both stop at the sphere surfaces (radius uRad). No curvature.
-    const quad = new THREE.InstancedBufferGeometry();
-    quad.setAttribute(
-      "position",
-      new THREE.BufferAttribute(new Float32Array([0, -0.5, 0, 1, -0.5, 0, 1, 0.5, 0, 0, 0.5, 0]), 3)
-    );
-    quad.setIndex([0, 1, 2, 0, 2, 3]);
-    quad.instanceCount = 0;
+    // quad / triangle. Both stop at the sphere surfaces (radius uRad). The shaft is a quadratic Bezier strip
+    // (EDGE_SEGMENTS segments, uCurv = 0 for straight); colour comes from the node colours.
+    const quad = stripGeometry(EDGE_SEGMENTS);
     const tri = new THREE.InstancedBufferGeometry();
     // x: 1 = tip, 0 = base; y: -0.5..0.5 across the base
     tri.setAttribute(
@@ -267,6 +303,7 @@ export class GpuGraph {
       new THREE.BufferAttribute(new Float32Array([1, 0, 0, 0, -0.5, 0, 0, 0.5, 0]), 3)
     );
     tri.instanceCount = 0;
+    this.straightQuad = stripGeometry(1);
     this.shaftGeo = quad;
     this.arrowGeo = tri;
     const matOpts = {
@@ -276,7 +313,7 @@ export class GpuGraph {
     };
     this.shaftMat = new THREE.MeshBasicNodeMaterial(matOpts);
     this.arrowMat = new THREE.MeshBasicNodeMaterial(matOpts);
-    const { shaftPos, arrowPos } = this.edgeShaders(false);
+    const { shaftPos, arrowPos, color } = this.edgeShaders(false);
     this.shaftMat.positionNode = shaftPos;
     this.arrowMat.positionNode = arrowPos;
     const hovE = () => this.uHoverEdge.equal(instanceIndex);
@@ -284,7 +321,9 @@ export class GpuGraph {
       [this.shaftMat, this.uShaftOp],
       [this.arrowMat, this.uArrowOp],
     ] as const) {
-      mat.colorNode = Fn(() => hovE().select(this.uHoverColor, this.uEdgeColor))();
+      mat.colorNode = Fn(() =>
+        hovE().select(this.uHoverColor as unknown as typeof color, varying(color))
+      )() as unknown as THREE.Node<"vec3">;
       mat.opacityNode = Fn(() => hovE().select(float(1), op))();
     }
     this.shaft = new THREE.Mesh(quad, this.shaftMat);
@@ -308,7 +347,9 @@ export class GpuGraph {
     const pAttr = this.colors.toAttribute();
     pickNodeMat.fragmentNode = Fn(() => {
       const q = uv().mul(2).sub(1);
-      Discard(dot(q, q).greaterThan(1));
+      const pBox = pAttr.w.lessThan(TYPED_THRESHOLD);
+      // untyped nodes are boxes: square hit area matching the 0.8 box (sprite is 2.4r here)
+      Discard(pBox.select(max(abs(q.x), abs(q.y)).greaterThan(0.8), dot(q, q).greaterThan(1)));
       Discard(pAttr.w.lessThan(0.5));
       return idColor(instanceIndex.add(uint(1)));
     })();
@@ -324,6 +365,7 @@ export class GpuGraph {
     pickShaftMat.fragmentNode = edgeId;
     pickArrowMat.fragmentNode = edgeId;
     const pickShaft = new THREE.Mesh(quad, pickShaftMat);
+    this.pickShaft = pickShaft;
     this.pickArrows = new THREE.Mesh(tri, pickArrowMat);
     this.pickMats.push(pickNodeMat, pickShaftMat, pickArrowMat);
     for (const m of [this.pickSprite, pickShaft, this.pickArrows]) {
@@ -340,41 +382,79 @@ export class GpuGraph {
     return float(1).add(hov.mul(0.2)).add(sel.mul(0.35));
   }
 
-  /** World-space vertex positions of the edge quads / arrowheads (see constructor comment). */
+  /**
+   * World-space vertex positions of the edge strips / arrowheads (see constructor comment)
+   * plus the edge colour (source class colour, else target's, else theme grey).
+   */
   private edgeShaders(forPick: boolean) {
-    const { pos, colors, edgeIdx, uRad } = this;
+    const { pos, colors, edgeIdx, uRad, uCurv } = this;
     const i = instanceIndex;
     const ia = edgeIdx.element(i.mul(2));
     const ib = edgeIdx.element(i.mul(2).add(1));
     const a = pos.element(ia).xyz;
     const b = pos.element(ib).xyz;
+    const ca = colors.element(ia);
+    const cb = colors.element(ib);
     // an edge with a hidden endpoint collapses to a point (degenerate triangles draw nothing)
-    const hidden = colors.element(ia).w.mul(colors.element(ib).w).lessThan(0.5);
+    const hidden = min(ca.w, cb.w).lessThan(0.5);
     const d = b.sub(a);
     const len = max(length(d), 1e-4);
     const dn = d.div(len);
-    const side = normalize(cross(dn, cameraPosition.sub(a.add(b).mul(0.5))).add(vec3(1e-6)));
-    const tip = b.sub(dn.mul(uRad));
-    const start = a.add(dn.mul(uRad));
+    // control point: midpoint + cross(dir, up) * curvature * length (mirrors curve.ts edgePerp)
+    const up = abs(dn.z)
+      .greaterThan(0.99)
+      .select(vec3(0, 1, 0), vec3(0, 0, 1));
+    const perp = normalize(cross(dn, up).add(vec3(1e-6)));
+    const ctrl = a
+      .add(b)
+      .mul(0.5)
+      .add(perp.mul(uCurv.mul(len)));
+    const ta = ctrl.sub(a); // = P'(0)/2
+    const tb = b.sub(ctrl); // = P'(1)/2
+    const bez = (u: typeof len) => {
+      const v = float(1).sub(u);
+      return a
+        .mul(v.mul(v))
+        .add(ctrl.mul(v.mul(u).mul(2)))
+        .add(b.mul(u.mul(u)));
+    };
+    const tangent = (u: typeof len) => ta.mul(float(1).sub(u)).add(tb.mul(u));
+    const sideAt = (u: typeof len, p: typeof a) =>
+      normalize(cross(tangent(u), cameraPosition.sub(p)).add(vec3(1e-6)));
+    // curve parameter of a point ~uRad away from either end, measured along the end
+    // tangents (|P'(0)| = 2|ta|, |P'(1)| = 2|tb|)
+    const tbLen2 = max(length(tb), 1e-4).mul(2);
+    const uStart = clamp(uRad.div(max(length(ta), 1e-4).mul(2)), 0, 0.45);
+    const uTip = float(1).sub(clamp(uRad.div(tbLen2), 0, 0.45));
     const arrowLen = clamp(len.sub(uRad.mul(2)), 0, uRad.mul(1.4)); // shrinks on very short edges
-    const shaftEnd = tip.sub(dn.mul(arrowLen));
+    const uBase = max(uTip.sub(arrowLen.div(tbLen2)), uStart);
     const hovE = this.uHoverEdge.equal(i);
-    // picking quads are 3x wider; the hovered edge is drawn 2.5x wider
+    // picking strips are 3x wider; the hovered edge is drawn 2.5x wider
     const shaftW = uRad
       .mul(forPick ? 0.6 : 0.2)
       .mul(forPick ? float(1) : hovE.select(float(2.5), float(1)));
     const t = positionGeometry.x;
     const s = positionGeometry.y;
-    const shaftPos = hidden.select(
-      a,
-      start.add(shaftEnd.sub(start).mul(t)).add(side.mul(s.mul(shaftW)))
-    );
+    const us = uStart.add(uBase.sub(uStart).mul(t));
+    const ps = bez(us);
+    const shaftPos = hidden.select(a, ps.add(sideAt(us, ps).mul(s.mul(shaftW))));
+    const tipP = bez(uTip);
+    const baseP = bez(uBase);
+    const adir = normalize(tipP.sub(baseP).add(vec3(1e-6)));
+    const aside = normalize(cross(adir, cameraPosition.sub(baseP)).add(vec3(1e-6)));
     const arrowW = forPick ? float(1.2) : hovE.select(float(1.3), float(0.8));
     const arrowPos = hidden.select(
       a,
-      tip.sub(dn.mul(arrowLen.mul(float(1).sub(t)))).add(side.mul(s.mul(arrowLen).mul(arrowW)))
+      tipP.sub(adir.mul(arrowLen.mul(float(1).sub(t)))).add(aside.mul(s.mul(arrowLen).mul(arrowW)))
     );
-    return { shaftPos, arrowPos };
+    // colour: source class colour, else target's, else theme grey (alpha > 0.9 = has a group)
+    const color = ca.w
+      .greaterThan(TYPED_THRESHOLD)
+      .select(
+        ca.xyz,
+        cb.w.greaterThan(TYPED_THRESHOLD).select(cb.xyz, this.uEdgeColor as unknown as typeof a)
+      );
+    return { shaftPos, arrowPos, color };
   }
 
   private buildStep() {
@@ -511,6 +591,7 @@ export class GpuGraph {
     this.pickSprite.count = this.nodeCount;
     this.sprite.visible = this.nodeCount > 0;
     this.shaftGeo.instanceCount = this.edgeCount;
+    this.straightQuad.instanceCount = this.edgeCount;
     this.arrowGeo.instanceCount = this.edgeCount;
     const o = Math.min(1, edgeOpacity(this.edgeCount, this.dark) * this.opacityScale);
     this.uShaftOp.value = o;
@@ -549,7 +630,7 @@ export class GpuGraph {
       this.initCpu[i * 4 + 1] =
         a >= 0 ? jitterRadius(this.cfg.rest, depth[i - from]) : orphanRadius;
       const [r, g, b] = colorOf(store.groups[i]);
-      this.colorCpu.set([r, g, b, 1], i * 4);
+      this.colorCpu.set([r, g, b, store.groups[i] >= 0 ? 1 : UNTYPED_ALPHA], i * 4);
     }
     const carried = carry
       ? applyCarry(store.nodeIds, from, to, carry, this.posCpu, this.initCpu)
@@ -576,7 +657,7 @@ export class GpuGraph {
     for (const r of ranges) {
       for (let i = r.start; i < Math.min(r.end, this.nodeCount); i++) {
         const [cr, cg, cb] = colorOf(store.groups[i]);
-        this.colorCpu.set([cr, cg, cb, 1], i * 4);
+        this.colorCpu.set([cr, cg, cb, store.groups[i] >= 0 ? 1 : UNTYPED_ALPHA], i * 4);
       }
     }
     markRanges(attrOf(this.colors), ranges, 4);
@@ -654,6 +735,15 @@ export class GpuGraph {
   /** Multiplier on the automatic edge opacity (1 = default). */
   setEdgeOpacityScale(scale: number): void {
     this.opacityScale = scale;
+    this.syncCounts();
+  }
+
+  /** Curved (quadratic Bezier strips, default) or straight (single segment) edges. */
+  setCurved(on: boolean): void {
+    this.uCurv.value = on ? EDGE_CURVATURE : 0;
+    const geo = on ? this.shaftGeo : this.straightQuad;
+    this.shaft.geometry = geo;
+    this.pickShaft.geometry = geo;
     this.syncCounts();
   }
 
@@ -746,6 +836,7 @@ export class GpuGraph {
   dispose(): void {
     this.scene.remove(this.sprite, this.shaft, this.arrows);
     this.shaftGeo.dispose();
+    this.straightQuad.dispose();
     this.arrowGeo.dispose();
     this.shaftMat.dispose();
     this.arrowMat.dispose();
