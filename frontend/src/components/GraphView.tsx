@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { fetchNode, type GraphGroupConfig, type NodeInfo } from "@/lib/api";
 import type { Engine } from "@/engine/engine";
-import { NODE_LIMIT_DEFAULT, NODE_LIMIT_MAX, NODE_LIMIT_MIN } from "@/engine/layout-utils";
 import { WEBGPU_NOTICE, WebGpuUnavailableError } from "@/engine/webgpu";
 import { DEFAULT_ROOT_IRI } from "@/lib/config";
 import { useGraphStream } from "@/lib/use-graph-stream";
@@ -13,6 +12,9 @@ import {
   depthToMaxHops,
   fanoutParam,
   loadFanout,
+  loadNodeLimit,
+  saveNodeLimit,
+  NARROW,
   ARROWS_KEY,
   CURVED_KEY,
   DIM_KEY,
@@ -35,25 +37,16 @@ import Sidebar from "./Sidebar";
 import NodeDetails, { type SelectedView } from "./NodeDetails";
 import GraphTooltip from "./GraphTooltip";
 import GraphOverlay from "./GraphOverlay";
+import { useEscapeClose, useTipPlacement } from "./graph-view-hooks";
 import GraphToolbar from "./GraphToolbar";
+import Graph2D, { type ViewHandle } from "./Graph2D";
 import type { GraphControl } from "./SearchBox";
 
 const PENDING_SELECT_MS = 20000;
 
-const NARROW = "(max-width: 767px)";
 const DEPTH_DEBOUNCE_MS = 500;
 const NO_GROUP_COLOR = "#8a8f98";
 const UNCLASSIFIED = "Unclassified";
-
-const NODE_LIMIT_KEY = "hkg-node-limit";
-const loadNodeLimit = (): number => {
-  try {
-    const v = Number(localStorage.getItem(NODE_LIMIT_KEY));
-    return v >= NODE_LIMIT_MIN && v <= NODE_LIMIT_MAX ? v : NODE_LIMIT_DEFAULT;
-  } catch {
-    return NODE_LIMIT_DEFAULT;
-  }
-};
 
 /** Canvas host: the GPU engine mounts into the `canvas-host` div and pulls deltas from the stream's store. */
 export default function GraphView({
@@ -69,6 +62,7 @@ export default function GraphView({
   const wrapRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Engine | null>(null);
+  const view2dRef = useRef<ViewHandle | null>(null);
   const [fps, setFps] = useState(0);
   const [settling, setSettling] = useState(false);
   const [nodeLimit, setNodeLimit] = useState(loadNodeLimit);
@@ -139,12 +133,19 @@ export default function GraphView({
     return () => ctrl.abort();
   }, [rootIri]);
 
+  /** The mounted view for the current dimension (2D: cosmos.gl, 3D: GPU engine). */
+  const activeView = useCallback(
+    (): ViewHandle | null =>
+      settingsRef.current.dim === 2 ? view2dRef.current : engineRef.current,
+    []
+  );
+
   const clearSelection = useCallback(() => {
     selectAbort.current?.abort();
     selectAbort.current = null;
     setSelected(null);
-    engineRef.current?.setSelected(null);
-  }, []);
+    activeView()?.setSelected(null);
+  }, [activeView]);
 
   const selectNode = useCallback(
     (index: number) => {
@@ -153,7 +154,7 @@ export default function GraphView({
       selectAbort.current?.abort();
       const ctrl = new AbortController();
       selectAbort.current = ctrl;
-      engineRef.current?.setSelected(index);
+      activeView()?.setSelected(index);
       setSelected({ iri, status: "loading" });
       fetchNode(iri, ctrl.signal)
         .then((info) => {
@@ -169,7 +170,7 @@ export default function GraphView({
           });
         });
     },
-    [store]
+    [store, activeView]
   );
 
   // Select-after-reroot request: resolved only once the store was reset (generation moved on).
@@ -209,9 +210,9 @@ export default function GraphView({
   const focusSelect = useCallback(
     (i: number) => {
       selectNode(i);
-      engineRef.current?.focusOn(i);
+      activeView()?.focusOn(i);
     },
-    [selectNode]
+    [selectNode, activeView]
   );
   const requestRoot = useCallback(
     (iri: string) => {
@@ -250,45 +251,16 @@ export default function GraphView({
     clearSelection();
     wrapRef.current?.focus();
   }, [clearSelection]);
-  const escRef = useRef({ hasSel: false, sidebarOpen: false });
-  // eslint-disable-next-line react-hooks/refs -- latest-value ref read by the Escape handler
-  escRef.current = { hasSel: selected !== null, sidebarOpen };
-  // one global Escape: details card first, then the narrow-screen sidebar overlay
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Escape" || e.defaultPrevented) return;
-      const t = e.target as HTMLElement | null;
-      if (t && /^(INPUT|SELECT|TEXTAREA)$/.test(t.tagName)) return;
-      if (escRef.current.hasSel) closeDetails();
-      else if (escRef.current.sidebarOpen && window.matchMedia(NARROW).matches)
-        setSidebarOpen(false);
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [closeDetails]);
+  useEscapeClose(selected !== null, sidebarOpen, closeDetails, () => setSidebarOpen(false));
   const handlersRef = useRef({ selectNode, clearSelection, makeRoot, focusSelect });
   // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   handlersRef.current = { selectNode, clearSelection, makeRoot, focusSelect };
 
-  // hover card follows the pointer (direct style writes, no re-render per move)
-  const placeTip = useCallback(() => {
-    const tip = tipRef.current;
-    const wrap = wrapRef.current;
-    if (!tip || !wrap) return;
-    const r = wrap.getBoundingClientRect();
-    let x = pointerRef.current.x - r.left + 14;
-    let y = pointerRef.current.y - r.top + 14;
-    if (x + tip.offsetWidth > r.width - 4) x = pointerRef.current.x - r.left - 14 - tip.offsetWidth;
-    if (y + tip.offsetHeight > r.height - 4)
-      y = pointerRef.current.y - r.top - 14 - tip.offsetHeight;
-    tip.style.transform = `translate(${Math.max(4, x)}px, ${Math.max(4, y)}px)`;
-  }, []);
-  useLayoutEffect(placeTip, [hover, placeTip]);
+  const placeTip = useTipPlacement(tipRef, wrapRef, pointerRef, hover);
 
   const onDim = useCallback((d: 2 | 3) => {
     setDimState(d);
     savePref(DIM_KEY, String(d));
-    engineRef.current?.setDim(d);
   }, []);
   const onEdgeOpacity = useCallback((v: number) => {
     setEdgeOpacity(v);
@@ -305,24 +277,21 @@ export default function GraphView({
     saveBool(CURVED_KEY, v);
     engineRef.current?.setCurved(v);
   }, []);
-  const onResetView = useCallback(() => engineRef.current?.resetView(), []);
+  const onResetView = useCallback(() => activeView()?.resetView(), [activeView]);
   const onToggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
 
   const onNodeLimit = useCallback((v: number) => {
     setNodeLimit(v);
     nodeLimitRef.current = v;
     engineRef.current?.setNodeLimit(v);
-    try {
-      localStorage.setItem(NODE_LIMIT_KEY, String(v));
-    } catch {
-      /* storage unavailable: the choice just is not remembered */
-    }
+    saveNodeLimit(v);
   }, []);
 
-  // The engine lives as long as the canvas host; it is (re)attached to the store when that changes.
+  // The 3D engine lives while 3D is shown; it is (re)attached to the store when that changes.
+  const is3d = dim === 3;
   useEffect(() => {
     const host = hostRef.current;
-    if (!host) return;
+    if (!host || !is3d) return;
     let cancelled = false;
     let engine: Engine | null = null;
     // lazy: three (~1 MB) stays out of the entry chunk
@@ -349,7 +318,6 @@ export default function GraphView({
         });
         e.setNodeLimit(nodeLimitRef.current);
         const st = settingsRef.current;
-        if (st.dim !== 3) e.setDim(st.dim);
         e.setEdgeOpacityScale(st.edgeOpacity);
         e.setArrowsVisible(st.arrows);
         e.setCurved(st.curved);
@@ -365,9 +333,19 @@ export default function GraphView({
             : `The graph view could not start: ${err instanceof Error ? err.message : String(err)}`
         );
       });
+    return () => {
+      cancelled = true;
+      engineRef.current = null;
+      engine?.dispose();
+    };
+  }, [store, is3d]);
+
+  // Stats poll shared by both views.
+  useEffect(() => {
     const timer = setInterval(() => {
-      setFps(engine?.fps ?? 0);
-      setSettling(engine?.settling ?? false);
+      const v = activeView();
+      setFps(v?.fps ?? 0);
+      setSettling(v?.settling ?? false);
       setShown(Math.min(nodeLimitRef.current, store.nodeCount));
       const pend = pendingSelect.current;
       if (pend && store.generation > pend.gen) {
@@ -383,13 +361,8 @@ export default function GraphView({
       setCounts((prev) => keepIfSameCounts(prev, stats.counts));
       setRelCounts((prev) => keepIfSameMap(prev, stats.relCounts));
     }, 500);
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-      engineRef.current = null;
-      engine?.dispose();
-    };
-  }, [store]);
+    return () => clearInterval(timer);
+  }, [store, activeView]);
 
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement === wrapRef.current);
@@ -467,7 +440,23 @@ export default function GraphView({
           if (hover) placeTip();
         }}
       >
-        <div ref={hostRef} className="absolute inset-0" data-slot="canvas-host" />
+        {is3d ? (
+          <div ref={hostRef} className="absolute inset-0" data-slot="canvas-host" />
+        ) : (
+          <Graph2D
+            ref={view2dRef}
+            store={store}
+            nodeLimit={nodeLimit}
+            curved={curved}
+            arrows={arrows}
+            edgeOpacity={edgeOpacity}
+            palette={palette}
+            onPointClick={(i) => handlersRef.current.selectNode(i)}
+            onPointContextMenu={(i) => handlersRef.current.makeRoot(i)}
+            onBackgroundClick={() => handlersRef.current.clearSelection()}
+            onError={setEngineError}
+          />
+        )}
         {hover && !busy && <GraphTooltip ref={tipRef} store={store} hit={hover} />}
         <GraphOverlay busy={busy} status={status} engineError={engineError} />
         {selected && (

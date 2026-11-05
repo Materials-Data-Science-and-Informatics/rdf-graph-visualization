@@ -1,3 +1,7 @@
+import { NODE_LIMIT_DEFAULT, NODE_LIMIT_MAX, NODE_LIMIT_MIN } from "@/engine/layout-utils";
+
+export const NARROW = "(max-width: 767px)";
+
 /** Read a remembered setting; `parse` returns undefined for invalid values (-> fallback). */
 export function loadPref<T>(key: string, parse: (raw: string) => T | undefined, fallback: T): T {
   try {
@@ -97,3 +101,15 @@ export const loadEdgeOpacity = (): number =>
 /** Remembered root IRI (any http(s) IRI, e.g. after a right-click re-root). */
 export const loadRoot = (fallback: string): string =>
   loadPref(ROOT_KEY, (r) => (/^https?:\/\/\S+$/.test(r) ? r : undefined), fallback);
+
+export const NODE_LIMIT_KEY = "hkg-node-limit";
+export const loadNodeLimit = (): number =>
+  loadPref(
+    NODE_LIMIT_KEY,
+    (r) => {
+      const v = Number(r);
+      return v >= NODE_LIMIT_MIN && v <= NODE_LIMIT_MAX ? v : undefined;
+    },
+    NODE_LIMIT_DEFAULT
+  );
+export const saveNodeLimit = (v: number): void => savePref(NODE_LIMIT_KEY, String(v));
