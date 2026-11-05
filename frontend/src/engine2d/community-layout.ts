@@ -41,6 +41,26 @@ export function communityRegions(
 }
 
 /**
+ * Region unit that keeps the whole sunflower inside `maxRadius` (the layout space is finite:
+ * cosmos.gl clamps points at its border, which cut big graphs off with straight edges).
+ * Returns `preferred` when that already fits.
+ */
+export function fittingUnit(
+  sizes: ArrayLike<number>,
+  preferred: number,
+  maxRadius: number,
+  gapFactor = 1.6
+): number {
+  let total = 0;
+  for (let c = 0; c < sizes.length; c++) total += sizes[c];
+  // outermost centre ~ unit * gap * sqrt(total * gap) * 1.2, plus that region's own radius
+  const needed =
+    gapFactor * Math.sqrt(total * gapFactor) * 1.2 +
+    Math.sqrt(Math.max(1, sizes[sizes.length - 1] ?? 1));
+  return needed > 0 ? Math.min(preferred, maxRadius / needed) : preferred;
+}
+
+/**
  * Move every community member into its region, keeping its offset from the community's
  * current centroid (internal structure) but scaled so the community fits its radius.
  * Nodes without a community (-1) are left where they are. Mutates `pos`.

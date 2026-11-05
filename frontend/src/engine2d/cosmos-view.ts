@@ -8,7 +8,7 @@ import type { Communities } from "./communities";
 import { CommunityDetector } from "./community-detector";
 import { HubLabels } from "./hub-labels";
 import { placeNodes } from "./placement";
-import { communityRegions, moveIntoRegions } from "./community-layout";
+import { communityRegions, fittingUnit, moveIntoRegions } from "./community-layout";
 import { findLeafGroups, leafIndices, placeLeafDiscs, type LeafGroups } from "./leaf-rings";
 import { computeDegrees, computePointSizes } from "@/engine/node-size";
 
@@ -271,7 +271,9 @@ export class CosmosView {
     if (r.community.length !== this.nodes) return; // window changed meanwhile; a new run follows
     this.communities = r;
     if (this.store) this.labels?.setCandidates(this.store, r, this.nodes);
-    const regions = communityRegions(r.sizes, CENTER, REGION_UNIT, 1.25);
+    // big graphs: shrink the regions so everything stays inside the layout space
+    const unit = fittingUnit(r.sizes, REGION_UNIT, SPACE_SIZE * 0.42, 1.25);
+    const regions = communityRegions(r.sizes, CENTER, unit, 1.25);
     const pos = this.graph.getPointPositionsArray();
     if (pos.length >= this.nodes * 2) {
       moveIntoRegions(pos, r.community, regions);
