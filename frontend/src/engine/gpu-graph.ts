@@ -1,7 +1,7 @@
 import * as THREE from "three/webgpu";
 import type { GraphStore } from "@/lib/graph-store";
 import { edgeOpacity, nodeRadius, type EngineConfig } from "./config";
-import { EDGE_CURVATURE, EDGE_SEGMENTS, UNTYPED_ALPHA } from "./curve";
+import { EDGE_SEGMENTS, UNTYPED_ALPHA } from "./curve";
 import { applyCarry, type Vec3 } from "./picking";
 import {
   buildCsr,
@@ -70,9 +70,6 @@ export class GpuGraph {
   private readonly b: GpuBuffers;
   private readonly u = createUniforms();
   private dark = true;
-  private opacityScale = 1;
-  private readonly pickShaft: THREE.Mesh;
-  private readonly straightQuad: THREE.InstancedBufferGeometry;
   private readonly posCpu: Float32Array;
 
   private readonly stepKernel: ComputeNodeT;
@@ -161,7 +158,6 @@ export class GpuGraph {
       new THREE.BufferAttribute(new Float32Array([1, 0, 0, 0, -0.5, 0, 0, 0.5, 0]), 3)
     );
     tri.instanceCount = 0;
-    this.straightQuad = stripGeometry(1);
     this.shaftGeo = quad;
     this.arrowGeo = tri;
     const { shaftMat, arrowMat } = createEdgeMaterials(b, u);
@@ -181,7 +177,6 @@ export class GpuGraph {
     this.pickSprite.frustumCulled = false;
     this.pickSprite.count = 0;
     const pickShaft = new THREE.Mesh(quad, pickShaftMat);
-    this.pickShaft = pickShaft;
     this.pickArrows = new THREE.Mesh(tri, pickArrowMat);
     this.pickMats.push(pickNodeMat, pickShaftMat, pickArrowMat);
     for (const m of [this.pickSprite, pickShaft, this.pickArrows]) {
@@ -199,9 +194,8 @@ export class GpuGraph {
     this.pickSprite.count = this.nodeCount;
     this.sprite.visible = this.nodeCount > 0;
     this.shaftGeo.instanceCount = this.edgeCount;
-    this.straightQuad.instanceCount = this.edgeCount;
     this.arrowGeo.instanceCount = this.edgeCount;
-    const o = Math.min(1, edgeOpacity(this.edgeCount, this.dark) * this.opacityScale);
+    const o = Math.min(1, edgeOpacity(this.edgeCount, this.dark));
     this.u.uShaftOp.value = o;
     this.u.uArrowOp.value = Math.min(1, o + 0.15);
   }
@@ -354,26 +348,6 @@ export class GpuGraph {
     this.u.uZOn.value = dim === 2 ? 0 : 1;
   }
 
-  /** Multiplier on the automatic edge opacity (1 = default). */
-  setEdgeOpacityScale(scale: number): void {
-    this.opacityScale = scale;
-    this.syncCounts();
-  }
-
-  /** Curved (quadratic Bezier strips, default) or straight (single segment) edges. */
-  setCurved(on: boolean): void {
-    this.u.uCurv.value = on ? EDGE_CURVATURE : 0;
-    const geo = on ? this.shaftGeo : this.straightQuad;
-    this.shaft.geometry = geo;
-    this.pickShaft.geometry = geo;
-    this.syncCounts();
-  }
-
-  setArrowsVisible(on: boolean): void {
-    this.arrows.visible = on;
-    this.pickArrows.visible = on;
-  }
-
   /**
    * Write per-node visibility into the colour alpha (read by node and edge shaders):
    * a node is hidden when `hiddenGroups` has its group (-1 = unclassified). Full upload.
@@ -458,7 +432,6 @@ export class GpuGraph {
   dispose(): void {
     this.scene.remove(this.sprite, this.shaft, this.arrows);
     this.shaftGeo.dispose();
-    this.straightQuad.dispose();
     this.arrowGeo.dispose();
     this.shaftMat.dispose();
     this.arrowMat.dispose();

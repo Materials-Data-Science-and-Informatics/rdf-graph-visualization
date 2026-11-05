@@ -17,9 +17,6 @@ interface Graph2DProps {
   store: GraphStore;
   nodeLimit: number;
   streaming: boolean;
-  curved: boolean;
-  arrows: boolean;
-  edgeOpacity: number;
   palette: ReadonlyMap<string, string>;
   onPointClick: (index: number) => void;
   onPointContextMenu: (index: number) => void;
@@ -30,7 +27,7 @@ interface Graph2DProps {
 
 /** 2D mode: cosmos.gl canvas over the same GraphStore the 3D engine reads. */
 export default function Graph2D(p: Graph2DProps) {
-  const { ref, palette, curved, arrows, edgeOpacity } = p;
+  const { ref, palette } = p;
   const hostRef = useRef<HTMLDivElement>(null);
   const viewRef = useRef<CosmosView | null>(null);
   const latest = useRef(p);
@@ -65,15 +62,11 @@ export default function Graph2D(p: Graph2DProps) {
       .then(({ CosmosView }) => {
         if (cancelled) return;
         const l = latest.current;
-        view = new CosmosView(
-          host,
-          {
-            onPointClick: (i) => latest.current.onPointClick(i),
-            onPointContextMenu: (i) => latest.current.onPointContextMenu(i),
-            onBackgroundClick: () => latest.current.onBackgroundClick(),
-          },
-          { curved: l.curved, arrows: l.arrows, edgeOpacity: l.edgeOpacity }
-        );
+        view = new CosmosView(host, {
+          onPointClick: (i) => latest.current.onPointClick(i),
+          onPointContextMenu: (i) => latest.current.onPointContextMenu(i),
+          onBackgroundClick: () => latest.current.onBackgroundClick(),
+        });
         viewRef.current = view;
         view.setPalette(l.palette);
         l.onError(null);
@@ -97,9 +90,6 @@ export default function Graph2D(p: Graph2DProps) {
     };
   }, []);
 
-  useEffect(() => {
-    viewRef.current?.setOptions({ curved, arrows, edgeOpacity });
-  }, [curved, arrows, edgeOpacity]);
   useEffect(() => {
     viewRef.current?.setPalette(palette);
   }, [palette]);

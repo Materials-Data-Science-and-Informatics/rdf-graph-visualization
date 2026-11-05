@@ -36,12 +36,6 @@ export interface CosmosHandlers {
   onBackgroundClick: () => void;
 }
 
-export interface CosmosOptions {
-  curved: boolean;
-  arrows: boolean;
-  edgeOpacity: number;
-}
-
 type Rgba = [number, number, number, number];
 
 export class CosmosView {
@@ -65,7 +59,6 @@ export class CosmosView {
   private sizes: Float32Array<ArrayBufferLike> = new Float32Array(0);
   private leafGroups: LeafGroups | null = null;
   private lastLeaves = 0;
-  private edgeOpacity = 1;
   private linkCount = 0;
   private readonly detector = new CommunityDetector((r) => this.applyCommunities(r));
   private store: GraphStore | null = null;
@@ -76,8 +69,7 @@ export class CosmosView {
 
   constructor(
     private readonly host: HTMLDivElement,
-    handlers: CosmosHandlers,
-    opts: CosmosOptions
+    handlers: CosmosHandlers
   ) {
     this.graph = new Graph(host, {
       spaceSize: SPACE_SIZE,
@@ -85,10 +77,10 @@ export class CosmosView {
       pointDefaultSize: 4,
       scalePointsOnZoom: true,
       linkDefaultWidth: 1,
-      linkOpacity: this.linkOpacity(opts.edgeOpacity),
-      curvedLinks: opts.curved,
+      linkOpacity: this.linkOpacity(),
+      curvedLinks: true,
       // (opacity is lowered further for big link counts in push())
-      linkDefaultArrows: opts.arrows,
+      linkDefaultArrows: true,
       renderHoveredPointRing: true,
       focusedPointRingColor: "#ffffff",
       enableDrag: true,
@@ -136,15 +128,6 @@ export class CosmosView {
 
   get settling(): boolean {
     return this.graph.isSimulationRunning;
-  }
-
-  setOptions(o: CosmosOptions): void {
-    this.edgeOpacity = o.edgeOpacity;
-    this.graph.setConfigPartial({
-      curvedLinks: o.curved,
-      linkDefaultArrows: o.arrows,
-      linkOpacity: this.linkOpacity(o.edgeOpacity),
-    });
   }
 
   setPalette(palette: ReadonlyMap<string, string>): void {
@@ -244,7 +227,7 @@ export class CosmosView {
     g.setLinkColors(linkColors);
     this.linkCount = m;
     this.linkPairs = win.slice(0, m * 2);
-    g.setConfigPartial({ linkOpacity: this.linkOpacity(this.edgeOpacity) });
+    g.setConfigPartial({ linkOpacity: this.linkOpacity() });
     if (!fresh && this.communities) this.setClusters(n);
     if (fresh) {
       this.autoFit = true;
@@ -368,9 +351,9 @@ export class CosmosView {
   }
 
   /** Lines fade as their number grows, so dense graphs don't paint over the nodes. */
-  private linkOpacity(edgeOpacity: number): number {
+  private linkOpacity(): number {
     const density = 1 / (1 + this.linkCount / 4000);
-    return Math.min(1, Math.max(0.08, 0.6 * density) * edgeOpacity);
+    return Math.min(1, Math.max(0.08, 0.6 * density));
   }
 
   /** Background follows the app theme (`--background`, possibly oklch -> resolved via canvas). */

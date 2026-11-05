@@ -15,18 +15,11 @@ import {
   loadNodeLimit,
   saveNodeLimit,
   NARROW,
-  ARROWS_KEY,
-  CURVED_KEY,
   DIM_KEY,
-  EDGE_OPACITY_KEY,
   ROOT_KEY,
-  loadArrows,
-  loadCurved,
   loadDepth,
   loadDim,
-  loadEdgeOpacity,
   loadRoot,
-  saveBool,
   saveDepth,
   savePref,
 } from "@/lib/sidebar-settings";
@@ -90,12 +83,9 @@ export default function GraphView({
   // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   paletteRef.current = palette;
   const [dim, setDimState] = useState<2 | 3>(loadDim);
-  const [edgeOpacity, setEdgeOpacity] = useState(loadEdgeOpacity);
-  const [arrows, setArrows] = useState(loadArrows);
-  const [curved, setCurved] = useState(loadCurved);
-  const settingsRef = useRef({ dim, edgeOpacity, arrows, curved });
+  const settingsRef = useRef({ dim });
   // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
-  settingsRef.current = { dim, edgeOpacity, arrows, curved };
+  settingsRef.current = { dim };
 
   // Depth changes restart the stream; omitted max_hops (default 6) keeps the cached snapshot key.
   useEffect(() => {
@@ -262,21 +252,6 @@ export default function GraphView({
     setDimState(d);
     savePref(DIM_KEY, String(d));
   }, []);
-  const onEdgeOpacity = useCallback((v: number) => {
-    setEdgeOpacity(v);
-    savePref(EDGE_OPACITY_KEY, String(v));
-    engineRef.current?.setEdgeOpacityScale(v);
-  }, []);
-  const onArrows = useCallback((v: boolean) => {
-    setArrows(v);
-    saveBool(ARROWS_KEY, v);
-    engineRef.current?.setArrowsVisible(v);
-  }, []);
-  const onCurved = useCallback((v: boolean) => {
-    setCurved(v);
-    saveBool(CURVED_KEY, v);
-    engineRef.current?.setCurved(v);
-  }, []);
   const onResetView = useCallback(() => activeView()?.resetView(), [activeView]);
   const onToggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
 
@@ -317,10 +292,6 @@ export default function GraphView({
           },
         });
         e.setNodeLimit(nodeLimitRef.current);
-        const st = settingsRef.current;
-        e.setEdgeOpacityScale(st.edgeOpacity);
-        e.setArrowsVisible(st.arrows);
-        e.setCurved(st.curved);
         e.setRelationColors(paletteRef.current);
         e.attach(store);
         setEngineError(null);
@@ -424,12 +395,6 @@ export default function GraphView({
         relationLegend={relationLegend}
         dim={dim}
         onDim={onDim}
-        edgeOpacity={edgeOpacity}
-        onEdgeOpacity={onEdgeOpacity}
-        arrows={arrows}
-        onArrows={onArrows}
-        curved={curved}
-        onCurved={onCurved}
         onResetView={onResetView}
       />
       <div
@@ -449,9 +414,6 @@ export default function GraphView({
             store={store}
             nodeLimit={nodeLimit}
             streaming={status.phase === "streaming"}
-            curved={curved}
-            arrows={arrows}
-            edgeOpacity={edgeOpacity}
             palette={palette}
             onPointClick={(i) => handlersRef.current.selectNode(i)}
             onPointContextMenu={(i) => handlersRef.current.makeRoot(i)}

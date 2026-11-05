@@ -109,15 +109,16 @@ export default function SearchBox({
   const showPanel = open && q.length >= SEARCH_MIN_CHARS;
 
   const choose = useCallback(
-    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- control is a stable handle ref; deps are intentional
     (r: SearchResult, root: boolean) => {
       const c = control.current;
       if (!c) return;
       if (root) c.makeRoot(r.id);
       else c.open(r.id);
+      onChange(""); // clears the text, cancels the pending debounced search, aborts in-flight
       setOpen(false);
       inputRef.current?.blur();
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- onChange only uses stable refs/setters
     [control]
   );
 

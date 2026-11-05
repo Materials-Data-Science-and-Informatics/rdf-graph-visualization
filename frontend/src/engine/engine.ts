@@ -44,9 +44,6 @@ export class Engine {
   private dark = true;
   handlers: EngineHandlers = {};
   private selected: number | null = null;
-  private edgeOpacityScale = 1;
-  private arrowsOn = true;
-  private curvedOn = true;
   private readonly frameTimes: number[] = [];
   private lastFrame = 0;
 
@@ -192,22 +189,6 @@ export class Engine {
     if (visible) this.ingest.hidden.delete(groupIndex);
     else this.ingest.hidden.add(groupIndex);
     this.ingest.visibilityDirty = true;
-  }
-
-  /** Multiplier on the automatic edge opacity (1 = default). */
-  setEdgeOpacityScale(scale: number): void {
-    this.edgeOpacityScale = scale;
-    this.gpu?.setEdgeOpacityScale(scale);
-  }
-
-  setCurved(on: boolean): void {
-    this.curvedOn = on;
-    this.gpu?.setCurved(on);
-  }
-
-  setArrowsVisible(on: boolean): void {
-    this.arrowsOn = on;
-    this.gpu?.setArrowsVisible(on);
   }
 
   /**
@@ -442,9 +423,6 @@ export class Engine {
     this.gpu = gpu;
     gpu.setDim(this.rig.dim);
     gpu.setLook(this.dark);
-    gpu.setEdgeOpacityScale(this.edgeOpacityScale);
-    gpu.setArrowsVisible(this.arrowsOn);
-    gpu.setCurved(this.curvedOn);
     this.applyHighlight();
     this.ingest.visibilityDirty = true;
     this.ingest.csrDirty = true;

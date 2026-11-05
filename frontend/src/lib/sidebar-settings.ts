@@ -20,9 +20,6 @@ export function savePref(key: string, raw: string): void {
   }
 }
 
-const parseBool = (raw: string): boolean | undefined =>
-  raw === "1" ? true : raw === "0" ? false : undefined;
-
 export const DEPTH_MIN = 1;
 export const DEPTH_MAX = 8;
 /** Backend default `max_hops`; requests with this depth omit the parameter (same cache key). */
@@ -73,30 +70,10 @@ export function groupCounts(groups: Int16Array, shown: number, groupCount: numbe
   return out;
 }
 
-export const CURVED_KEY = "hkg-curved-edges";
-
-export const ARROWS_KEY = "hkg-arrows";
 export const DIM_KEY = "hkg-dim";
-export const EDGE_OPACITY_KEY = "hkg-edge-opacity";
 export const ROOT_KEY = "hkg-root";
-export const EDGE_OPACITY_MIN = 0.1;
-export const EDGE_OPACITY_MAX = 2;
 
-export const saveBool = (key: string, v: boolean): void => savePref(key, v ? "1" : "0");
-/** Curved edges and arrows default to on. */
-export const loadCurved = (): boolean => loadPref(CURVED_KEY, parseBool, true);
-export const loadArrows = (): boolean => loadPref(ARROWS_KEY, parseBool, true);
 export const loadDim = (): 2 | 3 => loadPref(DIM_KEY, (r) => (r === "2" ? 2 : undefined), 3);
-
-export const loadEdgeOpacity = (): number =>
-  loadPref(
-    EDGE_OPACITY_KEY,
-    (r) => {
-      const v = Number(r);
-      return r !== "" && v >= EDGE_OPACITY_MIN && v <= EDGE_OPACITY_MAX ? v : undefined;
-    },
-    1
-  );
 
 /** Remembered root IRI (any http(s) IRI, e.g. after a right-click re-root). */
 export const loadRoot = (fallback: string): string =>

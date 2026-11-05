@@ -40,12 +40,6 @@ export interface SidebarProps {
   relationLegend: LegendRow[];
   dim: 2 | 3;
   onDim: (d: 2 | 3) => void;
-  edgeOpacity: number;
-  onEdgeOpacity: (v: number) => void;
-  arrows: boolean;
-  onArrows: (v: boolean) => void;
-  curved: boolean;
-  onCurved: (v: boolean) => void;
   onResetView: () => void;
 }
 
@@ -59,37 +53,6 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
     </section>
   );
 }
-
-const Switch = ({
-  label,
-  checked,
-  onChange,
-  disabled,
-  hint,
-}: {
-  label: string;
-  checked: boolean;
-  onChange: (v: boolean) => void;
-  disabled?: boolean;
-  hint?: string;
-}) => (
-  <label
-    className={cn("flex items-center justify-between gap-2 text-sm", disabled && "opacity-50")}
-  >
-    <span>
-      {label}
-      {hint && <span className="text-muted-foreground ml-1 text-xs">({hint})</span>}
-    </span>
-    <input
-      type="checkbox"
-      role="switch"
-      className="accent-primary size-4"
-      checked={checked}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.checked)}
-    />
-  </label>
-);
 
 /** Favicon of a root preset; hidden when it fails to load (external host). */
 function PresetIcon({ src }: { src: string }) {
@@ -224,13 +187,13 @@ function Sidebar(p: SidebarProps) {
           </Button>
         </div>
 
-        <Section title="Root">
+        <Section title="Starting point">
           <label className="flex items-center gap-2 text-sm">
-            <span className="sr-only">Root organisation</span>
+            <span className="sr-only">Starting point</span>
             {preset && <PresetIcon src={preset.favicon} />}
             <select
               value={p.rootIri}
-              aria-label="Root organisation"
+              aria-label="Starting point"
               className="bg-background min-w-0 flex-1 rounded-md border px-2 py-1 text-sm"
               onChange={(e) => p.onRoot(e.target.value)}
             >
@@ -260,7 +223,7 @@ function Sidebar(p: SidebarProps) {
           </div>
         </Section>
 
-        <Section title="Inputs">
+        <Section title="Parameters">
           <label className="block space-y-1 text-sm">
             <span className="flex justify-between">
               Node count
@@ -349,23 +312,6 @@ function Sidebar(p: SidebarProps) {
               ))}
             </div>
           </div>
-          <label className="block space-y-1 text-sm">
-            <span className="flex justify-between">
-              Edge opacity
-              <span className="tabular-nums">{Math.round(p.edgeOpacity * 100)}%</span>
-            </span>
-            <input
-              type="range"
-              min={0.1}
-              max={2}
-              step={0.05}
-              value={p.edgeOpacity}
-              className="accent-primary w-full"
-              onChange={(e) => p.onEdgeOpacity(Number(e.target.value))}
-            />
-          </label>
-          <Switch label="Arrows" checked={p.arrows} onChange={p.onArrows} />
-          <Switch label="Curved edges" checked={p.curved} onChange={p.onCurved} />
           <Button variant="outline" size="sm" className="w-full" onClick={p.onResetView}>
             Reset view
           </Button>
