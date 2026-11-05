@@ -192,7 +192,7 @@ export function appendWindowEdges(
   return n;
 }
 
-export const NODE_LIMIT_MIN = 500;
+export const NODE_LIMIT_MIN = 50;
 export const NODE_LIMIT_MAX = 100_000;
 export const NODE_LIMIT_DEFAULT = 5_000;
 

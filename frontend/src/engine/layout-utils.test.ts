@@ -154,7 +154,7 @@ describe("node window", () => {
 
 describe("log slider", () => {
   it("maps the ends and round-trips the default", () => {
-    expect(sliderToCount(0)).toBe(500);
+    expect(sliderToCount(0)).toBe(50);
     expect(sliderToCount(1)).toBe(100000);
     expect(sliderToCount(countToSlider(5000))).toBe(5000);
   });

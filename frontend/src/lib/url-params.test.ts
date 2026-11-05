@@ -12,7 +12,7 @@ describe("readUrlParams", () => {
   });
   it("clamps out-of-range numbers", () => {
     expect(readUrlParams("?nodes=5&depth=99&fanout=-4")).toEqual({
-      nodes: 500,
+      nodes: 50,
       depth: 8,
       fanout: 0,
     });
