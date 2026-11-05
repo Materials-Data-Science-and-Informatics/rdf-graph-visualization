@@ -53,6 +53,8 @@ export class GraphStore {
   edgeCount = 0;
   /** Largest hop seen in `nodes`/`edges` events. */
   maxHop = 0;
+  /** `max_nodes` of the stream's meta event (null until it arrives); sizes the GPU buffers. */
+  maxNodes: number | null = null;
 
   nodeIds: string[] = [];
   /** label per node, null = none yet. */
@@ -113,6 +115,7 @@ export class GraphStore {
     this.nodeCount = 0;
     this.edgeCount = 0;
     this.maxHop = 0;
+    this.maxNodes = null;
     this.takenNodes = 0;
     this.takenEdges = 0;
     this.recolored.clear();
@@ -125,6 +128,9 @@ export class GraphStore {
 
   apply(event: StreamEvent): void {
     switch (event.type) {
+      case "meta":
+        this.maxNodes = event.max_nodes;
+        break;
       case "nodes":
         for (const n of event.nodes) {
           const i = this.ensureNode(n.id, event.hop);
@@ -155,7 +161,7 @@ export class GraphStore {
         this.version++;
         break;
       default:
-        break; // meta/progress/ping/error/done carry no graph data
+        break; // progress/ping/error/done carry no graph data
     }
   }
 
