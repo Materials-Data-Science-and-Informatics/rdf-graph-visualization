@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { readUrlParams } from "./url-params";
+import { buildShareUrl, readUrlParams } from "./url-params";
 
 describe("readUrlParams", () => {
   it("reads valid values", () => {
@@ -23,5 +23,20 @@ describe("readUrlParams", () => {
       readUrlParams("?root=javascript:alert(1)&select=nope&nodes=abc&depth=&fanout=x&dim=4")
     ).toEqual({});
     expect(readUrlParams("")).toEqual({});
+  });
+});
+
+describe("buildShareUrl", () => {
+  const base = { root: "https://example.org/r", nodes: 2000, depth: 3, fanout: 0, dim: 2 as const };
+  it("round-trips through readUrlParams", () => {
+    const select = "https://example.org/a#x";
+    const url = buildShareUrl("http://h/app", { ...base, select });
+    expect(readUrlParams(url.slice(url.indexOf("?")))).toEqual({ ...base, select });
+  });
+  it("omits select when absent or a bundle", () => {
+    expect(buildShareUrl("http://h/", base)).not.toContain("select");
+    expect(buildShareUrl("http://h/", { ...base, select: "urn:hkg:bundle:abc" })).not.toContain(
+      "select"
+    );
   });
 });

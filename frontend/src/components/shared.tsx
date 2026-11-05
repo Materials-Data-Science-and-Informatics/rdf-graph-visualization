@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { Check, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useCopy } from "@/lib/use-copy";
 
 export interface LegendRow {
   name: string;
@@ -18,22 +19,14 @@ export function Row({ label, value }: { label: string; value: ReactNode }) {
 }
 
 export function CopyButton({ text }: { text: string }) {
-  const [done, setDone] = useState(false);
+  const { done, copy } = useCopy();
   return (
     <Button
       variant="ghost"
       size="icon"
       className="size-7 shrink-0"
       aria-label="Copy IRI"
-      onClick={() => {
-        navigator.clipboard
-          ?.writeText(text)
-          .then(() => {
-            setDone(true);
-            setTimeout(() => setDone(false), 1500);
-          })
-          .catch(() => undefined);
-      }}
+      onClick={() => copy(text)}
     >
       {done ? <Check /> : <Copy />}
     </Button>

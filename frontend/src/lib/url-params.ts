@@ -1,4 +1,5 @@
 import { NODE_LIMIT_MAX, NODE_LIMIT_MIN } from "@/engine/layout-utils";
+import { isBundleId } from "./bundles";
 import { clampDepth, clampFanout } from "./sidebar-settings";
 
 /** Settings taken from the page URL (`?root=…&nodes=…`); only valid, present values appear. */
@@ -39,4 +40,20 @@ export function readUrlParams(search: string): UrlParams {
   if (dim === "2") out.dim = 2;
   else if (dim === "3") out.dim = 3;
   return out;
+}
+
+/** Link to a view: all settings, plus `select` only for a real (non-bundle) selected node. */
+export function buildShareUrl(
+  base: string,
+  p: Required<Omit<UrlParams, "select">> & { select?: string }
+): string {
+  const q = new URLSearchParams({
+    root: p.root,
+    nodes: String(p.nodes),
+    depth: String(p.depth),
+    fanout: String(p.fanout),
+    dim: String(p.dim),
+  });
+  if (p.select && !isBundleId(p.select)) q.set("select", p.select);
+  return `${base}?${q}`;
 }

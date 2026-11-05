@@ -491,6 +491,7 @@ export default function GraphView({
               : void wrapRef.current?.requestFullscreen()
           }
           onResetView={onResetView}
+          share={{ root: rootIri, nodes: nodeLimit, depth, fanout, dim, select: selected?.iri }}
         />
       </div>
     </div>
