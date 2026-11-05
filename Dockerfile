@@ -8,7 +8,7 @@
 #   docker run -p 80:80 hkg-graph-explorer
 
 # ---- Stage 1: frontend (Vite SPA) -----------------------------------------
-FROM node:20 AS frontend-build
+FROM node:24.22.2-trixie AS frontend-build
 WORKDIR /app
 # .dockerignore excludes node_modules/ and dist/.
 COPY frontend/ ./
@@ -30,20 +30,27 @@ RUN npm install -g pnpm@12.16.1 --no-audit --no-fund && \
 RUN npm run build
 
 # ---- Stage 2: backend dependencies (isolated venv) -------------------------
-FROM python:3.12-slim AS backend-build
+FROM python:3.14.10-slim-trixie AS backend-build
 WORKDIR /build
-# git is required by pip to fetch the `hkg-data-model` dependency, which is
-# pinned to a GitLab TAG via git+https (see backend/pyproject.toml).
-# python:3.12-slim ships without git.
+# git is required to fetch the `hkg-data-model` dependency, which is pinned
+# to a GitLab TAG via git+https (see backend/pyproject.toml; resolved in
+# backend/uv.lock). python:3.14-slim ships without git.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git \
+    && apt-get install -y --no-install-recommends git ca-certificates \
     && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:0.13.7 /uv /uvx /bin/
+# Install exactly what backend/uv.lock pins (runtime deps only, no dev extras)
+# into /opt/venv. Use the image's Python (no downloads) so the venv matches the
+# runtime stage's interpreter.
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv \
+    UV_PYTHON_DOWNLOADS=0 \
+    UV_LINK_MODE=copy \
+    UV_COMPILE_BYTECODE=1
 COPY backend/ ./
-RUN python -m venv /opt/venv \
-    && /opt/venv/bin/pip install --no-cache-dir .
+RUN uv sync --frozen --no-dev --no-editable
 
 # ---- Stage 3: runtime ------------------------------------------------------
-FROM python:3.12-slim
+FROM python:3.14.10-slim-trixie
 RUN apt-get update \
     && apt-get install -y --no-install-recommends nginx supervisor \
     && rm -rf /var/lib/apt/lists/* \

@@ -4,7 +4,7 @@
 #
 #   frontend : pnpm install --frozen-lockfile, then check (tsc + eslint +
 #              prettier), test (render contract suite), build (vite).
-#   backend  : python 3.12 venv, pip install -e ".[dev]", then check.sh
+#   backend  : python 3.14, uv sync --frozen --extra dev, then check.sh
 #              (ruff format/check, mypy, pylint, pytest).
 #   rc-image : branch tags matching *-rc.* (e.g. 0.4.0-rc.1) build the
 #              Dockerfile and push to ghcr, tagged with the tag name plus a
@@ -43,14 +43,14 @@ jobs:
         uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 24
           cache: pnpm
           cache-dependency-path: frontend/pnpm-lock.yaml
 
@@ -79,19 +79,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10
         with:
-          python-version: "3.12"
+          python-version: "3.14"
+          enable-cache: true
+          cache-dependency-glob: backend/uv.lock
 
-      # git is preinstalled on ubuntu-latest; it is needed by pip to fetch
+      # git is preinstalled on ubuntu-latest; it is needed by uv to fetch
       # the hkg-data-model dependency, which is pinned to a GitLab tag via
-      # git+https (backend/pyproject.toml) and is publicly readable.
-      - name: Install (editable + dev extras)
+      # git+https (backend/pyproject.toml, backend/uv.lock) and is publicly
+      # readable.
+      - name: Install (locked, dev extras)
         working-directory: backend
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install -q -e ".[dev]"
+        run: uv sync --frozen --extra dev
 
       - name: Check (ruff, mypy, pylint, pytest)
         working-directory: backend
