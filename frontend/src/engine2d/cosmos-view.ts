@@ -8,6 +8,7 @@ import type { Communities } from "./communities";
 import { CommunityDetector } from "./community-detector";
 import { HubLabels } from "./hub-labels";
 import { placeNodes } from "./placement";
+import { findLeafGroups, leafIndices, placeLeafDiscs, type LeafGroups } from "./leaf-rings";
 import { computeDegrees, computePointSizes } from "./point-sizes";
 
 const SPACE_SIZE = 4096;
@@ -21,6 +22,8 @@ const ALPHA_CLUSTER = 0.3;
 const CLUSTER_STRENGTH = 0.05;
 const FIT_MS = 400;
 const FIT_EVERY_MS = 1000;
+/** While the layout moves, leaf discs are re-centred on their hubs at this interval. */
+const LEAF_EVERY_MS = 300;
 
 export interface CosmosHandlers {
   onPointClick: (index: number) => void;
@@ -52,6 +55,9 @@ export class CosmosView {
   private lastFit = 0;
   private communities: Communities | null = null;
   private degrees: Uint32Array<ArrayBufferLike> = new Uint32Array(0);
+  private sizes: Float32Array<ArrayBufferLike> = new Float32Array(0);
+  private leafGroups: LeafGroups | null = null;
+  private lastLeaves = 0;
   private readonly detector = new CommunityDetector((r) => this.applyCommunities(r));
   private store: GraphStore | null = null;
   private labels: HubLabels | null = null;
@@ -82,13 +88,13 @@ export class CosmosView {
       // weak gravity and moderate repulsion so the dense core does not push leaves outwards;
       // collision (radius from point sizes) spreads a hub's leaves evenly around it
       // link strength is left at cosmos' default, which is already 1/min(deg) per link
-      simulationDecay: 1000,
+      simulationDecay: 300, // leaves are pinned: few moving points, short cool-down
       simulationGravity: 0.05,
-      simulationRepulsion: 0.8,
+      simulationRepulsion: 3,
       simulationCollision: 1,
       simulationCollisionPadding: 1,
       simulationLinkSpring: 1,
-      simulationLinkDistance: 15,
+      simulationLinkDistance: 40,
       simulationCluster: 0, // switched on once communities are known
       onPointClick: (i) => handlers.onPointClick(i),
       onPointContextMenu: (i, _pos, e) => {
@@ -104,6 +110,7 @@ export class CosmosView {
         this.ticks++;
       },
       onSimulationEnd: () => {
+        this.recentreLeaves();
         if (this.autoFit) this.graph.fitView(FIT_MS);
       },
     });
@@ -161,6 +168,8 @@ export class CosmosView {
       this.seenPalette === this.paletteVersion
     ) {
       this.fitWhileRunning();
+      if (this.settling && performance.now() - this.lastLeaves > LEAF_EVERY_MS)
+        this.recentreLeaves();
     } else {
       this.push(store, n, nodeLimit, fresh);
     }
@@ -211,11 +220,16 @@ export class CosmosView {
     }
     if (fresh) this.labels?.clear();
     if (fresh && this.communities) this.clearCommunities(n);
+    this.degrees = computeDegrees(n, store.edges, store.edgeCount);
+    this.sizes = computePointSizes(n, this.degrees);
+    // leaves are pinned on discs around their hub; the forces lay out the rest
+    this.leafGroups = findLeafGroups(n, store.edges, store.edgeCount, this.degrees);
+    placeLeafDiscs(pos, this.leafGroups, this.sizes);
     g.setPointPositions(pos, true);
     g.setLinks(links);
     g.setPointColors(colors);
-    this.degrees = computeDegrees(n, store.edges, store.edgeCount);
-    g.setPointSizes(computePointSizes(n, this.degrees));
+    g.setPointSizes(this.sizes);
+    g.setPinnedPoints(leafIndices(this.leafGroups));
     g.setLinkColors(linkColors);
     if (!fresh && this.communities) this.setClusters(n);
     if (fresh) {
@@ -275,6 +289,18 @@ export class CosmosView {
     this.detector.cancel();
     this.graph.setConfigPartial({ simulationCluster: 0 });
     this.graph.setPointClusters(new Array<number | undefined>(n).fill(undefined));
+  }
+
+  /** Move every leaf disc back onto its hub's current position (leaves are pinned). */
+  private recentreLeaves(): void {
+    this.lastLeaves = performance.now();
+    const groups = this.leafGroups;
+    if (!groups || groups.hubs.length === 0 || this.nodes === 0) return;
+    const pos = this.graph.getPointPositionsArray();
+    if (pos.length < this.nodes * 2) return;
+    placeLeafDiscs(pos, groups, this.sizes);
+    this.graph.setPointPositions(pos, true);
+    this.graph.render();
   }
 
   private fitWhileRunning(): void {
