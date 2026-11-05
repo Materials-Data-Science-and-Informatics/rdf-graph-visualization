@@ -374,7 +374,8 @@ export default function GraphView({
         const i = store.indexOf(pend.iri);
         if (i >= 0 && i < nodeLimitRef.current) {
           pendingSelect.current = null;
-          handlersRef.current.focusSelect(i);
+          // select only: focusing the hop-0 root would stop the auto-fit before the layout spreads
+          handlersRef.current.selectNode(i);
         }
       }
       if (pend && Date.now() > pend.until) pendingSelect.current = null;
