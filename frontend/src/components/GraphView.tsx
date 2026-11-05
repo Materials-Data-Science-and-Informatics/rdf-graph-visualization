@@ -1,12 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Maximize, Minimize, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import type { GraphGroupConfig } from "@/lib/api";
+import { DEFAULT_ROOT_IRI } from "@/lib/config";
+import { useGraphStream } from "@/lib/use-graph-stream";
 import StatusBar from "./StatusBar";
 
 /** Canvas host: the GPU engine mounts into the `canvas-host` div (task F2). */
-export default function GraphView() {
+export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
+  const { status, start } = useGraphStream(groups);
   const wrapRef = useRef<HTMLDivElement>(null);
   const [isFullscreen, setFullscreen] = useState(false);
+
+  useEffect(() => start(DEFAULT_ROOT_IRI), [start]);
 
   useEffect(() => {
     const onChange = () => setFullscreen(document.fullscreenElement === wrapRef.current);
@@ -36,7 +42,7 @@ export default function GraphView() {
         </Button>
       </div>
       <div className="absolute top-3 right-3" data-slot="legend" />
-      <StatusBar />
+      <StatusBar status={status} />
     </div>
   );
 }

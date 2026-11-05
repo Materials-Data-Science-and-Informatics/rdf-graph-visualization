@@ -11,7 +11,7 @@ export default function App() {
     <div className="flex h-dvh flex-col overflow-hidden">
       <TopBar />
       {cfg.status === "ready" ? (
-        <GraphView />
+        <GraphView groups={cfg.config.graph.groups} />
       ) : (
         <main className="flex flex-1 items-center justify-center">
           {cfg.status === "loading" ? (
