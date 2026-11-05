@@ -63,7 +63,7 @@ export default function GraphView({
 }: {
   groups: GraphGroupConfig[];
   relations: string[];
-  control: React.MutableRefObject<GraphControl | null>;
+  control: React.RefObject<GraphControl | null>;
 }) {
   const { store, status, start } = useGraphStream(groups);
   const wrapRef = useRef<HTMLDivElement>(null);
