@@ -4,7 +4,7 @@
 
 All configuration is environment-driven so the same image runs against the QLever
 dev and prod endpoints without a rebuild (replaces the old build-time config.yml
-import). Values match the deployment contract in graphviz-deployment.
+import).
 """
 
 from __future__ import annotations
@@ -13,7 +13,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-# Default is the HKG QLever *dev* endpoint (B1: dev endpoint until shipping);
+# Default is the HKG QLever *dev* endpoint (until shipping);
 # deployments point QLEVER_URL at the prod endpoint later. Verified live during
 # research (POST, JSON/CSV).
 DEFAULT_QLEVER_URL = "https://sparql.unhide.helmholtz-metadaten.de/sparql"

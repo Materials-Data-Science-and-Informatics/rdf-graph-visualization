@@ -12,18 +12,12 @@ FROM node:24.22.2-trixie AS frontend-build
 WORKDIR /app
 # .dockerignore excludes node_modules/ and dist/.
 COPY frontend/ ./
-# Frontend package manager is pnpm (the HKG convention); the npm fallback
-# covers a regression of the lockfile. If the package manager changes again,
-# update this stage.
+# pnpm (pinned like frontend/package.json "packageManager"), from the lockfile.
 RUN npm install -g pnpm@12.16.1 --no-audit --no-fund && \
-    if [ -f pnpm-lock.yaml ]; then \
-        pnpm install --frozen-lockfile; \
-    else \
-        npm ci; \
-    fi
-# Renderer config (palette/properties) is fetched at RUNTIME from the API's
-# /api/config (card C4) — nothing config-related is baked into the bundle.
-RUN npm run build
+    pnpm install --frozen-lockfile
+# The graph config (classes, colours, relations) is fetched at runtime from
+# /api/config; nothing config-related is baked into the bundle.
+RUN pnpm build
 
 # ---- Stage 2: backend dependencies (isolated venv) -------------------------
 FROM python:3.14.10-slim-trixie AS backend-build
