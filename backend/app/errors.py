@@ -1,6 +1,6 @@
 # SPDX-FileCopyrightText: 2025-2026 Forschungszentrum Jülich GmbH (IAS-9) and HKG contributors
 # SPDX-License-Identifier: MIT
-"""HTTP error dialect for QLever failures (cards B2-B7).
+"""HTTP error dialect for QLever failures.
 
 Every endpoint card funnels :class:`app.qlever.QleverError` through
 :func:`qlever_error_response`, so clients see one stable mapping:

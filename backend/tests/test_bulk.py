@@ -164,15 +164,15 @@ class FakeClient:
         return SelectResult(vars=[], rows=self._select(query))
 
 
-def test_fetch_edges_chunks_per_relation_dedupes_and_caps_concurrency() -> None:
+def test_fetch_edges_ex_chunks_per_relation_dedupes_and_caps_concurrency() -> None:
     frontier = [f"https://x.org/n{i}" for i in range(5)]
     rels = [S + "author", S + "creator"]
     fake = FakeClient(
         construct=lambda q: [(A, S + "author", Bn), (A, S + "author", Bn)],
         delay=0.05,
     )
-    edges = asyncio.run(
-        bulk.fetch_edges(
+    edges, _ = asyncio.run(
+        bulk.fetch_edges_ex(
             frontier + frontier, rels, client=fake, concurrency=2, chunk_size=2
         )
     )
@@ -184,12 +184,12 @@ def test_fetch_edges_chunks_per_relation_dedupes_and_caps_concurrency() -> None:
     assert fake.peak == 2  # semaphore cap reached and never exceeded
 
 
-def test_fetch_edges_failure_propagates() -> None:
+def test_fetch_edges_ex_failure_propagates() -> None:
     def boom(_q: str):
         raise QleverServerError("truncated")
 
     with pytest.raises(QleverServerError):
-        asyncio.run(bulk.fetch_edges([A], [S + "author"], client=FakeClient(boom)))
+        asyncio.run(bulk.fetch_edges_ex([A], [S + "author"], client=FakeClient(boom)))
 
 
 def test_fetch_types_picks_first_group_in_config_order_and_skip() -> None:
@@ -240,14 +240,14 @@ def test_fetch_labels_chunks_in_parallel() -> None:
     assert len(fake.queries) == 3 and fake.peak == 3
 
 
-def test_fetch_edges_first_failure_cancels_queued_chunks() -> None:
+def test_fetch_edges_ex_first_failure_cancels_queued_chunks() -> None:
     def boom(_q: str):
         raise QleverServerError("boom")
 
     fake = FakeClient(construct=boom)
     with pytest.raises(QleverServerError, match="boom"):
         asyncio.run(
-            bulk.fetch_edges(
+            bulk.fetch_edges_ex(
                 [f"https://x.org/n{i}" for i in range(5)],
                 [S + "author"],
                 client=fake,

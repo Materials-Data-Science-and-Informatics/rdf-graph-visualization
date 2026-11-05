@@ -100,7 +100,7 @@ def search_query(
     user text are escaped, so it is treated as data, not a pattern.
     ``?lbl`` is projected so the endpoint can fold a node's several matched
     rows (multiple label properties / values / rdf:types) deterministically
-    (label-property priority, B2's primary-type rule).
+    (label-property priority, primary-type rule).
 
     QLever dialect note (verified live against the dev endpoint): the
     VALUES block is whitespace-separated (see :func:`iri_list`).

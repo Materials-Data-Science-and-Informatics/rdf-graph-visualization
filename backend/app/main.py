@@ -2,10 +2,10 @@
 # SPDX-License-Identifier: MIT
 """FastAPI entrypoint for the HKG graph-explorer backend.
 
-Only the health probe and the config probe live here; endpoint cards (B2-B7)
-mount their own routers under /api. The QLever client (B1) is the single
-SPARQL gateway. The B7 guard middleware (TTL cache + rate limit) wraps all
-/api traffic, excluding the health probe.
+The health and config probes live here; the search, stream and node routers
+are mounted under /api. The QLever client is the single SPARQL gateway. The
+guard middleware (TTL cache + rate limit) wraps all /api traffic, excluding
+the health probe.
 """
 
 import asyncio

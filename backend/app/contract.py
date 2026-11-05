@@ -30,16 +30,6 @@ NodeType = Literal[
 ]
 
 
-class Node(BaseModel):
-    """One graph node: an entity IRI with display metadata."""
-
-    id: str = Field(description="Entity IRI (stable key).")
-    label: str
-    type: NodeType
-    group: str = Field(description="Data-model class used for colour/grouping.")
-    purl: str | None = None
-
-
 class SearchResult(BaseModel):
     """One match returned by the label/entity search endpoint."""
 

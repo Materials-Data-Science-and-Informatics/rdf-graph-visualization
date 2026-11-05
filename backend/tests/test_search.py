@@ -6,7 +6,7 @@ All QLever traffic is replayed through ``httpx.MockTransport`` — no
 network. Coverage: the query shape (case-insensitive prefix regex, the
 pinned label IRIs, ``LIMIT 20``, ``ORDER BY ?label``, the ``?lbl``
 projection; metacharacters in ``q`` escaped as data, not pattern), the
-order-independent fold (B2's primary-type rule for multiply-typed nodes,
+order-independent fold (primary-type rule for multiply-typed nodes,
 label-property priority with alphabetical tie-break, malformed rows
 skipped, ``(label, id)`` ordering, 20-hit cap), input validation
 (missing/empty/whitespace/overlong ``q`` -> 422 with no QLever traffic),

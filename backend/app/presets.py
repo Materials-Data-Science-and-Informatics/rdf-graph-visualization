@@ -9,7 +9,7 @@ that behaviour against model tag 1.1.0.
 Derivation rules (all mechanical, no hand-maintained IRI lists):
 
 - ``types`` (palette): one preset per non-fallback data-model class exposed by
-  the pinned model (via the F6 wrappers in ``app.hkg_wrappers``). The colour
+  the pinned model (via ``app.hkg_wrappers``). The colour
   values keep the previous visual identity of the retired config.yml, but the
   *set* of palette entries is derived: ``_palette()`` raises if it drifts from
   the model's groups.
@@ -20,7 +20,7 @@ Derivation rules (all mechanical, no hand-maintained IRI lists):
   fields (url, sameAs, identifier, subjectOf) are not relations.
 - ``label_properties``: the label-bearing fields declared on the pinned
   ``ThingModel`` (``prefName``, ``name``, ``identifier``) — the same chain the
-  F6 wrappers use for display labels.
+  display-label chain.
 - ``skip_types``: schema.org types the pinned model classifies as *values*
   (value/data-type models), never rendered as nodes.
 """
@@ -66,8 +66,7 @@ _NON_PROPERTY_FIELDS = frozenset({"context", "id", "source", "type"})
 # Identity/alias fields: they point at the node itself, never at another node.
 _NON_RELATION_FIELDS = frozenset({"identifier", "sameAs", "subjectOf", "url"})
 
-# Label-bearing ThingModel fields, in display priority order (mirrors
-# app.hkg_wrappers._to_node: prefName -> name -> id).
+# Label-bearing ThingModel fields, in display priority order.
 _LABEL_FIELDS = ("prefName", "name", "identifier")
 
 # Value models: their type sets mark types that hold *values*, not entities.
@@ -91,7 +90,7 @@ _PALETTE: dict[str, str] = {
 def known_groups() -> tuple[contract.NodeType, ...]:
     """Non-fallback data-model classes of the pinned model, in contract order.
 
-    Derived from the F6 wrappers (one per pinned model class); ``Unknown`` is
+    Derived from the wrappers (one per pinned model class); ``Unknown`` is
     the fallback for types outside the HKG vocabulary and is not a preset.
     """
     known = {group for group in WRAPPER_BY_NODE_TYPE if group != "Unknown"}

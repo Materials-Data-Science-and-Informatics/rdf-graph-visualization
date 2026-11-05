@@ -3,7 +3,7 @@
 """QLever SPARQL client — the single gateway from the API to the endpoint.
 
 Card B1. Every SPARQL traffic in this backend goes through :class:`QleverClient`;
-endpoint cards (B2-B5) build their queries with ``app.templates`` and execute
+endpoints build their queries with ``app.templates`` and execute
 them here.
 
 Contract with the shared dev endpoint:

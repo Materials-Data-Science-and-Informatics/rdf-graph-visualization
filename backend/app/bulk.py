@@ -23,7 +23,7 @@ import threading
 from collections.abc import AsyncIterator, Callable, Iterable, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
-from typing import Any, NamedTuple, TypeVar
+from typing import NamedTuple, TypeVar
 
 from app import graph_config, qlever, templates
 from app.settings import Settings
@@ -166,13 +166,6 @@ async def fetch_edges_ex(  # pylint: disable=too-many-arguments
     # 95%: the count is after invalid-IRI filtering, slightly below the raw rows
     saturated = limit is not None and any(len(r) >= 0.95 * limit for r in results)
     return list(dict.fromkeys(t for triples in results for t in triples)), saturated
-
-
-async def fetch_edges(
-    frontier: Iterable[str], relations: Sequence[str], **kwargs: Any
-) -> list[tuple[str, str, str]]:
-    """:func:`fetch_edges_ex` without the saturation flag."""
-    return (await fetch_edges_ex(frontier, relations, **kwargs))[0]
 
 
 def _fold_types(
