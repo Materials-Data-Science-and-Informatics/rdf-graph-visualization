@@ -6,7 +6,9 @@ import { cssToRgb } from "@/engine/webgpu";
 import type { GraphStore } from "@/lib/graph-store";
 import type { Communities } from "./communities";
 import { CommunityDetector } from "./community-detector";
+import { HubLabels } from "./hub-labels";
 import { placeNodes } from "./placement";
+import { computePointSizes } from "./point-sizes";
 
 const SPACE_SIZE = 4096;
 const CENTER = SPACE_SIZE / 2;
@@ -51,6 +53,8 @@ export class CosmosView {
   private communities: Communities | null = null;
   private clusterPos: number[] = [];
   private readonly detector = new CommunityDetector((r) => this.applyCommunities(r));
+  private store: GraphStore | null = null;
+  private labels: HubLabels | null = null;
   private ticks = 0;
   private fpsAt = performance.now();
   fps = 0;
@@ -100,6 +104,7 @@ export class CosmosView {
         if (this.autoFit) this.graph.fitView(FIT_MS);
       },
     });
+    this.labels = new HubLabels(host, this.graph);
     this.themeObs = new MutationObserver(() =>
       this.graph.setConfigPartial({ backgroundColor: this.readBackground() })
     );
@@ -142,6 +147,7 @@ export class CosmosView {
 
   /** Cheap change check, meant to be called on a timer; pushes data only when the window changed. */
   poll(store: GraphStore, nodeLimit: number, streaming: boolean): void {
+    this.store = store;
     const n = Math.min(store.nodeCount, nodeLimit);
     const fresh = store.generation !== this.generation;
     if (
@@ -160,6 +166,8 @@ export class CosmosView {
 
   destroy(): void {
     this.themeObs.disconnect();
+    this.labels?.destroy();
+    this.labels = null;
     this.detector.destroy();
     this.graph.destroy();
   }
@@ -198,10 +206,14 @@ export class CosmosView {
       const c = this.rgb(typed ? store.groupColors[grp] : NO_GROUP_COLOR);
       colors.set([c[0], c[1], c[2], typed ? 1 : UNTYPED_ALPHA], 4 * i);
     }
+    if (fresh) this.labels?.clear();
     if (fresh && this.communities) this.clearCommunities(n);
     g.setPointPositions(pos, true);
     g.setLinks(links);
     g.setPointColors(colors);
+    g.setPointSizes(
+      computePointSizes(n, store.edges, store.edgeCount, fresh ? null : this.communities)
+    );
     g.setLinkColors(linkColors);
     if (!fresh && this.communities) this.setClusters(n);
     if (fresh) {
@@ -212,6 +224,7 @@ export class CosmosView {
     g.start(fresh || prevCount === 0 ? ALPHA_FRESH : ALPHA_GROWTH);
     this.generation = store.generation;
     this.nodes = n;
+    this.labels?.setCandidates(store, this.communities, n);
     this.edges = store.edgeCount;
     this.limit = nodeLimit;
     this.seenPalette = this.paletteVersion;
@@ -240,6 +253,11 @@ export class CosmosView {
     this.clusterPos = [];
     for (const h of r.hubs) this.clusterPos.push(pos[2 * h], pos[2 * h + 1]);
     this.communities = r;
+    const s = this.store;
+    if (s) {
+      this.graph.setPointSizes(computePointSizes(this.nodes, s.edges, s.edgeCount, r));
+      this.labels?.setCandidates(s, r, this.nodes);
+    }
     this.setClusters(this.nodes);
     this.graph.start(ALPHA_CLUSTER);
   }
