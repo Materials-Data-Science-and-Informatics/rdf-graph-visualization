@@ -11,6 +11,7 @@ from __future__ import annotations
 import inspect
 import re
 
+import pytest
 from fastapi.testclient import TestClient
 from hkg_data_model import DATA_MODELS  # type: ignore[import-untyped]
 from hkg_data_model.pydantic.models.structured_value_model import (  # type: ignore[import-untyped]
@@ -20,7 +21,7 @@ from hkg_data_model.pydantic.models.thing_model import (  # type: ignore[import-
     ThingModel,
 )
 
-from app import contract, main, presets
+from app import contract, graph_config, main, presets
 
 # Pinned to hkg_data_model tag 1.1.0: every entity/URL-valued predicate on the
 # entity models (verified against the installed package, 2026-11-02).
@@ -139,3 +140,32 @@ def test_api_config_endpoint() -> None:
     response = client.get("/api/config")
     assert response.status_code == 200
     assert response.json() == presets.build_config().model_dump()
+
+
+def test_graph_config_groups_agree_with_pinned_model() -> None:
+    """One-way: the config lists only a subset of the model's types."""
+    model_groups = presets.type_iri_groups()
+    cfg = graph_config.load()
+    mismatches = {
+        t: (group, model_groups.get(t))
+        for t, group in cfg.type_group().items()
+        if model_groups.get(t) != group
+    }
+    assert not mismatches
+
+
+def test_invalid_graph_config_override_raises(tmp_path, monkeypatch) -> None:
+    bad = tmp_path / "bad.toml"
+    bad.write_text(
+        'relation_properties = ["a"]\nskip_types = []\nlabel_properties = []\n'
+        '[[groups]]\nname = "A"\ntypes = ["t"]\ncolor = "#000"\n'
+        '[[groups]]\nname = "B"\ntypes = ["t"]\ncolor = "#111"\n'
+    )
+    monkeypatch.setenv("HKG_GRAPH_CONFIG", str(bad))
+    graph_config.load.cache_clear()
+    try:
+        with pytest.raises(RuntimeError, match="two groups"):
+            graph_config.load()
+    finally:
+        monkeypatch.undo()
+        graph_config.load.cache_clear()

@@ -138,10 +138,30 @@ class ConfigTypePreset(BaseModel):
     color: str
 
 
-class ConfigResponse(BaseModel):
-    """Static frontend configuration derived from the data model."""
+class GraphGroupConfig(BaseModel):
+    """Graph colour group: name, member type IRIs, colour."""
+
+    name: str
+    types: list[str]
+    color: str
+
+
+class GraphConfigResponse(BaseModel):
+    """Graph filter config served from app/graph_config.toml."""
 
     relation_properties: list[str]
     label_properties: list[str]
     skip_types: list[str]
+    groups: list[GraphGroupConfig]
+
+
+class ConfigResponse(BaseModel):
+    """Static frontend configuration derived from the data model."""
+
+    # Top-level label_properties/skip_types are legacy (data-model derived);
+    # graph.* is authoritative for graph filtering and queries.
+    relation_properties: list[str]
+    label_properties: list[str]
+    skip_types: list[str]
     types: list[ConfigTypePreset]
+    graph: GraphConfigResponse

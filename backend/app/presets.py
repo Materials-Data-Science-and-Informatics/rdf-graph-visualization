@@ -46,7 +46,7 @@ from hkg_data_model.pydantic.models.thing_model import (  # type: ignore[import-
 from hkg_data_model.pydantic.types import TypeExtension  # type: ignore[import-untyped]
 from pydantic import AnyHttpUrl, AnyUrl
 
-from app import contract
+from app import contract, graph_config
 from app.hkg_wrappers import WRAPPER_BY_NODE_TYPE
 
 SCHEMA_ORG = "https://schema.org/"
@@ -191,4 +191,7 @@ def build_config() -> contract.ConfigResponse:
             contract.ConfigTypePreset(group=group, type=group, color=palette[group])
             for group in groups
         ],
+        graph=contract.GraphConfigResponse(
+            **graph_config.load().model_dump(),
+        ),
     )
