@@ -11,10 +11,22 @@ import {
   clampDepth,
   depthToMaxHops,
   groupCounts,
+  ARROWS_KEY,
+  CURVED_KEY,
+  DIM_KEY,
+  EDGE_OPACITY_KEY,
+  ROOT_KEY,
+  loadArrows,
   loadCurved,
   loadDepth,
-  saveCurved,
+  loadDim,
+  loadEdgeOpacity,
+  loadHiddenGroups,
+  loadRoot,
+  saveBool,
   saveDepth,
+  saveHiddenGroups,
+  savePref,
 } from "@/lib/sidebar-settings";
 import type { PickHit } from "@/engine/picking";
 import Sidebar from "./Sidebar";
@@ -27,6 +39,7 @@ const PENDING_SELECT_MS = 20000;
 const NARROW = "(max-width: 767px)";
 const DEPTH_DEBOUNCE_MS = 500;
 const NO_GROUP_COLOR = "#8a8f98";
+const UNCLASSIFIED = "Unclassified";
 
 const NODE_LIMIT_KEY = "hkg-node-limit";
 const loadNodeLimit = (): number => {
@@ -60,7 +73,7 @@ export default function GraphView({
   const [depth, setDepth] = useState(loadDepth);
   const [appliedDepth, setAppliedDepth] = useState(depth);
   const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia(NARROW).matches);
-  const [rootIri, setRootIri] = useState(DEFAULT_ROOT_IRI);
+  const [rootIri, setRootIri] = useState(() => loadRoot(DEFAULT_ROOT_IRI));
   const [selected, setSelected] = useState<SelectedView | null>(null);
   const selectAbort = useRef<AbortController | null>(null);
   const [hover, setHover] = useState<PickHit | null>(null);
@@ -69,11 +82,14 @@ export default function GraphView({
   const [rootInfo, setRootInfo] = useState<NodeInfo | null>(null);
   const [shown, setShown] = useState(0);
   const [counts, setCounts] = useState<number[]>([]);
-  const [hiddenGroups, setHiddenGroups] = useState<ReadonlySet<number>>(new Set());
+  const groupNames = useMemo(() => groups.map((g) => g.name), [groups]);
+  const [hiddenGroups, setHiddenGroups] = useState<ReadonlySet<number>>(() =>
+    loadHiddenGroups(groupNames, UNCLASSIFIED)
+  );
   const hiddenRef = useRef(hiddenGroups);
-  const [dim, setDimState] = useState<2 | 3>(3);
-  const [edgeOpacity, setEdgeOpacity] = useState(1);
-  const [arrows, setArrows] = useState(true);
+  const [dim, setDimState] = useState<2 | 3>(loadDim);
+  const [edgeOpacity, setEdgeOpacity] = useState(loadEdgeOpacity);
+  const [arrows, setArrows] = useState(loadArrows);
   const [curved, setCurved] = useState(loadCurved);
   const settingsRef = useRef({ dim, edgeOpacity, arrows, curved });
   settingsRef.current = { dim, edgeOpacity, arrows, curved };
@@ -148,6 +164,7 @@ export default function GraphView({
       setHover(null);
       setRootInfo(null);
       setRootIri(iri);
+      savePref(ROOT_KEY, iri);
     },
     [clearSelection, rootIri]
   );
@@ -243,29 +260,35 @@ export default function GraphView({
   }, []);
   useLayoutEffect(placeTip, [hover, placeTip]);
 
+  const groupNamesRef = useRef(groupNames);
+  groupNamesRef.current = groupNames;
   const onGroupVisible = useCallback((index: number, visible: boolean) => {
     const next = new Set(hiddenRef.current);
     if (visible) next.delete(index);
     else next.add(index);
     hiddenRef.current = next;
     setHiddenGroups(next);
+    saveHiddenGroups(next, groupNamesRef.current, UNCLASSIFIED);
     engineRef.current?.setGroupVisible(index, visible);
   }, []);
   const onDim = useCallback((d: 2 | 3) => {
     setDimState(d);
+    savePref(DIM_KEY, String(d));
     engineRef.current?.setDim(d);
   }, []);
   const onEdgeOpacity = useCallback((v: number) => {
     setEdgeOpacity(v);
+    savePref(EDGE_OPACITY_KEY, String(v));
     engineRef.current?.setEdgeOpacityScale(v);
   }, []);
   const onArrows = useCallback((v: boolean) => {
     setArrows(v);
+    saveBool(ARROWS_KEY, v);
     engineRef.current?.setArrowsVisible(v);
   }, []);
   const onCurved = useCallback((v: boolean) => {
     setCurved(v);
-    saveCurved(v);
+    saveBool(CURVED_KEY, v);
     engineRef.current?.setCurved(v);
   }, []);
   const onResetView = useCallback(() => engineRef.current?.resetView(), []);
@@ -369,7 +392,7 @@ export default function GraphView({
         visible: !hiddenGroups.has(i),
       })),
       {
-        name: "Unclassified",
+        name: UNCLASSIFIED,
         color: NO_GROUP_COLOR,
         count: counts[groups.length] ?? 0,
         visible: !hiddenGroups.has(-1),
@@ -385,6 +408,7 @@ export default function GraphView({
         open={sidebarOpen}
         onToggle={onToggleSidebar}
         rootIri={rootIri}
+        onRoot={makeRootIri}
         root={rootInfo}
         rootColor={rootColor}
         nodeLimit={nodeLimit}

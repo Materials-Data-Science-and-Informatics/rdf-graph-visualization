@@ -6,12 +6,15 @@ import { NODE_LIMIT_DEFAULT, countToSlider, sliderToCount } from "@/engine/layou
 import { DEPTH_DEFAULT, DEPTH_MAX, DEPTH_MIN, clampDepth } from "@/lib/sidebar-settings";
 import { statusText, type StreamStatus } from "@/lib/use-graph-stream";
 import type { NodeInfo } from "@/lib/api";
+import { ROOT_PRESETS, findPreset } from "@/lib/centers";
+import { DEFAULT_ROOT_IRI } from "@/lib/config";
 import { CopyButton, Row, Swatch, type LegendRow } from "./shared";
 
 export interface SidebarProps {
   open: boolean;
   onToggle: () => void;
   rootIri: string;
+  onRoot: (iri: string) => void;
   root: NodeInfo | null;
   rootColor: string;
   nodeLimit: number;
@@ -77,8 +80,27 @@ const Switch = ({
   </label>
 );
 
+/** Favicon of a root preset; hidden when it fails to load (external host). */
+function PresetIcon({ src }: { src: string }) {
+  const [failed, setFailed] = useState(false);
+  useEffect(() => setFailed(false), [src]);
+  if (failed) return null;
+  return (
+    <img
+      src={src}
+      alt=""
+      width={16}
+      height={16}
+      referrerPolicy="no-referrer"
+      className="size-4 shrink-0 object-contain"
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
 function Sidebar(p: SidebarProps) {
   const s = p.status;
+  const preset = findPreset(p.rootIri);
   const { depth, onDepth } = p;
   const [draft, setDraft] = useState(String(depth));
   useEffect(() => setDraft(String(depth)), [depth]);
@@ -123,6 +145,23 @@ function Sidebar(p: SidebarProps) {
         </div>
 
         <Section title="Root">
+          <label className="flex items-center gap-2 text-sm">
+            <span className="sr-only">Root organisation</span>
+            {preset && <PresetIcon src={preset.favicon} />}
+            <select
+              value={p.rootIri}
+              aria-label="Root organisation"
+              className="bg-background min-w-0 flex-1 rounded-md border px-2 py-1 text-sm"
+              onChange={(e) => p.onRoot(e.target.value)}
+            >
+              {!preset && <option value={p.rootIri}>Other: {p.root?.label ?? p.rootIri}</option>}
+              {ROOT_PRESETS.map((c) => (
+                <option key={c.iri} value={c.iri} title={c.name}>
+                  {c.short === c.name ? c.name : `${c.short} – ${c.name}`}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="flex items-center gap-2">
             <Swatch color={p.rootColor} />
             <span className="min-w-0 text-sm font-medium break-words">
@@ -182,6 +221,7 @@ function Sidebar(p: SidebarProps) {
             onClick={() => {
               p.onNodeLimit(NODE_LIMIT_DEFAULT);
               onDepth(DEPTH_DEFAULT);
+              p.onRoot(DEFAULT_ROOT_IRI);
             }}
           >
             Reset to defaults

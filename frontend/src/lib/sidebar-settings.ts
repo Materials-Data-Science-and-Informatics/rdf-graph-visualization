@@ -1,3 +1,24 @@
+/** Read a remembered setting; `parse` returns undefined for invalid values (-> fallback). */
+export function loadPref<T>(key: string, parse: (raw: string) => T | undefined, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw === null ? fallback : (parse(raw) ?? fallback);
+  } catch {
+    return fallback;
+  }
+}
+
+export function savePref(key: string, raw: string): void {
+  try {
+    localStorage.setItem(key, raw);
+  } catch {
+    /* storage unavailable: the choice just is not remembered */
+  }
+}
+
+const parseBool = (raw: string): boolean | undefined =>
+  raw === "1" ? true : raw === "0" ? false : undefined;
+
 export const DEPTH_MIN = 1;
 export const DEPTH_MAX = 8;
 /** Backend default `max_hops`; requests with this depth omit the parameter (same cache key). */
@@ -9,22 +30,9 @@ export function clampDepth(v: number): number {
   return Math.min(DEPTH_MAX, Math.max(DEPTH_MIN, Math.round(v)));
 }
 
-export function loadDepth(): number {
-  try {
-    const raw = localStorage.getItem(DEPTH_KEY);
-    return raw === null ? DEPTH_DEFAULT : clampDepth(Number(raw));
-  } catch {
-    return DEPTH_DEFAULT;
-  }
-}
-
-export function saveDepth(v: number): void {
-  try {
-    localStorage.setItem(DEPTH_KEY, String(v));
-  } catch {
-    /* storage unavailable: the choice just is not remembered */
-  }
-}
+export const loadDepth = (): number =>
+  loadPref(DEPTH_KEY, (r) => clampDepth(Number(r)), DEPTH_DEFAULT);
+export const saveDepth = (v: number): void => savePref(DEPTH_KEY, String(v));
 
 /** `max_hops` request parameter for a depth: undefined for the backend default. */
 export function depthToMaxHops(depth: number): number | undefined {
@@ -47,19 +55,61 @@ export function groupCounts(groups: Int16Array, shown: number, groupCount: numbe
 
 export const CURVED_KEY = "hkg-curved-edges";
 
-/** Curved edges default to on. */
-export function loadCurved(): boolean {
-  try {
-    return localStorage.getItem(CURVED_KEY) !== "0";
-  } catch {
-    return true;
+export const ARROWS_KEY = "hkg-arrows";
+export const DIM_KEY = "hkg-dim";
+export const EDGE_OPACITY_KEY = "hkg-edge-opacity";
+export const HIDDEN_GROUPS_KEY = "hkg-hidden-groups";
+export const ROOT_KEY = "hkg-root";
+export const EDGE_OPACITY_MIN = 0.1;
+export const EDGE_OPACITY_MAX = 2;
+
+export const saveBool = (key: string, v: boolean): void => savePref(key, v ? "1" : "0");
+/** Curved edges and arrows default to on. */
+export const loadCurved = (): boolean => loadPref(CURVED_KEY, parseBool, true);
+export const loadArrows = (): boolean => loadPref(ARROWS_KEY, parseBool, true);
+export const loadDim = (): 2 | 3 => loadPref(DIM_KEY, (r) => (r === "2" ? 2 : undefined), 3);
+
+export const loadEdgeOpacity = (): number =>
+  loadPref(
+    EDGE_OPACITY_KEY,
+    (r) => {
+      const v = Number(r);
+      return r !== "" && v >= EDGE_OPACITY_MIN && v <= EDGE_OPACITY_MAX ? v : undefined;
+    },
+    1
+  );
+
+/** Remembered root IRI (any http(s) IRI, e.g. after a right-click re-root). */
+export const loadRoot = (fallback: string): string =>
+  loadPref(ROOT_KEY, (r) => (/^https?:\/\/\S+$/.test(r) ? r : undefined), fallback);
+
+/** Hidden legend groups are stored by name (indices follow the config order and may change). */
+export function loadHiddenGroups(names: readonly string[], unclassified: string): Set<number> {
+  const stored = loadPref<unknown>(
+    HIDDEN_GROUPS_KEY,
+    (r) => {
+      try {
+        return JSON.parse(r) as unknown;
+      } catch {
+        return undefined;
+      }
+    },
+    []
+  );
+  const out = new Set<number>();
+  if (!Array.isArray(stored)) return out;
+  for (const n of stored) {
+    if (n === unclassified) out.add(-1);
+    else if (typeof n === "string" && names.includes(n)) out.add(names.indexOf(n));
   }
+  return out;
 }
 
-export function saveCurved(v: boolean): void {
-  try {
-    localStorage.setItem(CURVED_KEY, v ? "1" : "0");
-  } catch {
-    /* storage unavailable: the choice just is not remembered */
-  }
+export function saveHiddenGroups(
+  hidden: ReadonlySet<number>,
+  names: readonly string[],
+  unclassified: string
+): void {
+  const list = [...hidden].map((i) => (i === -1 ? unclassified : names[i])).filter(Boolean);
+  savePref(HIDDEN_GROUPS_KEY, JSON.stringify(list));
 }

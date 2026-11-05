@@ -8,6 +8,11 @@ import {
   groupCounts,
   loadDepth,
   saveDepth,
+  ROOT_KEY,
+  loadHiddenGroups,
+  loadRoot,
+  saveHiddenGroups,
+  savePref,
 } from "./sidebar-settings";
 
 describe("depth", () => {
@@ -36,5 +41,21 @@ describe("groupCounts", () => {
     const g = Int16Array.from([0, 1, 1, -1, 0, 5]);
     expect(groupCounts(g, 5, 2)).toEqual([2, 2, 1]);
     expect(groupCounts(g, 100, 2)).toEqual([2, 2, 2]);
+  });
+});
+
+describe("remembered root and hidden groups", () => {
+  beforeEach(() => localStorage.clear());
+  it("keeps a valid root IRI and rejects junk", () => {
+    expect(loadRoot("https://ror.org/0281dp749")).toBe("https://ror.org/0281dp749");
+    savePref(ROOT_KEY, "https://ror.org/02nv7yv05");
+    expect(loadRoot("x")).toBe("https://ror.org/02nv7yv05");
+    savePref(ROOT_KEY, "javascript:alert(1)");
+    expect(loadRoot("fallback")).toBe("fallback");
+  });
+  it("stores hidden groups by name, surviving a reordered config", () => {
+    saveHiddenGroups(new Set([1, -1]), ["Person", "Dataset"], "Unclassified");
+    expect([...loadHiddenGroups(["Dataset", "Person"], "Unclassified")].sort()).toEqual([-1, 0]);
+    expect(loadHiddenGroups(["Person"], "Unclassified")).toEqual(new Set([-1]));
   });
 });
