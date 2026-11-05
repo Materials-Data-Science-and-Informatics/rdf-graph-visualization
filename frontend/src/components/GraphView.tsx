@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Maximize, Minimize, PanelLeftOpen, RotateCcw } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { fetchNode, type GraphGroupConfig, type NodeInfo } from "@/lib/api";
 import type { Engine } from "@/engine/engine";
 import { NODE_LIMIT_DEFAULT, NODE_LIMIT_MAX, NODE_LIMIT_MIN } from "@/engine/layout-utils";
 import { WEBGPU_NOTICE, WebGpuUnavailableError } from "@/engine/webgpu";
 import { DEFAULT_ROOT_IRI } from "@/lib/config";
-import { statusText, useGraphStream } from "@/lib/use-graph-stream";
+import { useGraphStream } from "@/lib/use-graph-stream";
 import { shortName } from "@/lib/graph-store";
 import {
   FANOUT_KEY,
@@ -15,7 +13,6 @@ import {
   depthToMaxHops,
   fanoutParam,
   loadFanout,
-  groupCounts,
   ARROWS_KEY,
   CURVED_KEY,
   DIM_KEY,
@@ -32,10 +29,13 @@ import {
   savePref,
 } from "@/lib/sidebar-settings";
 import type { PickHit } from "@/engine/picking";
-import { relationCounts, relationPalette } from "@/lib/relation-colors";
+import { keepIfSameCounts, keepIfSameMap, windowStats } from "@/lib/graph-stats";
+import { relationPalette } from "@/lib/relation-colors";
 import Sidebar from "./Sidebar";
 import NodeDetails, { type SelectedView } from "./NodeDetails";
 import GraphTooltip from "./GraphTooltip";
+import GraphOverlay from "./GraphOverlay";
+import GraphToolbar from "./GraphToolbar";
 import type { GraphControl } from "./SearchBox";
 
 const PENDING_SELECT_MS = 20000;
@@ -378,25 +378,9 @@ export default function GraphView({
         }
       }
       if (pend && Date.now() > pend.until) pendingSelect.current = null;
-      const next = groupCounts(store.groups, nodeLimitRef.current, store.groupNames.length);
-      setCounts((prev) =>
-        prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next
-      );
-      const perPred = relationCounts(
-        store.edges,
-        store.edgePredicate,
-        store.edgeCount,
-        nodeLimitRef.current,
-        store.predicates.length
-      );
-      const rel = new Map<string, number>();
-      perPred.forEach((n, p) => {
-        const iri = store.predicates[p];
-        if (n > 0) rel.set(iri, (rel.get(iri) ?? 0) + n);
-      });
-      setRelCounts((prev) =>
-        prev.size === rel.size && [...rel].every(([k, v]) => prev.get(k) === v) ? prev : rel
-      );
+      const stats = windowStats(store, nodeLimitRef.current);
+      setCounts((prev) => keepIfSameCounts(prev, stats.counts));
+      setRelCounts((prev) => keepIfSameMap(prev, stats.relCounts));
     }, 500);
     return () => {
       cancelled = true;
@@ -484,34 +468,7 @@ export default function GraphView({
       >
         <div ref={hostRef} className="absolute inset-0" data-slot="canvas-host" />
         {hover && !busy && <GraphTooltip ref={tipRef} store={store} hit={hover} />}
-        {busy && (
-          // Blocks camera input while loading/settling: the auto-fit stops at the first
-          // user interaction, so moving mid-load leaves the camera off the final layout.
-          <div
-            role="status"
-            aria-live="polite"
-            className="absolute inset-0 z-30 flex cursor-wait items-start justify-center bg-transparent p-4"
-            onContextMenu={(e) => e.preventDefault()}
-          >
-            <div className="bg-background/90 flex items-center gap-3 rounded-lg border px-4 py-3 text-sm shadow">
-              <Loader2 className="size-5 animate-spin" aria-hidden />
-              <div>
-                <div className="font-medium">
-                  {status.phase === "streaming" ? "Loading graph…" : "Arranging layout…"}
-                </div>
-                <div className="text-muted-foreground text-xs">{statusText(status)}</div>
-              </div>
-            </div>
-          </div>
-        )}
-        {engineError && (
-          <div
-            role="alert"
-            className="text-muted-foreground absolute inset-0 flex items-center justify-center p-6 text-center text-sm"
-          >
-            {engineError}
-          </div>
-        )}
+        <GraphOverlay busy={busy} status={status} engineError={engineError} />
         {selected && (
           <NodeDetails
             sel={selected}
@@ -524,36 +481,17 @@ export default function GraphView({
             }}
           />
         )}
-        <div className="absolute top-3 left-3 flex gap-1">
-          {!sidebarOpen && (
-            <Button
-              variant="outline"
-              size="icon"
-              aria-label="Open sidebar"
-              aria-expanded={false}
-              aria-controls="sidebar"
-              onClick={() => setSidebarOpen(true)}
-            >
-              <PanelLeftOpen />
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Toggle fullscreen"
-            aria-pressed={isFullscreen}
-            onClick={() =>
-              document.fullscreenElement
-                ? void document.exitFullscreen()
-                : void wrapRef.current?.requestFullscreen()
-            }
-          >
-            {isFullscreen ? <Minimize /> : <Maximize />}
-          </Button>
-          <Button variant="outline" size="icon" aria-label="Reset view" onClick={onResetView}>
-            <RotateCcw />
-          </Button>
-        </div>
+        <GraphToolbar
+          sidebarOpen={sidebarOpen}
+          onOpenSidebar={() => setSidebarOpen(true)}
+          isFullscreen={isFullscreen}
+          onToggleFullscreen={() =>
+            document.fullscreenElement
+              ? void document.exitFullscreen()
+              : void wrapRef.current?.requestFullscreen()
+          }
+          onResetView={onResetView}
+        />
       </div>
     </div>
   );

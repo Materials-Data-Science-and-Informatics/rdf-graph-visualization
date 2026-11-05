@@ -46,18 +46,5 @@ export default tseslint.config(
     rules: {
       "react-refresh/only-export-components": "off",
     },
-  },
-  {
-    // Over the 500-line limit of the team's `ui` rules. Not refactored here: the
-    // owner decides whether to split these files or keep the exception.
-    files: [
-      "src/engine/engine.ts", // ~966 lines
-      "src/engine/gpu-graph.ts", // ~879 lines
-      "src/components/GraphView.tsx", // ~559 lines, one component
-    ],
-    rules: {
-      "max-lines": "off",
-      "max-lines-per-function": "off",
-    },
   }
 );

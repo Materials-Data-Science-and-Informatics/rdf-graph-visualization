@@ -1,36 +1,7 @@
 import * as THREE from "three/webgpu";
-import {
-  Discard,
-  Fn,
-  If,
-  Loop,
-  dot,
-  float,
-  hash,
-  instanceIndex,
-  positionGeometry,
-  instancedArray,
-  length,
-  max,
-  min,
-  normalize,
-  pow,
-  sqrt,
-  uint,
-  uniform,
-  uv,
-  vec3,
-  vec4,
-  cameraPosition,
-  cross,
-  clamp,
-  abs,
-  sign,
-  varying,
-} from "three/tsl";
 import type { GraphStore } from "@/lib/graph-store";
 import { edgeOpacity, nodeRadius, type EngineConfig } from "./config";
-import { EDGE_CURVATURE, EDGE_SEGMENTS, TYPED_THRESHOLD, UNTYPED_ALPHA } from "./curve";
+import { EDGE_CURVATURE, EDGE_SEGMENTS, UNTYPED_ALPHA } from "./curve";
 import { applyCarry, type Vec3 } from "./picking";
 import {
   buildCsr,
@@ -39,8 +10,24 @@ import {
   fillVisibility,
   appendWindowEdges,
   jitterRadius,
-  type IndexRange,
 } from "./layout-utils";
+import {
+  NONE,
+  attrOf,
+  createUniforms,
+  markRanges,
+  uintBuf,
+  vec4Buf,
+  type ComputeNodeT,
+  type GpuBuffers,
+} from "./gpu-buffers";
+import { buildInit, buildStep } from "./gpu-kernels";
+import {
+  createEdgeMaterials,
+  createNodeMaterial,
+  createPickMaterials,
+  stripGeometry,
+} from "./gpu-materials";
 
 /** State carried over when buffers are re-created bigger (see Engine.ensureCapacity). */
 export interface GpuSeed {
@@ -57,76 +44,12 @@ export interface GpuSeed {
 /** Store predicate index -> linear rgb of its relation colour, or null (theme grey). */
 export type RelColorFn = (predicate: number) => readonly [number, number, number] | null;
 
-type Vec4Buf = THREE.StorageBufferNode<"vec4">;
-type UintBuf = THREE.StorageBufferNode<"uint">;
-type StorageNode = Vec4Buf | UintBuf;
-type ComputeNodeT = ReturnType<Vec4Buf["compute"]>;
-
-/**
- * @types/three resolves `instancedArray(x, "uint")` to a uvec4 buffer, which clashes with
- * the real element type (a plain uint); the runtime node is the same class either way,
- * so these helpers fix the type once.
- */
-const vec4Buf = (data: Float32Array): Vec4Buf => instancedArray(data, "vec4");
-const uintBuf = (data: Uint32Array): UintBuf => instancedArray(data, "uint") as unknown as UintBuf;
-
-/** Instanced strip: (segments+1) columns x 2 rows, position.x = t along 0..1, y = -0.5/0.5 across. */
-function stripGeometry(segments: number): THREE.InstancedBufferGeometry {
-  const g = new THREE.InstancedBufferGeometry();
-  const p: number[] = [];
-  const idx: number[] = [];
-  for (let k = 0; k <= segments; k++) p.push(k / segments, -0.5, 0, k / segments, 0.5, 0);
-  for (let k = 0; k < segments; k++) {
-    const v = k * 2;
-    idx.push(v, v + 2, v + 3, v, v + 3, v + 1);
-  }
-  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(p), 3));
-  g.setIndex(idx);
-  g.instanceCount = 0;
-  return g;
-}
-
-/** `Fn(...)()` is typed as a plain Node upstream although it is a callable kernel with `.compute`. */
-function kernel(body: () => void, threads: number): ComputeNodeT {
-  const call = Fn(body)() as unknown as { compute(n: number): ComputeNodeT };
-  return call.compute(threads);
-}
-
-/**
- * three 0.187: `instancedArray(...).value` is the StorageInstancedBufferAttribute that
- * backs the GPU buffer (typed loosely upstream, hence the narrow cast).
- */
-function attrOf(node: StorageNode): THREE.BufferAttribute {
-  return node.value as unknown as THREE.BufferAttribute;
-}
-
-/**
- * Partial upload: WebGPUAttributeUtils.updateAttribute() calls
- * `device.queue.writeBuffer` per `updateRanges` entry (element units, not bytes)
- * and clears them, so only the touched slice is written and the GPU-resident
- * simulation state of every other node is left alone.
- */
-function markRanges(attr: THREE.BufferAttribute, ranges: IndexRange[], itemSize: number): void {
-  if (!ranges.length) return;
-  for (const r of ranges) attr.addUpdateRange(r.start * itemSize, (r.end - r.start) * itemSize);
-  attr.needsUpdate = true; // bumps version -> picked up by Attributes.update() next use
-}
-
 /**
  * All GPU resources for one capacity: node buffers (position/velocity/colour), edge
  * index buffer, CSR buffers, compute kernels (force step + spawn init) and the two
  * draw objects (sprite impostors, line segments). Node/edge counts are uniforms/draw
  * counts, so growth within capacity never recompiles anything.
  */
-const NONE = 0xffffffff;
-type UintNode = THREE.Node<"uint">;
-
-/** uint id -> RGBA8 colour (little-endian bytes), exact through an rgba8unorm target. */
-const idColor = (id: UintNode) => {
-  const byte = (shift: number) => float(id.shiftRight(uint(shift)).bitAnd(uint(255))).div(255);
-  return vec4(byte(0), byte(8), byte(16), byte(24));
-};
-
 export class GpuGraph {
   readonly nodeCap: number;
   readonly edgeCap: number;
@@ -144,43 +67,13 @@ export class GpuGraph {
   private readonly offsetsCpu: Uint32Array;
   private readonly neighCpu: Uint32Array;
 
-  private readonly pos: Vec4Buf;
-  private readonly vel: Vec4Buf;
-  private readonly colors: Vec4Buf;
-  private readonly initInfo: Vec4Buf;
-  private readonly offsets: UintBuf;
-  private readonly neigh: UintBuf;
-  private readonly edgeIdx: UintBuf;
-  private readonly edgeCol: Vec4Buf;
-
-  private readonly uCount = uniform(0, "uint");
-  private readonly uCountF = uniform(0);
-  private readonly uFrame = uniform(0, "uint");
-  private readonly uZOn = uniform(1);
-  private readonly uAlpha = uniform(1);
-  private readonly uSeed = uniform(0, "uint");
-  private readonly uSettled = uniform(0, "uint");
-  private readonly uOldMob = uniform(1);
-  private readonly uRepK = uniform(0);
-  /** Node radius in world units (rest/3 * user scale); drives sphere, edge width and arrow size. */
-  private readonly uRad = uniform(1);
+  private readonly b: GpuBuffers;
+  private readonly u = createUniforms();
   private dark = true;
   private opacityScale = 1;
-  private readonly uCurv = uniform(EDGE_CURVATURE);
   private readonly pickShaft: THREE.Mesh;
   private readonly straightQuad: THREE.InstancedBufferGeometry;
-  private readonly uInitStart = uniform(0, "uint");
-  // highlight state (instance indices; NONE = no highlight)
-  private readonly uHover = uniform(NONE, "uint");
-  private readonly uSel = uniform(NONE, "uint");
-  private readonly uHoverEdge = uniform(NONE, "uint");
-  private readonly uRing = uniform(new THREE.Color(1, 1, 1));
-  private readonly uEdgeColor = uniform(new THREE.Color(0x9db4e0));
-  private readonly uHoverColor = uniform(new THREE.Color("#f5b82e"));
-  private readonly uShaftOp = uniform(0.5);
-  private readonly uArrowOp = uniform(0.65);
   private readonly posCpu: Float32Array;
-  private readonly uInitEnd = uniform(0, "uint");
 
   private readonly stepKernel: ComputeNodeT;
   private readonly initKernel: ComputeNodeT;
@@ -230,70 +123,25 @@ export class GpuGraph {
     }
 
     this.posCpu = posArr;
-    this.pos = vec4Buf(posArr);
-    this.vel = vec4Buf(velArr);
-    this.colors = vec4Buf(this.colorCpu);
-    this.initInfo = vec4Buf(this.initCpu);
-    this.offsets = uintBuf(this.offsetsCpu).toReadOnly();
-    this.neigh = uintBuf(this.neighCpu).toReadOnly();
-    this.edgeIdx = uintBuf(this.edgeCpu).toReadOnly();
-    this.edgeCol = vec4Buf(this.edgeColorCpu);
+    const b: GpuBuffers = {
+      pos: vec4Buf(posArr),
+      vel: vec4Buf(velArr),
+      colors: vec4Buf(this.colorCpu),
+      initInfo: vec4Buf(this.initCpu),
+      offsets: uintBuf(this.offsetsCpu).toReadOnly(),
+      neigh: uintBuf(this.neighCpu).toReadOnly(),
+      edgeIdx: uintBuf(this.edgeCpu).toReadOnly(),
+      edgeCol: vec4Buf(this.edgeColorCpu),
+    };
+    this.b = b;
+    const u = this.u;
 
-    this.stepKernel = this.buildStep();
-    this.initKernel = this.buildInit();
+    this.stepKernel = buildStep(b, u, cfg, nodeCap);
+    this.initKernel = buildInit(b, u, nodeCap);
 
     // nodes: one instanced draw, sphere impostor shaded in the fragment stage
-    this.nodeMat = new THREE.SpriteNodeMaterial();
-    this.nodeMat.positionNode = this.pos.toAttribute().xyz;
-    // sprite scale = diameter; hovered nodes grow 20%, the selected one gets room for a ring
-    this.nodeMat.scaleNode = this.uRad.mul(2).mul(this.highlightScale());
-    this.nodeMat.transparent = false;
-    this.nodeMat.depthWrite = true;
-    const cAttr = this.colors.toAttribute();
-    const { uHover, uSel, uRing } = this;
-    this.nodeMat.fragmentNode = Fn(() => {
-      const hov = uHover.equal(instanceIndex).select(float(1), float(0));
-      const sel = uSel.equal(instanceIndex).select(float(1), float(0));
-      const k = float(1).add(sel.mul(0.35)).add(hov.mul(0.2)).div(hov.mul(0.2).add(1));
-      // alpha: 0 hidden, UNTYPED_ALPHA visible without group (box), 1 visible typed (sphere)
-      const box = cAttr.w.lessThan(TYPED_THRESHOLD);
-      const q = uv().mul(2).sub(1);
-      const rq2 = dot(q, q);
-      const mq0 = max(abs(q.x), abs(q.y));
-      Discard(cAttr.w.lessThan(0.5)); // group visibility (see applyVisibility)
-      Discard(box.select(float(0), rq2.sub(1)).greaterThan(0));
-      const qq = q.mul(k); // shape coordinates (shrunk inside the sprite when selected)
-      const r2 = dot(qq, qq);
-      const mqq = max(abs(qq.x), abs(qq.y));
-      const outside = box.select(mqq.greaterThan(0.8), r2.greaterThan(1));
-      const ringZone = box.select(
-        sel.greaterThan(0.5).and(mq0.greaterThan(0.88)),
-        rq2.greaterThanEqual(0.7744)
-      );
-      Discard(outside.and(ringZone.not())); // gap between shape and selection ring
-      const z = sqrt(max(float(1).sub(r2), 0));
-      // box: flat top with bevelled edges (normal tilts toward the nearest edge)
-      const u = qq.div(0.8);
-      const ax = abs(u.x);
-      const ay = abs(u.y);
-      const bev = (v: typeof ax) => clamp(v.sub(0.65).div(0.35), 0, 1).mul(1.2);
-      const xDom = ax.greaterThanEqual(ay);
-      const nx = xDom.select(bev(ax).mul(sign(u.x)), float(0));
-      const ny = xDom.select(float(0), bev(ay).mul(sign(u.y)));
-      const nrm = box.select(normalize(vec3(nx, ny, 1)), vec3(qq.x, qq.y, z));
-      const L = normalize(vec3(-0.4, 0.6, 0.7));
-      const diff = max(dot(nrm, L), 0);
-      const spec = pow(max(dot(nrm, normalize(L.add(vec3(0, 0, 1)))), 0), 32)
-        .mul(0.45)
-        .mul(box.select(float(0.25), float(1)));
-      const rim = box.select(float(0), pow(float(1).sub(z), 3).mul(0.35));
-      const lit = cAttr.xyz
-        .mul(diff.mul(0.85).add(0.3))
-        .add(spec)
-        .add(rim)
-        .mul(hov.mul(0.35).add(1));
-      return vec4(outside.select(uRing as unknown as typeof lit, lit), 1);
-    })();
+    this.nodeMat = createNodeMaterial(b, u);
+
     this.sprite = new THREE.Sprite(this.nodeMat);
     this.sprite.count = 0;
     this.sprite.visible = false;
@@ -316,64 +164,22 @@ export class GpuGraph {
     this.straightQuad = stripGeometry(1);
     this.shaftGeo = quad;
     this.arrowGeo = tri;
-    const matOpts = {
-      transparent: true,
-      depthWrite: false,
-      side: THREE.DoubleSide,
-    };
-    this.shaftMat = new THREE.MeshBasicNodeMaterial(matOpts);
-    this.arrowMat = new THREE.MeshBasicNodeMaterial(matOpts);
-    const { shaftPos, arrowPos, color } = this.edgeShaders(false);
-    this.shaftMat.positionNode = shaftPos;
-    this.arrowMat.positionNode = arrowPos;
-    const hovE = () => this.uHoverEdge.equal(instanceIndex);
-    for (const [mat, op] of [
-      [this.shaftMat, this.uShaftOp],
-      [this.arrowMat, this.uArrowOp],
-    ] as const) {
-      mat.colorNode = Fn(() =>
-        hovE().select(this.uHoverColor as unknown as typeof color, varying(color))
-      )() as unknown as THREE.Node<"vec3">;
-      mat.opacityNode = Fn(() => hovE().select(float(1), op))();
-    }
+    const { shaftMat, arrowMat } = createEdgeMaterials(b, u);
+    this.shaftMat = shaftMat;
+    this.arrowMat = arrowMat;
     this.shaft = new THREE.Mesh(quad, this.shaftMat);
     this.arrows = new THREE.Mesh(tri, this.arrowMat);
     for (const m of [this.shaft, this.arrows]) {
       m.frustumCulled = false;
       this.scene.add(m);
     }
-    this.uRad.value = nodeRadius(cfg.rest);
+    this.u.uRad.value = nodeRadius(cfg.rest);
 
     // GPU picking: id-colour twins of the three draws, rendered on demand by the engine
-    const pickBase = {
-      transparent: false,
-      depthWrite: true,
-      blending: THREE.NoBlending,
-      toneMapped: false,
-    };
-    const pickNodeMat = new THREE.SpriteNodeMaterial(pickBase);
-    pickNodeMat.positionNode = this.pos.toAttribute().xyz;
-    pickNodeMat.scaleNode = this.uRad.mul(2.4); // a bit generous: small nodes stay easy to hit
-    const pAttr = this.colors.toAttribute();
-    pickNodeMat.fragmentNode = Fn(() => {
-      const q = uv().mul(2).sub(1);
-      const pBox = pAttr.w.lessThan(TYPED_THRESHOLD);
-      // untyped nodes are boxes: square hit area matching the 0.8 box (sprite is 2.4r here)
-      Discard(pBox.select(max(abs(q.x), abs(q.y)).greaterThan(0.8), dot(q, q).greaterThan(1)));
-      Discard(pAttr.w.lessThan(0.5));
-      return idColor(instanceIndex.add(uint(1)));
-    })();
+    const { pickNodeMat, pickShaftMat, pickArrowMat } = createPickMaterials(b, u);
     this.pickSprite = new THREE.Sprite(pickNodeMat);
     this.pickSprite.frustumCulled = false;
     this.pickSprite.count = 0;
-    const edgePick = this.edgeShaders(true);
-    const pickShaftMat = new THREE.MeshBasicNodeMaterial({ ...pickBase, side: THREE.DoubleSide });
-    const pickArrowMat = new THREE.MeshBasicNodeMaterial({ ...pickBase, side: THREE.DoubleSide });
-    pickShaftMat.positionNode = edgePick.shaftPos;
-    pickArrowMat.positionNode = edgePick.arrowPos;
-    const edgeId = Fn(() => idColor(instanceIndex.add(uint(1)).bitOr(uint(0x80000000))))();
-    pickShaftMat.fragmentNode = edgeId;
-    pickArrowMat.fragmentNode = edgeId;
     const pickShaft = new THREE.Mesh(quad, pickShaftMat);
     this.pickShaft = pickShaft;
     this.pickArrows = new THREE.Mesh(tri, pickArrowMat);
@@ -385,214 +191,10 @@ export class GpuGraph {
     this.syncCounts();
   }
 
-  /** Per-instance sprite scale factor: 1 + 0.2 hovered + 0.35 selected (vertex stage). */
-  private highlightScale() {
-    const hov = this.uHover.equal(instanceIndex).select(float(1), float(0));
-    const sel = this.uSel.equal(instanceIndex).select(float(1), float(0));
-    return float(1).add(hov.mul(0.2)).add(sel.mul(0.35));
-  }
-
-  /**
-   * World-space vertex positions of the edge strips / arrowheads (see constructor comment)
-   * plus the edge colour (relation colour, else theme grey).
-   */
-  private edgeShaders(forPick: boolean) {
-    const { pos, colors, edgeIdx, edgeCol, uRad, uCurv } = this;
-    const i = instanceIndex;
-    const ia = edgeIdx.element(i.mul(2));
-    const ib = edgeIdx.element(i.mul(2).add(1));
-    const a = pos.element(ia).xyz;
-    const b = pos.element(ib).xyz;
-    const ca = colors.element(ia);
-    const cb = colors.element(ib);
-    // an edge with a hidden endpoint collapses to a point (degenerate triangles draw nothing)
-    const hidden = min(ca.w, cb.w).lessThan(0.5);
-    const d = b.sub(a);
-    const len = max(length(d), 1e-4);
-    const dn = d.div(len);
-    // control point: midpoint + cross(dir, up) * curvature * length (mirrors curve.ts edgePerp)
-    const up = abs(dn.z)
-      .greaterThan(0.99)
-      .select(vec3(0, 1, 0), vec3(0, 0, 1));
-    const perp = normalize(cross(dn, up).add(vec3(1e-6)));
-    const ctrl = a
-      .add(b)
-      .mul(0.5)
-      .add(perp.mul(uCurv.mul(len)));
-    const ta = ctrl.sub(a); // = P'(0)/2
-    const tb = b.sub(ctrl); // = P'(1)/2
-    const bez = (u: typeof len) => {
-      const v = float(1).sub(u);
-      return a
-        .mul(v.mul(v))
-        .add(ctrl.mul(v.mul(u).mul(2)))
-        .add(b.mul(u.mul(u)));
-    };
-    const tangent = (u: typeof len) => ta.mul(float(1).sub(u)).add(tb.mul(u));
-    const sideAt = (u: typeof len, p: typeof a) =>
-      normalize(cross(tangent(u), cameraPosition.sub(p)).add(vec3(1e-6)));
-    // curve parameter of a point ~uRad away from either end, measured along the end
-    // tangents (|P'(0)| = 2|ta|, |P'(1)| = 2|tb|)
-    const tbLen2 = max(length(tb), 1e-4).mul(2);
-    const uStart = clamp(uRad.div(max(length(ta), 1e-4).mul(2)), 0, 0.45);
-    const uTip = float(1).sub(clamp(uRad.div(tbLen2), 0, 0.45));
-    const arrowLen = clamp(len.sub(uRad.mul(2)), 0, uRad.mul(1.4)); // shrinks on very short edges
-    const uBase = max(uTip.sub(arrowLen.div(tbLen2)), uStart);
-    const hovE = this.uHoverEdge.equal(i);
-    // picking strips are 3x wider; the hovered edge is drawn 2.5x wider
-    const shaftW = uRad
-      .mul(forPick ? 0.6 : 0.2)
-      .mul(forPick ? float(1) : hovE.select(float(2.5), float(1)));
-    const t = positionGeometry.x;
-    const s = positionGeometry.y;
-    const us = uStart.add(uBase.sub(uStart).mul(t));
-    const ps = bez(us);
-    const shaftPos = hidden.select(a, ps.add(sideAt(us, ps).mul(s.mul(shaftW))));
-    const tipP = bez(uTip);
-    const baseP = bez(uBase);
-    const adir = normalize(tipP.sub(baseP).add(vec3(1e-6)));
-    const aside = normalize(cross(adir, cameraPosition.sub(baseP)).add(vec3(1e-6)));
-    const arrowW = forPick ? float(1.2) : hovE.select(float(1.3), float(0.8));
-    const arrowPos = hidden.select(
-      a,
-      tipP.sub(adir.mul(arrowLen.mul(float(1).sub(t)))).add(aside.mul(s.mul(arrowLen).mul(arrowW)))
-    );
-    // colour: the relation's colour (w = 1), else theme grey
-    const ec = edgeCol.element(i);
-    const color = ec.w.greaterThan(0.5).select(ec.xyz, this.uEdgeColor as unknown as typeof a);
-    return { shaftPos, arrowPos, color };
-  }
-
-  private buildStep() {
-    const {
-      pos,
-      vel,
-      offsets,
-      neigh,
-      uCount,
-      uCountF,
-      uSeed,
-      uZOn,
-      uAlpha,
-      uRepK,
-      uSettled,
-      uOldMob,
-    } = this;
-    const k = this.cfg.samples;
-    const ring = this.cfg.ringSamples;
-    const rest = uniform(this.cfg.rest);
-    const spring = uniform(this.cfg.spring);
-    const grav = uniform(this.cfg.gravity);
-    const damp = uniform(1 - this.cfg.velocityDecay);
-    const eps = uniform(this.cfg.epsilon);
-    const strength = uniform(this.cfg.repulsion);
-    const clamp = uniform(this.cfg.speedClamp * this.cfg.rest);
-    // Loose upstream typings (Node vs. swizzle chains): everything below is plain TSL.
-    return kernel(() => {
-      const idx = instanceIndex;
-      If(idx.lessThan(uCount), () => {
-        const pi = pos.element(idx).xyz.toVar();
-        const vi = vel.element(idx).xyz.toVar();
-        const f = vec3(0).toVar();
-        // stochastic repulsion: K random samples, fixed per node (idx, sample, seed; no frame
-        // term) so the equilibrium is stable, scaled by n/K
-        Loop(k, ({ i }) => {
-          const h = hash(
-            idx
-              .mul(uint(1664525))
-              .add(uint(i).mul(uint(1013904223)))
-              .add(uSeed.mul(uint(747796405)))
-          );
-          // h in [0,1): map to [0.5, n-0.5) so truncation stays inside [0, n-1] without a clamp
-          const j = h.mul(uCountF.sub(1)).add(0.5).toUint();
-          const d = pi.sub(pos.element(j).xyz);
-          const r2 = dot(d, d).add(eps);
-          f.addAssign(d.mul(uRepK).div(r2)); // d3 charge: |F| ~ 1/d
-        });
-        // 2-hop ring samples: a neighbour's random neighbour (weight 1) keeps the local
-        // neighbourhood spread out, which the n/K random samples rarely reach
-        const s = offsets.element(idx);
-        const e = offsets.element(idx.add(1));
-        If(e.greaterThan(s), () => {
-          Loop(ring, ({ i }) => {
-            const h1 = hash(
-              idx
-                .mul(uint(2654435761))
-                .add(uint(i).mul(uint(40503)))
-                .add(uSeed)
-            );
-            const nb = neigh.element(s.add(h1.mul(float(e.sub(s))).toUint()));
-            const ns = offsets.element(nb);
-            const ne = offsets.element(nb.add(1));
-            const h2 = hash(
-              idx
-                .mul(uint(97))
-                .add(uint(i).mul(uint(7919)))
-                .add(uSeed.add(uint(13)))
-            );
-            const j = neigh.element(ns.add(h2.mul(float(ne.sub(ns))).toUint()));
-            const d = pi.sub(pos.element(j).xyz);
-            const r2 = max(dot(d, d), eps);
-            If(j.notEqual(idx), () => {
-              f.addAssign(d.mul(strength).div(r2));
-            });
-          });
-        });
-        // springs, d3 forceLink: strength 1/min(deg), the lower-degree node takes the bigger share
-        const di = max(float(e.sub(s)), 1);
-        Loop({ start: s, end: e, type: "uint", condition: "<" }, ({ i }) => {
-          const j = neigh.element(i);
-          const dj = max(float(offsets.element(j.add(1)).sub(offsets.element(j))), 1);
-          const d = pos.element(j).xyz.sub(pi);
-          const dist = max(length(d), 1e-3);
-          const share = dj.div(di.add(dj));
-          f.addAssign(d.div(dist).mul(dist.sub(rest)).mul(spring).mul(share).div(min(di, dj)));
-        });
-        f.subAssign(pi.mul(grav)); // centering
-        // nodes that predate the current re-heat move at a fraction of the force
-        const mob = idx.lessThan(uSettled).select(uOldMob, float(1));
-        vi.addAssign(f.mul(uAlpha).mul(mob));
-        vi.mulAssign(damp);
-        vi.z.mulAssign(uZOn);
-        vi.mulAssign(min(float(1), clamp.div(max(length(vi), 1e-6)))); // speed clamp
-        pi.addAssign(vi);
-        pi.z.assign(pi.z.mul(uZOn));
-        pos.element(idx).assign(vec4(pi, 1));
-        vel.element(idx).assign(vec4(vi, 0));
-      });
-    }, this.nodeCap);
-  }
-
-  /** Spawn kernel: pos = pos[anchor] + jitter (or origin + jitter), vel = 0, for [initStart, initEnd). */
-  private buildInit() {
-    const { pos, vel, initInfo, uInitStart, uInitEnd, uFrame, uZOn } = this;
-    return kernel(() => {
-      const idx = instanceIndex;
-      If(idx.greaterThanEqual(uInitStart).and(idx.lessThan(uInitEnd)), () => {
-        const info = initInfo.element(idx);
-        // info.z = 1: carried-over position (already uploaded), keep it and only zero the velocity
-        If(info.z.lessThan(0.5), () => {
-          const base = vec3(0).toVar();
-          If(info.x.greaterThanEqual(0), () => {
-            base.assign(pos.element(info.x.toUint()).xyz);
-          });
-          const seed = idx.add(uFrame.mul(7919));
-          const rnd = vec3(hash(seed.mul(3)), hash(seed.mul(5).add(1)), hash(seed.mul(11).add(2)))
-            .mul(2)
-            .sub(1);
-          const p = base.add(rnd.mul(info.y)).toVar();
-          p.z.mulAssign(uZOn);
-          pos.element(idx).assign(vec4(p, 1));
-        });
-        vel.element(idx).assign(vec4(0, 0, 0, 0));
-      });
-    }, this.nodeCap);
-  }
-
   private syncCounts(): void {
-    this.uCount.value = this.nodeCount;
-    this.uCountF.value = this.nodeCount;
-    this.uRepK.value = (this.cfg.repulsion * this.nodeCount) / this.cfg.samples;
+    this.u.uCount.value = this.nodeCount;
+    this.u.uCountF.value = this.nodeCount;
+    this.u.uRepK.value = (this.cfg.repulsion * this.nodeCount) / this.cfg.samples;
     this.sprite.count = this.nodeCount;
     this.pickSprite.count = this.nodeCount;
     this.sprite.visible = this.nodeCount > 0;
@@ -600,8 +202,8 @@ export class GpuGraph {
     this.straightQuad.instanceCount = this.edgeCount;
     this.arrowGeo.instanceCount = this.edgeCount;
     const o = Math.min(1, edgeOpacity(this.edgeCount, this.dark) * this.opacityScale);
-    this.uShaftOp.value = o;
-    this.uArrowOp.value = Math.min(1, o + 0.15);
+    this.u.uShaftOp.value = o;
+    this.u.uArrowOp.value = Math.min(1, o + 0.15);
   }
 
   /** Forget everything (generation change). GPU contents of old nodes are overwritten on respawn. */
@@ -642,12 +244,12 @@ export class GpuGraph {
       ? applyCarry(store.nodeIds, from, to, carry, this.posCpu, this.initCpu)
       : [];
     if (!carry) for (let i = from; i < to; i++) this.initCpu[i * 4 + 2] = 0;
-    markRanges(attrOf(this.pos), coalesceRanges(carried), 4);
+    markRanges(attrOf(this.b.pos), coalesceRanges(carried), 4);
     const range = [{ start: from, end: to }];
-    markRanges(attrOf(this.initInfo), range, 4);
-    markRanges(attrOf(this.colors), range, 4);
-    this.uInitStart.value = from;
-    this.uInitEnd.value = to;
+    markRanges(attrOf(this.b.initInfo), range, 4);
+    markRanges(attrOf(this.b.colors), range, 4);
+    this.u.uInitStart.value = from;
+    this.u.uInitEnd.value = to;
     this.pendingInit = true;
     this.nodeCount = to;
     this.syncCounts();
@@ -666,7 +268,7 @@ export class GpuGraph {
         this.colorCpu.set([cr, cg, cb, store.groups[i] >= 0 ? 1 : UNTYPED_ALPHA], i * 4);
       }
     }
-    markRanges(attrOf(this.colors), ranges, 4);
+    markRanges(attrOf(this.b.colors), ranges, 4);
   }
 
   /**
@@ -685,9 +287,9 @@ export class GpuGraph {
       this.edgeCpu,
       this.edgeCount
     );
-    markRanges(attrOf(this.edgeIdx), [{ start: start * 2, end: this.edgeCount * 2 }], 1);
+    markRanges(attrOf(this.b.edgeIdx), [{ start: start * 2, end: this.edgeCount * 2 }], 1);
     this.fillEdgeColors(store, start, this.edgeCount, relColor);
-    markRanges(attrOf(this.edgeCol), [{ start, end: this.edgeCount }], 4);
+    markRanges(attrOf(this.b.edgeCol), [{ start, end: this.edgeCount }], 4);
     this.syncCounts();
   }
 
@@ -722,7 +324,7 @@ export class GpuGraph {
       0
     );
     this.fillEdgeColors(store, 0, this.edgeCount, relColor);
-    for (const buf of [this.edgeIdx, this.edgeCol]) {
+    for (const buf of [this.b.edgeIdx, this.b.edgeCol]) {
       const attr = attrOf(buf);
       attr.clearUpdateRanges(); // a full upload must not be narrowed by stale partial ranges
       attr.needsUpdate = true;
@@ -744,12 +346,12 @@ export class GpuGraph {
   }
 
   private markCsrUploaded(): void {
-    attrOf(this.offsets).needsUpdate = true;
-    attrOf(this.neigh).needsUpdate = true;
+    attrOf(this.b.offsets).needsUpdate = true;
+    attrOf(this.b.neigh).needsUpdate = true;
   }
 
   setDim(dim: 2 | 3): void {
-    this.uZOn.value = dim === 2 ? 0 : 1;
+    this.u.uZOn.value = dim === 2 ? 0 : 1;
   }
 
   /** Multiplier on the automatic edge opacity (1 = default). */
@@ -760,7 +362,7 @@ export class GpuGraph {
 
   /** Curved (quadratic Bezier strips, default) or straight (single segment) edges. */
   setCurved(on: boolean): void {
-    this.uCurv.value = on ? EDGE_CURVATURE : 0;
+    this.u.uCurv.value = on ? EDGE_CURVATURE : 0;
     const geo = on ? this.shaftGeo : this.straightQuad;
     this.shaft.geometry = geo;
     this.pickShaft.geometry = geo;
@@ -778,15 +380,15 @@ export class GpuGraph {
    */
   applyVisibility(groups: Int16Array, groupCount: number, hiddenGroups: ReadonlySet<number>): void {
     fillVisibility(this.colorCpu, groups, this.nodeCount, groupCount, hiddenGroups);
-    const attr = attrOf(this.colors);
+    const attr = attrOf(this.b.colors);
     attr.clearUpdateRanges();
     attr.needsUpdate = true;
   }
 
   setLook(dark: boolean): void {
     this.dark = dark;
-    this.uEdgeColor.value.set(dark ? 0x9db4e0 : 0x4a5568);
-    this.uRing.value.set(dark ? 0xffffff : 0x111827);
+    this.u.uEdgeColor.value.set(dark ? 0x9db4e0 : 0x4a5568);
+    this.u.uRing.value.set(dark ? 0xffffff : 0x111827);
     this.syncCounts();
   }
 
@@ -802,43 +404,43 @@ export class GpuGraph {
   step(renderer: THREE.WebGPURenderer, alpha: number): void {
     if (this.nodeCount === 0) return;
     if (this.pendingInit) {
-      this.uFrame.value = this.frame++;
+      this.u.uFrame.value = this.frame++;
       renderer.compute(this.initKernel);
       this.pendingInit = false;
     }
     if (alpha <= 0) return;
-    this.uAlpha.value = alpha;
+    this.u.uAlpha.value = alpha;
     renderer.compute(this.stepKernel);
   }
 
   /** Nodes with index < n move at `oldMobility` until the next call (re-heat bookkeeping). */
   setSettled(n: number): void {
-    this.uSettled.value = n;
-    this.uOldMob.value = this.cfg.oldMobility;
+    this.u.uSettled.value = n;
+    this.u.uOldMob.value = this.cfg.oldMobility;
   }
 
   /** New repulsion sample sets (graph restart). */
   reseed(): void {
-    this.uSeed.value = this.uSeed.value + 1;
+    this.u.uSeed.value = this.u.uSeed.value + 1;
   }
 
   /** Highlight indices (null = none): hovered node, selected node, hovered edge (GPU edge-list index). */
   setHighlight(hover: number | null, selected: number | null, hoverEdge: number | null): void {
-    this.uHover.value = hover ?? NONE;
-    this.uSel.value = selected ?? NONE;
-    this.uHoverEdge.value = hoverEdge ?? NONE;
+    this.u.uHover.value = hover ?? NONE;
+    this.u.uSel.value = selected ?? NONE;
+    this.u.uHoverEdge.value = hoverEdge ?? NONE;
   }
 
   /** Current xyz of one node. */
   async readNode(renderer: THREE.WebGPURenderer, i: number): Promise<[number, number, number]> {
-    const buf = await renderer.getArrayBufferAsync(attrOf(this.pos), null, i * 16, 16);
+    const buf = await renderer.getArrayBufferAsync(attrOf(this.b.pos), null, i * 16, 16);
     const f = new Float32Array(buf);
     return [f[0], f[1], f[2]];
   }
 
   /** Read the first `count` positions (vec4 each) back to the CPU. */
   async readPositions(renderer: THREE.WebGPURenderer, count: number): Promise<Float32Array> {
-    const buf = await renderer.getArrayBufferAsync(attrOf(this.pos), null, 0, count * 16);
+    const buf = await renderer.getArrayBufferAsync(attrOf(this.b.pos), null, 0, count * 16);
     return new Float32Array(buf);
   }
 
@@ -847,8 +449,8 @@ export class GpuGraph {
     renderer: THREE.WebGPURenderer
   ): Promise<{ pos: Float32Array; vel: Float32Array }> {
     const [p, v] = await Promise.all([
-      renderer.getArrayBufferAsync(attrOf(this.pos)),
-      renderer.getArrayBufferAsync(attrOf(this.vel)),
+      renderer.getArrayBufferAsync(attrOf(this.b.pos)),
+      renderer.getArrayBufferAsync(attrOf(this.b.vel)),
     ]);
     return { pos: new Float32Array(p), vel: new Float32Array(v) };
   }
@@ -865,14 +467,14 @@ export class GpuGraph {
     this.stepKernel.dispose();
     this.initKernel.dispose();
     for (const n of [
-      this.pos,
-      this.vel,
-      this.colors,
-      this.initInfo,
-      this.offsets,
-      this.neigh,
-      this.edgeIdx,
-      this.edgeCol,
+      this.b.pos,
+      this.b.vel,
+      this.b.colors,
+      this.b.initInfo,
+      this.b.offsets,
+      this.b.neigh,
+      this.b.edgeIdx,
+      this.b.edgeCol,
     ])
       attrOf(n).dispatchEvent({ type: "dispose" });
   }
