@@ -2,7 +2,9 @@
 import { computeAnchors } from "@/engine/layout-utils";
 
 /** Spawn radius (space units) around an anchor, growing with the unplaced chain depth. */
-const SPAWN_RADIUS = 12;
+const SPAWN_RADIUS = 15;
+/** Golden angle: successive children of one anchor fill the full circle evenly. */
+const GOLDEN_ANGLE = Math.PI * (3 - Math.sqrt(5));
 /** Spawn radius of a node without any placed neighbour, around the space centre. */
 const LOOSE_RADIUS = 150;
 
@@ -25,11 +27,16 @@ export function placeNodes(
   out.set(prev.subarray(0, keep * 2));
   if (total <= keep) return out;
   const { anchor, depth } = computeAnchors(edges, 0, edgeCount, keep, total);
+  // per anchor: how many children were spawned around it so far (random start angle each)
+  const spawned = new Map<number, { n: number; start: number }>();
   for (let i = keep; i < total; i++) {
     const a = anchor[i - keep];
-    const angle = rnd() * 2 * Math.PI;
+    let angle = rnd() * 2 * Math.PI;
     if (a >= 0 && a < keep) {
-      const r = SPAWN_RADIUS * Math.min(3, 0.5 + 0.35 * depth[i - keep]) * (0.5 + rnd());
+      let s = spawned.get(a);
+      if (!s) spawned.set(a, (s = { n: 0, start: angle }));
+      angle = s.start + s.n++ * GOLDEN_ANGLE; // all around the anchor, not a random clump
+      const r = SPAWN_RADIUS * Math.min(3, 0.75 + 0.35 * depth[i - keep]) * (0.8 + 0.4 * rnd());
       out[2 * i] = out[2 * a] + Math.cos(angle) * r;
       out[2 * i + 1] = out[2 * a + 1] + Math.sin(angle) * r;
     } else {

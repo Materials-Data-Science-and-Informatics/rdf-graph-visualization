@@ -66,11 +66,13 @@ export class CosmosView {
       enableRightClickRepulsion: false,
       fitViewOnInit: false,
       transitionDuration: 0, // a position transition would pause the running simulation
-      simulationDecay: 2000,
-      simulationGravity: 0.25,
-      simulationRepulsion: 1,
+      // weak gravity: a strong pull to the centre squeezed each hub's leaves into a wedge
+      // on the centre side; stronger repulsion fans them out all around the hub
+      simulationDecay: 1000,
+      simulationGravity: 0.05,
+      simulationRepulsion: 2,
       simulationLinkSpring: 1,
-      simulationLinkDistance: 10,
+      simulationLinkDistance: 15,
       onPointClick: (i) => handlers.onPointClick(i),
       onPointContextMenu: (i, _pos, e) => {
         e.preventDefault();

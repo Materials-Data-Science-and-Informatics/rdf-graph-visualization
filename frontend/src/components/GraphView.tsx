@@ -397,7 +397,8 @@ export default function GraphView({
         .sort((a, b) => b.count - a.count),
     [relCounts, palette]
   );
-  const busy = !engineError && (status.phase === "streaming" || settling);
+  // 2D: block input only while streaming (the cosmos layout keeps settling interactively)
+  const busy = !engineError && (status.phase === "streaming" || (dim === 3 && settling));
   const rootColor = groups.find((g) => g.name === rootInfo?.group)?.color ?? NO_GROUP_COLOR;
 
   return (
