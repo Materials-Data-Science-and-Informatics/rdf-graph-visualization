@@ -4,12 +4,7 @@ overrides:
   three: 0.187.0
 
 # pnpm v10+ blocks dependency build/postinstall scripts by default.
-# Explicitly allow the ones we need: esbuild + husky tooling, and the
-# platform-native binaries (lmdb, rollup) that ship prebuilt executables.
+# Explicitly allow the ones we need (esbuild, husky).
 allowBuilds:
   esbuild: true
   husky: true
-  "@lmdb/lmdb-linux-x64": true
-  "@lmdb/lmdb-win32-x64": true
-  "@rollup/rollup-linux-x64-gnu": true
-  "@rollup/rollup-win32-x64-msvc": true

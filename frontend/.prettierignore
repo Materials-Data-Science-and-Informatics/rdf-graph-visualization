@@ -2,8 +2,5 @@ node_modules
 dist
 pnpm-lock.yaml
 *.tsbuildinfo
-# machine-generated benchmark data (card D5) — compact JSON, not source
-scripts/fixtures/qllever-dev-*.json
-docs/benchmark-data/*.json
 # throwaway GPU engine prototype (Phase 1)
 proto
