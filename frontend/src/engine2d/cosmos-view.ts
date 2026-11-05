@@ -29,6 +29,8 @@ const FIT_MS = 400;
 const FIT_EVERY_MS = 1000;
 /** Auto-fit never zooms in further than this (small graphs would show giant nodes). */
 const MAX_FIT_ZOOM = 5;
+/** Below this many shown nodes the 2D layout uses roomier spacing. */
+const SMALL_GRAPH = 1000;
 /** While the layout moves, leaf discs are re-centred on their hubs at this interval. */
 const LEAF_EVERY_MS = 300;
 
@@ -227,6 +229,15 @@ export class CosmosView {
     g.setLinks(links);
     g.setPointColors(colors);
     g.setPointSizes(this.sizes);
+    // small graphs have room: longer links and more padding keep big nodes (root, bundles)
+    // apart from the nodes linked to both of them
+    const small = n < SMALL_GRAPH;
+    g.setConfigPartial({
+      simulationLinkDistance: small ? 90 : 40,
+      simulationCollisionPadding: small ? 14 : 1,
+      // few points: a longer cool-down is cheap and lets collisions settle fully
+      simulationDecay: small ? 1000 : 300,
+    });
     g.setPinnedPoints(leafIndices(this.leafGroups));
     g.setLinkColors(linkColors);
     this.linkCount = m;

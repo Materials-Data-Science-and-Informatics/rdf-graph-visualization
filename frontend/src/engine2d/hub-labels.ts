@@ -115,9 +115,11 @@ export class HubLabels {
       return;
     }
     const [sx, sy] = this.graph.spaceToScreenPosition(p);
-    const r = Math.min(
-      24,
-      Math.max(4, this.graph.spaceToScreenRadius(this.graph.getPointRadiusByIndex(0) ?? 2))
+    // matches the drawn root (the auto-fit zoom is capped, so it can't grow huge)
+    // getPointRadiusByIndex returns the point size (a diameter), measured in screenshots
+    const r = Math.max(
+      4,
+      this.graph.spaceToScreenRadius(this.graph.getPointRadiusByIndex(0) ?? 2) / 2
     );
     const g = store.groups[0];
     m.style.background = g >= 0 && g < store.groupColors.length ? store.groupColors[g] : "#8a8f98";
