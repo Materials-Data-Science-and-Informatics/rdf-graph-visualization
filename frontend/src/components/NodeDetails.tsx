@@ -9,6 +9,8 @@ export interface SelectedView {
   status: "loading" | "ok" | "none" | "error";
   info?: NodeInfo;
   error?: string;
+  /** Bundle node: label and IRIs of the nodes it stands for (no backend lookup for those). */
+  bundle?: { label: string; members: string[] };
 }
 
 interface Props {
@@ -23,7 +25,7 @@ const localName = (p: string) => p.slice(Math.max(p.lastIndexOf("/"), p.lastInde
 
 /** Floating details card (right side of the canvas; bottom sheet on narrow screens). */
 export default function NodeDetails({ sel, legend, isRoot, onClose, onMakeRoot }: Props) {
-  const { info } = sel;
+  const { info, bundle } = sel;
   const color = legend.find((l) => l.name === info?.group)?.color;
   const rels = info ? sortRelationCounts(info.relations) : [];
 
@@ -38,7 +40,11 @@ export default function NodeDetails({ sel, legend, isRoot, onClose, onMakeRoot }
         {color && <Swatch color={color} name={info?.group} />}
         <div className="min-w-0 flex-1">
           <h2 className="text-sm font-medium break-words">
-            {sel.status === "ok" && info ? (info.label ?? "(unlabelled)") : "Selected node"}
+            {bundle
+              ? bundle.label
+              : sel.status === "ok" && info
+                ? (info.label ?? "(unlabelled)")
+                : "Selected node"}
           </h2>
           {info?.group && <div className="text-muted-foreground text-xs">{info.group}</div>}
         </div>
@@ -59,36 +65,51 @@ export default function NodeDetails({ sel, legend, isRoot, onClose, onMakeRoot }
         {sel.status === "loading" && (
           <p className="text-muted-foreground text-sm">Loading details...</p>
         )}
-        {sel.status === "none" && <p className="text-muted-foreground text-sm">No details</p>}
+        {bundle && (
+          <p className="text-muted-foreground text-sm">
+            {bundle.members.length.toLocaleString()} nodes with the same class and the same
+            connections, shown as one.
+          </p>
+        )}
+        {sel.status === "none" && !bundle && (
+          <p className="text-muted-foreground text-sm">No details</p>
+        )}
         {(sel.status === "error" || (sel.status === "ok" && !info)) && (
           <p role="alert" className="text-destructive text-sm break-words">
             Could not load details: {sel.error ?? "unknown error"}
           </p>
         )}
-        <div className="flex items-center gap-1">
-          <code className="text-muted-foreground min-w-0 flex-1 truncate text-xs" title={sel.iri}>
-            {sel.iri}
-          </code>
-          <CopyButton text={sel.iri} />
-        </div>
-        <div className="flex gap-2">
-          {/^https?:\/\//i.test(sel.iri) && (
-            <Button variant="outline" size="sm" asChild>
-              <a href={sel.iri} target="_blank" rel="noopener noreferrer">
-                <ExternalLink /> Open
-              </a>
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={isRoot}
-            title={isRoot ? "Already the root" : undefined}
-            onClick={onMakeRoot}
-          >
-            Make root
-          </Button>
-        </div>
+        {!bundle && (
+          <>
+            <div className="flex items-center gap-1">
+              <code
+                className="text-muted-foreground min-w-0 flex-1 truncate text-xs"
+                title={sel.iri}
+              >
+                {sel.iri}
+              </code>
+              <CopyButton text={sel.iri} />
+            </div>
+            <div className="flex gap-2">
+              {/^https?:\/\//i.test(sel.iri) && (
+                <Button variant="outline" size="sm" asChild>
+                  <a href={sel.iri} target="_blank" rel="noopener noreferrer">
+                    <ExternalLink /> Open
+                  </a>
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={isRoot}
+                title={isRoot ? "Already the root" : undefined}
+                onClick={onMakeRoot}
+              >
+                Make root
+              </Button>
+            </div>
+          </>
+        )}
         {info && info.types.length > 0 && (
           <ul className="text-muted-foreground space-y-0.5 text-xs">
             {info.types.map((t) => (

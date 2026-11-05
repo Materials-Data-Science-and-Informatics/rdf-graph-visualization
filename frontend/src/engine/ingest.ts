@@ -171,7 +171,7 @@ export class StreamIngest {
     // Springs adjacency: full rebuild + upload, throttled while streaming (trailing edge
     // is covered because this runs every frame while csrDirty).
     if (this.csrDirty && now - this.lastCsr >= this.cfg.csrIntervalMs) {
-      gpu.rebuildCsr();
+      gpu.rebuildCsr(store.bundles);
       alpha = Math.max(alpha, this.cfg.alphaBump / 2); // springs just changed
       this.csrDirty = false;
       this.lastCsr = now;

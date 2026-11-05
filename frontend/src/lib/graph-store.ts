@@ -67,6 +67,10 @@ export class GraphStore {
   edges = new Uint32Array(INITIAL_CAPACITY * 2);
   edgePredicate = new Uint16Array(INITIAL_CAPACITY);
 
+  /** Display stores only: bundle node index -> IRIs of the source nodes it stands for. */
+  readonly bundles = new Map<number, string[]>();
+  private readonly memberIndex = new Map<string, number>();
+
   predicates: string[] = [];
   predicateShort: string[] = [];
 
@@ -100,9 +104,21 @@ export class GraphStore {
     return this.index.get(id) ?? -1;
   }
 
+  /** Index of `iri`, or of the bundle that contains it (-1 = unknown). */
+  resolve(iri: string): number {
+    return this.index.get(iri) ?? this.memberIndex.get(iri) ?? -1;
+  }
+
+  setBundle(index: number, members: string[]): void {
+    this.bundles.set(index, members);
+    for (const m of members) this.memberIndex.set(m, index);
+  }
+
   /** Clear all data (keeps group config); the caller keeps the old store if it needs old positions. */
   reset(): void {
     this.index.clear();
+    this.bundles.clear();
+    this.memberIndex.clear();
     this.predIndex.clear();
     this.nodeIds = [];
     this.labels = [];

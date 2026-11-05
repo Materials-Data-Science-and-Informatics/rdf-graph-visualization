@@ -35,13 +35,18 @@ export function pickVisible(boxes: (Box | null)[], width: number, height: number
   return shown;
 }
 
-/** Root first, then the largest communities' hubs (hubs are ordered largest first). */
-export function labelCandidates(communities: Communities | null, max = MAX_HUB_LABELS): number[] {
+/** Root first, then bundle nodes, then the largest communities' hubs (largest first). */
+export function labelCandidates(
+  communities: Communities | null,
+  max = MAX_HUB_LABELS,
+  bundles: Iterable<number> = []
+): number[] {
   const out = [0];
+  for (const b of bundles) if (out.length <= max && !out.includes(b)) out.push(b);
   if (communities) {
     for (const h of communities.hubs) {
       if (out.length > max) break;
-      if (h !== 0) out.push(h);
+      if (!out.includes(h)) out.push(h);
     }
   }
   return out;
@@ -75,7 +80,9 @@ export class HubLabels {
   /** Tracks the root and the top hubs; call when the communities or the generation change. */
   setCandidates(store: GraphStore, communities: Communities | null, nodes: number): void {
     this.store = store;
-    this.candidates = labelCandidates(communities).filter((i) => i < nodes);
+    this.candidates = labelCandidates(communities, MAX_HUB_LABELS, store.bundles.keys()).filter(
+      (i) => i < nodes
+    );
     this.graph.trackPointPositionsByIndices(this.candidates);
     for (const [i, el] of this.chips) {
       if (!this.candidates.includes(i)) {

@@ -45,11 +45,13 @@ export function reduceStatus(s: StreamStatus, e: StreamEvent): StreamStatus {
 }
 
 /**
- * Streams a graph into a `GraphStore` (read directly by the engine). React state
+ * Streams a graph into a `GraphStore` (plus a mirrored `display` store read by the views). React state
  * only holds the throttled status for the status bar.
  */
 export function useGraphStream(groups: readonly Pick<GraphGroupConfig, "name" | "color">[]) {
   const store = useMemo(() => new GraphStore(groups), [groups]);
+  /** What the views show: mirrors `store` while streaming (see `useDisplayStore` for bundles). */
+  const display = useMemo(() => new GraphStore(groups), [groups]);
   const [status, setStatus] = useState<StreamStatus>(IDLE);
   const ctrlRef = useRef<AbortController | null>(null);
 
@@ -64,6 +66,7 @@ export function useGraphStream(groups: readonly Pick<GraphGroupConfig, "name" | 
       const ctrl = new AbortController();
       ctrlRef.current = ctrl;
       store.reset();
+      display.reset();
       let local: StreamStatus = { ...IDLE, phase: "streaming" };
       let lastPush = 0;
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -84,6 +87,7 @@ export function useGraphStream(groups: readonly Pick<GraphGroupConfig, "name" | 
         (e) => {
           if (ctrl.signal.aborted) return;
           store.apply(e);
+          display.apply(e);
           const next = reduceStatus(local, e);
           if (next === local && e.type !== "nodes" && e.type !== "edges") return;
           local = next;
@@ -111,12 +115,12 @@ export function useGraphStream(groups: readonly Pick<GraphGroupConfig, "name" | 
           push();
         });
     },
-    [abort, store]
+    [abort, store, display]
   );
 
   useEffect(() => abort, [abort]);
 
-  return { store, status, start, abort };
+  return { store, display, status, start, abort };
 }
 
 export function statusText(s?: StreamStatus): string {

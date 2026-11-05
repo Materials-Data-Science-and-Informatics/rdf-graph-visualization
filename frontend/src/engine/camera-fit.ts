@@ -6,7 +6,7 @@ import { fitDistance, fitFromPositions } from "./layout-utils";
 import type { Vec3 } from "./picking";
 
 /** Closest auto-fit camera distance, in link rest lengths. */
-const MIN_FIT_RESTS = 12;
+const MIN_FIT_RESTS = 6;
 
 export const FOV = 60;
 const FIT_EASE = 0.08;

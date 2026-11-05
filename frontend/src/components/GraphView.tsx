@@ -5,6 +5,8 @@ import { WEBGPU_NOTICE, WebGpuUnavailableError } from "@/engine/webgpu";
 import { DEFAULT_ROOT_IRI } from "@/lib/config";
 import { readUrlParams } from "@/lib/url-params";
 import { useGraphStream } from "@/lib/use-graph-stream";
+import { useDisplayStore } from "@/lib/use-display-store";
+import { isBundleId } from "@/lib/bundles";
 import { shortName } from "@/lib/graph-store";
 import {
   FANOUT_KEY,
@@ -52,7 +54,8 @@ export default function GraphView({
   relations: string[];
   control: React.RefObject<GraphControl | null>;
 }) {
-  const { store, status, start } = useGraphStream(groups);
+  // `store` is the display store the views read (bundles collapsed once the stream is done)
+  const { store: source, display: store, status, start } = useGraphStream(groups);
   // URL parameters win over saved settings for this visit only (never written to localStorage).
   const [urlParams] = useState(() => readUrlParams(window.location.search));
   const phaseRef = useRef(status.phase);
@@ -76,6 +79,9 @@ export default function GraphView({
   const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia(NARROW).matches);
   const [rootIri, setRootIri] = useState(() => urlParams.root ?? loadRoot(DEFAULT_ROOT_IRI));
   const [selected, setSelected] = useState<SelectedView | null>(null);
+  const selectedRef = useRef(selected);
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref read before a display rebuild
+  selectedRef.current = selected;
   const selectAbort = useRef<AbortController | null>(null);
   const [hover, setHover] = useState<PickHit | null>(null);
   const tipRef = useRef<HTMLDivElement>(null);
@@ -151,6 +157,13 @@ export default function GraphView({
       const ctrl = new AbortController();
       selectAbort.current = ctrl;
       activeView()?.setSelected(index);
+      const members = store.bundles.get(index);
+      if (members)
+        return setSelected({
+          iri,
+          status: "none",
+          bundle: { label: store.labels[index] ?? iri, members },
+        });
       setSelected({ iri, status: "loading" });
       fetchNode(iri, ctrl.signal)
         .then((info) => {
@@ -193,7 +206,7 @@ export default function GraphView({
   const makeRoot = useCallback(
     (index: number) => {
       const iri = store.nodeIds[index];
-      if (iri !== undefined) makeRootIri(iri);
+      if (iri !== undefined && !isBundleId(iri)) makeRootIri(iri);
     },
     [store, makeRootIri]
   );
@@ -201,7 +214,7 @@ export default function GraphView({
   // Search box API: select once the node (new root) shows up in the visible window.
   const inWindow = useCallback(
     (iri: string) => {
-      const i = store.indexOf(iri);
+      const i = store.resolve(iri);
       return i >= 0 && i < nodeLimitRef.current ? i : -1;
     },
     [store]
@@ -251,6 +264,14 @@ export default function GraphView({
     wrapRef.current?.focus();
   }, [clearSelection]);
   useEscapeClose(selected !== null, sidebarOpen, closeDetails, () => setSidebarOpen(false));
+  // Before the display store is rebuilt (bundling): carry positions, re-select the selection after.
+  const beforeRebuild = useCallback(() => {
+    engineRef.current?.captureForReroot();
+    const iri = selectedRef.current?.iri;
+    if (iri)
+      pendingSelect.current = { iri, gen: store.generation, until: Date.now() + PENDING_SELECT_MS };
+  }, [store]);
+  useDisplayStore(source, store, status.phase, nodeLimit, beforeRebuild);
   const handlersRef = useRef({ selectNode, clearSelection, makeRoot, focusSelect });
   // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   handlersRef.current = { selectNode, clearSelection, makeRoot, focusSelect };
@@ -329,7 +350,7 @@ export default function GraphView({
       setShown(Math.min(nodeLimitRef.current, store.nodeCount));
       const pend = pendingSelect.current;
       if (pend && store.generation > pend.gen) {
-        const i = store.indexOf(pend.iri);
+        const i = store.resolve(pend.iri);
         if (i >= 0 && i < nodeLimitRef.current) {
           pendingSelect.current = null;
           // select only: focusing the hop-0 root would stop the auto-fit before the layout spreads
@@ -442,7 +463,7 @@ export default function GraphView({
             isRoot={selected.iri === rootIri}
             onClose={closeDetails}
             onMakeRoot={() => {
-              const i = store.nodeIds.indexOf(selected.iri);
+              const i = store.indexOf(selected.iri);
               if (i >= 0) makeRoot(i);
             }}
           />

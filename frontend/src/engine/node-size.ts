@@ -26,9 +26,14 @@ export function radiusMultiplier(size: number): number {
  * 3D: radius multiplier of nodes [0, n) from CSR `offsets` (degree = offsets[i+1] - offsets[i],
  * undirected, self-loops excluded); node 0 is the root.
  */
-export function fillRadiusMultipliers(out: Float32Array, n: number, offsets: Uint32Array): void {
+export function fillRadiusMultipliers(
+  out: Float32Array,
+  n: number,
+  offsets: Uint32Array,
+  bundles?: ReadonlyMap<number, readonly unknown[]>
+): void {
   for (let i = 0; i < n; i++) {
-    const size = pointSize(offsets[i + 1] - offsets[i]);
+    const size = pointSize(offsets[i + 1] - offsets[i] + (bundles?.get(i)?.length ?? 0));
     out[i] = radiusMultiplier(i === 0 ? Math.max(size, ROOT_SIZE) : size);
   }
 }
@@ -47,10 +52,14 @@ export function computeDegrees(n: number, edges: Uint32Array, edgeCount: number)
   return deg;
 }
 
-/** Sizes for the first `n` points from their degree; node 0 is the root. */
-export function computePointSizes(n: number, deg: Uint32Array): Float32Array {
+/** Sizes for the first `n` points from their degree (+ member count of a bundle); node 0 is the root. */
+export function computePointSizes(
+  n: number,
+  deg: Uint32Array,
+  bundles?: ReadonlyMap<number, readonly unknown[]>
+): Float32Array {
   const sizes = new Float32Array(n);
-  for (let i = 0; i < n; i++) sizes[i] = pointSize(deg[i]);
+  for (let i = 0; i < n; i++) sizes[i] = pointSize(deg[i] + (bundles?.get(i)?.length ?? 0));
   if (n > 0) sizes[0] = Math.max(sizes[0], ROOT_SIZE);
   return sizes;
 }

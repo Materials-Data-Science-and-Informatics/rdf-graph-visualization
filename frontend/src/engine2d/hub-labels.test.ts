@@ -17,5 +17,7 @@ describe("hub labels", () => {
     };
     expect(labelCandidates(c, 2)).toEqual([0, 5, 7]);
     expect(labelCandidates(null)).toEqual([0]);
+    expect(labelCandidates(c, 2, [4, 6])).toEqual([0, 4, 6]);
+    expect(labelCandidates(c, 3, [5])).toEqual([0, 5, 7, 9]); // no duplicates
   });
 });

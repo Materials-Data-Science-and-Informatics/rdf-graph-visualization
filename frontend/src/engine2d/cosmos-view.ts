@@ -28,7 +28,7 @@ const INTER_LINK_STRENGTH = 0.02;
 const FIT_MS = 400;
 const FIT_EVERY_MS = 1000;
 /** Auto-fit never zooms in further than this (small graphs would show giant nodes). */
-const MAX_FIT_ZOOM = 3;
+const MAX_FIT_ZOOM = 5;
 /** While the layout moves, leaf discs are re-centred on their hubs at this interval. */
 const LEAF_EVERY_MS = 300;
 
@@ -219,7 +219,7 @@ export class CosmosView {
     if (fresh) this.labels?.clear();
     if (fresh && this.communities) this.clearCommunities(n);
     this.degrees = computeDegrees(n, store.edges, store.edgeCount);
-    this.sizes = computePointSizes(n, this.degrees);
+    this.sizes = computePointSizes(n, this.degrees, store.bundles);
     // leaves are pinned on discs around their hub; the forces lay out the rest
     this.leafGroups = findLeafGroups(n, store.edges, store.edgeCount, this.degrees);
     placeLeafDiscs(pos, this.leafGroups, this.sizes);

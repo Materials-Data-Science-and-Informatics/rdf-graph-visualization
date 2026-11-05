@@ -345,11 +345,11 @@ export class GpuGraph {
   }
 
   /** Rebuild springs adjacency from the current edges and upload it whole. */
-  rebuildCsr(): void {
+  rebuildCsr(bundles?: ReadonlyMap<number, readonly unknown[]>): void {
     buildCsr(this.edgeCpu, this.edgeCount, this.nodeCount, this.offsetsCpu, this.neighCpu);
     this.markCsrUploaded();
     // node size from the CSR degree; whole buffer (any node's degree may have changed)
-    fillRadiusMultipliers(this.sizeCpu, this.nodeCount, this.offsetsCpu);
+    fillRadiusMultipliers(this.sizeCpu, this.nodeCount, this.offsetsCpu, bundles);
     const sizeAttr = attrOf(this.b.size);
     sizeAttr.clearUpdateRanges();
     sizeAttr.needsUpdate = true;

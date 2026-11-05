@@ -16,8 +16,21 @@ const GraphTooltip = forwardRef<HTMLDivElement, { store: GraphStore; hit: PickHi
     if (hit.kind === "node" && hit.index < store.nodeCount) {
       const g = store.groups[hit.index];
       const color = g >= 0 ? store.groupColors[g] : NO_GROUP_COLOR;
+      const members = store.bundles.get(hit.index);
       const { rows, more } = summarizeRelations(store.relationsOf(hit.index));
-      body = (
+      body = members ? (
+        <>
+          <div className="font-medium break-words">{nodeTitle(store, hit.index)}</div>
+          <div className="text-muted-foreground flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="inline-block size-2.5 rounded-full border"
+              style={{ background: color }}
+            />
+            {members.length.toLocaleString()} bundled nodes
+          </div>
+        </>
+      ) : (
         <>
           <div className="font-medium break-words">{nodeTitle(store, hit.index)}</div>
           <div className="text-muted-foreground flex items-center gap-1.5">
