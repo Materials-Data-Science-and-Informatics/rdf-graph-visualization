@@ -31,6 +31,7 @@ import {
   buildCsr,
   coalesceRanges,
   computeAnchors,
+  fillVisibility,
   appendWindowEdges,
   jitterRadius,
   type IndexRange,
@@ -124,6 +125,7 @@ export class GpuGraph {
   /** Node radius in world units (rest/3 * user scale); drives sphere, edge width and arrow size. */
   private readonly uRad = uniform(1);
   private dark = true;
+  private opacityScale = 1;
   private readonly uInitStart = uniform(0, "uint");
   private readonly uInitEnd = uniform(0, "uint");
 
@@ -193,6 +195,7 @@ export class GpuGraph {
       const diff = max(dot(nrm, L), 0);
       const spec = pow(max(dot(nrm, normalize(L.add(vec3(0, 0, 1)))), 0), 32).mul(0.45);
       const rim = pow(float(1).sub(z), 3).mul(0.35);
+      Discard(cAttr.w.lessThan(0.5)); // w = group visibility (see applyVisibility)
       return vec4(cAttr.xyz.mul(diff.mul(0.85).add(0.3)).add(spec).add(rim), 1);
     })();
     this.sprite = new THREE.Sprite(this.nodeMat);
@@ -243,10 +246,14 @@ export class GpuGraph {
 
   /** World-space vertex positions of the edge quads / arrowheads (see constructor comment). */
   private edgeShaders() {
-    const { pos, edgeIdx, uRad } = this;
+    const { pos, colors, edgeIdx, uRad } = this;
     const i = instanceIndex;
-    const a = pos.element(edgeIdx.element(i.mul(2))).xyz;
-    const b = pos.element(edgeIdx.element(i.mul(2).add(1))).xyz;
+    const ia = edgeIdx.element(i.mul(2));
+    const ib = edgeIdx.element(i.mul(2).add(1));
+    const a = pos.element(ia).xyz;
+    const b = pos.element(ib).xyz;
+    // an edge with a hidden endpoint collapses to a point (degenerate triangles draw nothing)
+    const hidden = colors.element(ia).w.mul(colors.element(ib).w).lessThan(0.5);
     const d = b.sub(a);
     const len = max(length(d), 1e-4);
     const dn = d.div(len);
@@ -258,10 +265,14 @@ export class GpuGraph {
     const shaftW = uRad.mul(0.2);
     const t = positionGeometry.x;
     const s = positionGeometry.y;
-    const shaftPos = start.add(shaftEnd.sub(start).mul(t)).add(side.mul(s.mul(shaftW)));
-    const arrowPos = tip
-      .sub(dn.mul(arrowLen.mul(float(1).sub(t))))
-      .add(side.mul(s.mul(arrowLen).mul(0.8)));
+    const shaftPos = hidden.select(
+      a,
+      start.add(shaftEnd.sub(start).mul(t)).add(side.mul(s.mul(shaftW)))
+    );
+    const arrowPos = hidden.select(
+      a,
+      tip.sub(dn.mul(arrowLen.mul(float(1).sub(t)))).add(side.mul(s.mul(arrowLen).mul(0.8)))
+    );
     return { shaftPos, arrowPos };
   }
 
@@ -396,7 +407,7 @@ export class GpuGraph {
     this.sprite.visible = this.nodeCount > 0;
     this.shaftGeo.instanceCount = this.edgeCount;
     this.arrowGeo.instanceCount = this.edgeCount;
-    const o = edgeOpacity(this.edgeCount, this.dark);
+    const o = Math.min(1, edgeOpacity(this.edgeCount, this.dark) * this.opacityScale);
     this.shaftMat.opacity = o;
     this.arrowMat.opacity = Math.min(1, o + 0.15);
   }
@@ -515,6 +526,27 @@ export class GpuGraph {
 
   setDim(dim: 2 | 3): void {
     this.uZOn.value = dim === 2 ? 0 : 1;
+  }
+
+  /** Multiplier on the automatic edge opacity (1 = default). */
+  setEdgeOpacityScale(scale: number): void {
+    this.opacityScale = scale;
+    this.syncCounts();
+  }
+
+  setArrowsVisible(on: boolean): void {
+    this.arrows.visible = on;
+  }
+
+  /**
+   * Write per-node visibility into the colour alpha (read by node and edge shaders):
+   * a node is hidden when `hiddenGroups` has its group (-1 = unclassified). Full upload.
+   */
+  applyVisibility(groups: Int16Array, groupCount: number, hiddenGroups: ReadonlySet<number>): void {
+    fillVisibility(this.colorCpu, groups, this.nodeCount, groupCount, hiddenGroups);
+    const attr = attrOf(this.colors);
+    attr.clearUpdateRanges();
+    attr.needsUpdate = true;
   }
 
   setLook(dark: boolean): void {

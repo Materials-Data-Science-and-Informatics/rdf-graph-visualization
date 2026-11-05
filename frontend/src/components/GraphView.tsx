@@ -1,21 +1,25 @@
-import { useEffect, useRef, useState } from "react";
-import { Maximize, Minimize, RotateCcw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Maximize, Minimize, PanelLeftOpen, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { GraphGroupConfig } from "@/lib/api";
+import { fetchNode, type GraphGroupConfig, type NodeInfo } from "@/lib/api";
 import type { Engine } from "@/engine/engine";
-import {
-  NODE_LIMIT_DEFAULT,
-  NODE_LIMIT_MAX,
-  NODE_LIMIT_MIN,
-  countToSlider,
-  sliderToCount,
-} from "@/engine/layout-utils";
+import { NODE_LIMIT_DEFAULT, NODE_LIMIT_MAX, NODE_LIMIT_MIN } from "@/engine/layout-utils";
 import { WEBGPU_NOTICE, WebGpuUnavailableError } from "@/engine/webgpu";
 import { DEFAULT_ROOT_IRI } from "@/lib/config";
 import { useGraphStream } from "@/lib/use-graph-stream";
-import StatusBar from "./StatusBar";
+import {
+  clampDepth,
+  depthToMaxHops,
+  groupCounts,
+  loadDepth,
+  saveDepth,
+} from "@/lib/sidebar-settings";
+import Sidebar from "./Sidebar";
 
-/** Canvas host: the GPU engine mounts into the `canvas-host` div and pulls deltas from the stream's store. */
+const NARROW = "(max-width: 767px)";
+const DEPTH_DEBOUNCE_MS = 500;
+const NO_GROUP_COLOR = "#8a8f98";
+
 const NODE_LIMIT_KEY = "hkg-node-limit";
 const loadNodeLimit = (): number => {
   try {
@@ -26,6 +30,7 @@ const loadNodeLimit = (): number => {
   }
 };
 
+/** Canvas host: the GPU engine mounts into the `canvas-host` div and pulls deltas from the stream's store. */
 export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
   const { store, status, start } = useGraphStream(groups);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -38,10 +43,68 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
   const [engineError, setEngineError] = useState<string | null>(null);
   const [isFullscreen, setFullscreen] = useState(false);
 
-  useEffect(() => start(DEFAULT_ROOT_IRI), [start]);
+  const [depth, setDepth] = useState(loadDepth);
+  const [appliedDepth, setAppliedDepth] = useState(depth);
+  const [sidebarOpen, setSidebarOpen] = useState(() => !window.matchMedia(NARROW).matches);
+  const [rootInfo, setRootInfo] = useState<NodeInfo | null>(null);
+  const [shown, setShown] = useState(0);
+  const [counts, setCounts] = useState<number[]>([]);
+  const [hiddenGroups, setHiddenGroups] = useState<ReadonlySet<number>>(new Set());
+  const hiddenRef = useRef(hiddenGroups);
+  const [dim, setDimState] = useState<2 | 3>(3);
+  const [edgeOpacity, setEdgeOpacity] = useState(1);
+  const [arrows, setArrows] = useState(true);
+  const settingsRef = useRef({ dim, edgeOpacity, arrows });
+  settingsRef.current = { dim, edgeOpacity, arrows };
 
-  const onNodeLimit = (t: number) => {
-    const v = sliderToCount(t);
+  // Depth changes restart the stream; omitted max_hops (default 6) keeps the cached snapshot key.
+  useEffect(() => {
+    start(DEFAULT_ROOT_IRI, { maxHops: depthToMaxHops(appliedDepth) });
+  }, [start, appliedDepth]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setAppliedDepth(depth), DEPTH_DEBOUNCE_MS);
+    return () => clearTimeout(t);
+  }, [depth]);
+
+  const onDepth = useCallback((d: number) => {
+    const v = clampDepth(d);
+    setDepth(v);
+    saveDepth(v);
+  }, []);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    fetchNode(DEFAULT_ROOT_IRI, ctrl.signal)
+      .then(setRootInfo)
+      .catch(() => undefined);
+    return () => ctrl.abort();
+  }, []);
+
+  const onGroupVisible = useCallback((index: number, visible: boolean) => {
+    const next = new Set(hiddenRef.current);
+    if (visible) next.delete(index);
+    else next.add(index);
+    hiddenRef.current = next;
+    setHiddenGroups(next);
+    engineRef.current?.setGroupVisible(index, visible);
+  }, []);
+  const onDim = useCallback((d: 2 | 3) => {
+    setDimState(d);
+    engineRef.current?.setDim(d);
+  }, []);
+  const onEdgeOpacity = useCallback((v: number) => {
+    setEdgeOpacity(v);
+    engineRef.current?.setEdgeOpacityScale(v);
+  }, []);
+  const onArrows = useCallback((v: boolean) => {
+    setArrows(v);
+    engineRef.current?.setArrowsVisible(v);
+  }, []);
+  const onResetView = useCallback(() => engineRef.current?.resetView(), []);
+  const onToggleSidebar = useCallback(() => setSidebarOpen((o) => !o), []);
+
+  const onNodeLimit = useCallback((v: number) => {
     setNodeLimit(v);
     nodeLimitRef.current = v;
     engineRef.current?.setNodeLimit(v);
@@ -50,7 +113,7 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
     } catch {
       /* storage unavailable: the choice just is not remembered */
     }
-  };
+  }, []);
 
   // The engine lives as long as the canvas host; it is (re)attached to the store when that changes.
   useEffect(() => {
@@ -67,6 +130,11 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
         engineRef.current = e;
         e.onError = setEngineError;
         e.setNodeLimit(nodeLimitRef.current);
+        const st = settingsRef.current;
+        if (st.dim !== 3) e.setDim(st.dim);
+        e.setEdgeOpacityScale(st.edgeOpacity);
+        e.setArrowsVisible(st.arrows);
+        hiddenRef.current.forEach((g) => e.setGroupVisible(g, false));
         e.attach(store);
         setEngineError(null);
       })
@@ -81,6 +149,11 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
     const timer = setInterval(() => {
       setFps(engine?.fps ?? 0);
       setSettling(engine?.settling ?? false);
+      setShown(Math.min(nodeLimitRef.current, store.nodeCount));
+      const next = groupCounts(store.groups, nodeLimitRef.current, store.groupNames.length);
+      setCounts((prev) =>
+        prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next
+      );
     }, 500);
     return () => {
       cancelled = true;
@@ -96,19 +169,74 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
     return () => document.removeEventListener("fullscreenchange", onChange);
   }, []);
 
+  const legend = useMemo(
+    () => [
+      ...groups.map((g, i) => ({
+        name: g.name,
+        color: g.color,
+        count: counts[i] ?? 0,
+        visible: !hiddenGroups.has(i),
+      })),
+      {
+        name: "Unclassified",
+        color: NO_GROUP_COLOR,
+        count: counts[groups.length] ?? 0,
+        visible: !hiddenGroups.has(-1),
+      },
+    ],
+    [groups, counts, hiddenGroups]
+  );
+  const rootColor = groups.find((g) => g.name === rootInfo?.group)?.color ?? NO_GROUP_COLOR;
+
   return (
-    <div ref={wrapRef} className="bg-background relative min-h-0 flex-1 overflow-hidden">
-      <div ref={hostRef} className="absolute inset-0" data-slot="canvas-host" />
-      {engineError && (
-        <div
-          role="alert"
-          className="text-muted-foreground absolute inset-0 flex items-center justify-center p-6 text-center text-sm"
-        >
-          {engineError}
-        </div>
-      )}
-      <div className="absolute top-3 left-3 flex flex-col gap-2">
-        <div className="flex gap-1">
+    <div className="relative flex min-h-0 flex-1 overflow-hidden">
+      <Sidebar
+        open={sidebarOpen}
+        onToggle={onToggleSidebar}
+        rootIri={DEFAULT_ROOT_IRI}
+        root={rootInfo}
+        rootColor={rootColor}
+        nodeLimit={nodeLimit}
+        onNodeLimit={onNodeLimit}
+        depth={depth}
+        onDepth={onDepth}
+        status={status}
+        shown={shown}
+        fps={fps}
+        settling={settling}
+        legend={legend}
+        onGroupVisible={onGroupVisible}
+        dim={dim}
+        onDim={onDim}
+        edgeOpacity={edgeOpacity}
+        onEdgeOpacity={onEdgeOpacity}
+        arrows={arrows}
+        onArrows={onArrows}
+        onResetView={onResetView}
+      />
+      <div ref={wrapRef} className="bg-background relative min-h-0 min-w-0 flex-1 overflow-hidden">
+        <div ref={hostRef} className="absolute inset-0" data-slot="canvas-host" />
+        {engineError && (
+          <div
+            role="alert"
+            className="text-muted-foreground absolute inset-0 flex items-center justify-center p-6 text-center text-sm"
+          >
+            {engineError}
+          </div>
+        )}
+        <div className="absolute top-3 left-3 flex gap-1">
+          {!sidebarOpen && (
+            <Button
+              variant="outline"
+              size="icon"
+              aria-label="Open sidebar"
+              aria-expanded={false}
+              aria-controls="sidebar"
+              onClick={() => setSidebarOpen(true)}
+            >
+              <PanelLeftOpen />
+            </Button>
+          )}
           <Button
             variant="outline"
             size="icon"
@@ -122,32 +250,11 @@ export default function GraphView({ groups }: { groups: GraphGroupConfig[] }) {
           >
             {isFullscreen ? <Minimize /> : <Maximize />}
           </Button>
-          <Button
-            variant="outline"
-            size="icon"
-            aria-label="Reset view"
-            onClick={() => engineRef.current?.resetView()}
-          >
+          <Button variant="outline" size="icon" aria-label="Reset view" onClick={onResetView}>
             <RotateCcw />
           </Button>
         </div>
-        <label className="bg-background/70 text-muted-foreground flex items-center gap-2 rounded-md border px-2 py-1 text-xs backdrop-blur">
-          Show
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.005}
-            value={countToSlider(nodeLimit)}
-            aria-label="Number of nodes shown"
-            className="accent-primary w-32"
-            onChange={(e) => onNodeLimit(Number(e.target.value))}
-          />
-          <span className="w-20 tabular-nums">{nodeLimit.toLocaleString()} nodes</span>
-        </label>
       </div>
-      <div className="absolute top-3 right-3" data-slot="legend" />
-      <StatusBar status={status} fps={fps} settling={settling} />
     </div>
   );
 }

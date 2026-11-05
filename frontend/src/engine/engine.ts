@@ -72,7 +72,12 @@ export class Engine {
   private viewDir = new THREE.Vector3(0, 0, 1);
   /** TODO(F4/F5): read by the picking code once it exists. */
   handlers: EngineHandlers = {};
-  private readonly hidden = new Set<number>(); // TODO(F6): applied to rendering
+  private readonly hidden = new Set<number>(); // hidden group indices (-1 = unclassified)
+  private visibilityDirty = false;
+  private visibilityStale = false;
+  private lastVisibility = 0;
+  private edgeOpacityScale = 1;
+  private arrowsOn = true;
   private readonly frameTimes: number[] = [];
   private lastFrame = 0;
 
@@ -152,10 +157,25 @@ export class Engine {
     this.handlers = h; // TODO(F4/F5): raycast/GPU-pick and call these
   }
 
-  /** TODO(F6): hide/show all nodes of a group (needs a per-node visibility flag in the shaders). */
+  /**
+   * Hide/show all nodes of a group (-1 = unclassified). Hidden nodes and edges touching
+   * them are not drawn; the layout keeps simulating them.
+   */
   setGroupVisible(groupIndex: number, visible: boolean): void {
     if (visible) this.hidden.delete(groupIndex);
     else this.hidden.add(groupIndex);
+    this.visibilityDirty = true;
+  }
+
+  /** Multiplier on the automatic edge opacity (1 = default). */
+  setEdgeOpacityScale(scale: number): void {
+    this.edgeOpacityScale = scale;
+    this.gpu?.setEdgeOpacityScale(scale);
+  }
+
+  setArrowsVisible(on: boolean): void {
+    this.arrowsOn = on;
+    this.gpu?.setArrowsVisible(on);
   }
 
   /** 2D = z locked via uniform (positions flatten within a few frames); camera looks down -z. */
@@ -338,6 +358,15 @@ export class Engine {
         this.colorOf
       );
     }
+    if (this.hidden.size > 0 && (ch.recoloredNodes.length || gpu.nodeCount > prevNodes)) {
+      this.visibilityStale = true; // new/recoloured nodes were written fully visible
+    }
+    // user toggles apply at once; growth/recolour re-applies are throttled (full upload)
+    if (this.visibilityDirty || (this.visibilityStale && now - this.lastVisibility >= 100)) {
+      this.visibilityDirty = this.visibilityStale = false;
+      this.lastVisibility = now;
+      gpu.applyVisibility(store.groups, store.groupNames.length, this.hidden);
+    }
     if (heat > 0) {
       this.csrDirty = true;
       this.alpha = Math.max(this.alpha, heat);
@@ -423,6 +452,9 @@ export class Engine {
     this.gpu = gpu;
     gpu.setDim(this.dim);
     gpu.setLook(this.dark);
+    gpu.setEdgeOpacityScale(this.edgeOpacityScale);
+    gpu.setArrowsVisible(this.arrowsOn);
+    this.visibilityDirty = true;
     this.csrDirty = true;
   }
 

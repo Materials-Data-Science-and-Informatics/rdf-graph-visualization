@@ -12,6 +12,7 @@ import {
   growCapacity,
   jitterRadius,
   roundCapacity,
+  fillVisibility,
 } from "./layout-utils";
 
 describe("capacity", () => {
@@ -158,5 +159,13 @@ describe("log slider", () => {
   });
   it("is monotonic", () => {
     expect(sliderToCount(0.3)).toBeLessThan(sliderToCount(0.6));
+  });
+});
+
+describe("fillVisibility", () => {
+  it("treats out-of-range groups as unclassified (-1)", () => {
+    const rgba = new Float32Array(16).fill(1);
+    fillVisibility(rgba, Int16Array.from([0, -1, 7, 1]), 4, 2, new Set([-1, 1]));
+    expect([3, 7, 11, 15].map((i) => rgba[i])).toEqual([1, 0, 0, 0]);
   });
 });

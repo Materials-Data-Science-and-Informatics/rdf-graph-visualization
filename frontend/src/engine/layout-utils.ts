@@ -213,3 +213,20 @@ export function countToSlider(n: number): number {
   const hi = Math.log(NODE_LIMIT_MAX);
   return Math.min(1, Math.max(0, (Math.log(n) - lo) / (hi - lo)));
 }
+
+/**
+ * Write per-node visibility (1 shown / 0 hidden) into the alpha slot of an rgba array.
+ * Group indices outside [0, groupCount) count as -1 (unclassified).
+ */
+export function fillVisibility(
+  rgba: Float32Array,
+  groups: Int16Array,
+  count: number,
+  groupCount: number,
+  hidden: ReadonlySet<number>
+): void {
+  for (let i = 0; i < count; i++) {
+    const g = groups[i];
+    rgba[i * 4 + 3] = hidden.has(g >= 0 && g < groupCount ? g : -1) ? 0 : 1;
+  }
+}
