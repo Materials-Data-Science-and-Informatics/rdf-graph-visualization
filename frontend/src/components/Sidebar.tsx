@@ -94,6 +94,7 @@ const Switch = ({
 /** Favicon of a root preset; hidden when it fails to load (external host). */
 function PresetIcon({ src }: { src: string }) {
   const [failed, setFailed] = useState(false);
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- reset the failed flag when src changes
   useEffect(() => setFailed(false), [src]);
   if (failed) return null;
   return (
@@ -130,6 +131,7 @@ function CommitNumber({
   onCommit: (v: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- resync the draft when the committed value changes
   useEffect(() => setDraft(String(value)), [value]);
   const commit = () => {
     const v = clamp(draft === "" ? value : Number(draft));

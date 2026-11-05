@@ -11,7 +11,7 @@ export const WEBGPU_NOTICE = "This view needs WebGPU — use a current Chrome, E
 export async function assertWebGpu(): Promise<void> {
   const gpu = (navigator as Navigator & { gpu?: { requestAdapter(): Promise<unknown> } }).gpu;
   if (!gpu) throw new WebGpuUnavailableError();
-  let adapter: unknown = null;
+  let adapter: unknown;
   try {
     adapter = await gpu.requestAdapter();
   } catch {

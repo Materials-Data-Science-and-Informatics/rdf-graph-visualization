@@ -45,7 +45,9 @@ export default function SearchBox({
   const [active, setActive] = useState(-1);
   const abortRef = useRef<AbortController | null>(null);
 
+  // eslint-disable-next-line react-hooks/refs -- abortRef is only touched inside the debounced callback, not during render
   const run = useRef(
+    // eslint-disable-next-line react-hooks/refs -- abortRef is read in the debounced callback, not during render
     debounce((q: string) => {
       abortRef.current?.abort();
       const ctrl = new AbortController();
@@ -107,6 +109,7 @@ export default function SearchBox({
   const showPanel = open && q.length >= SEARCH_MIN_CHARS;
 
   const choose = useCallback(
+    // eslint-disable-next-line react-hooks/preserve-manual-memoization -- control is a stable handle ref; deps are intentional
     (r: SearchResult, root: boolean) => {
       const c = control.current;
       if (!c) return;

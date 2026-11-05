@@ -134,7 +134,7 @@ export class GraphStore {
       case "nodes":
         for (const n of event.nodes) {
           const i = this.ensureNode(n.id, event.hop);
-          if (n.group != null) this.setGroup(i, n.group);
+          if (n.group !== undefined && n.group !== null) this.setGroup(i, n.group);
         }
         this.maxHop = Math.max(this.maxHop, event.hop);
         this.version++;

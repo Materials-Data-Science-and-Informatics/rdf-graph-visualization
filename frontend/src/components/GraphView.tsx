@@ -93,12 +93,14 @@ export default function GraphView({
   const [relCounts, setRelCounts] = useState<Map<string, number>>(new Map());
   const palette = useMemo(() => relationPalette(relations), [relations]);
   const paletteRef = useRef(palette);
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   paletteRef.current = palette;
   const [dim, setDimState] = useState<2 | 3>(loadDim);
   const [edgeOpacity, setEdgeOpacity] = useState(loadEdgeOpacity);
   const [arrows, setArrows] = useState(loadArrows);
   const [curved, setCurved] = useState(loadCurved);
   const settingsRef = useRef({ dim, edgeOpacity, arrows, curved });
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   settingsRef.current = { dim, edgeOpacity, arrows, curved };
 
   // Depth changes restart the stream; omitted max_hops (default 6) keeps the cached snapshot key.
@@ -222,7 +224,9 @@ export default function GraphView({
     },
     [makeRootIri, store]
   );
+  // eslint-disable-next-line react-hooks/immutability -- control is a stable imperative handle ref owned by the parent
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/immutability -- same handle ref as above
     control.current = {
       has: (iri) => inWindow(iri) >= 0,
       open: (iri) => {
@@ -247,6 +251,7 @@ export default function GraphView({
     wrapRef.current?.focus();
   }, [clearSelection]);
   const escRef = useRef({ hasSel: false, sidebarOpen: false });
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref read by the Escape handler
   escRef.current = { hasSel: selected !== null, sidebarOpen };
   // one global Escape: details card first, then the narrow-screen sidebar overlay
   useEffect(() => {
@@ -262,6 +267,7 @@ export default function GraphView({
     return () => document.removeEventListener("keydown", onKey);
   }, [closeDetails]);
   const handlersRef = useRef({ selectNode, clearSelection, makeRoot, focusSelect });
+  // eslint-disable-next-line react-hooks/refs -- latest-value ref read by engine callbacks
   handlersRef.current = { selectNode, clearSelection, makeRoot, focusSelect };
 
   // hover card follows the pointer (direct style writes, no re-render per move)
