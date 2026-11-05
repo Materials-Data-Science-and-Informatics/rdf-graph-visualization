@@ -3,7 +3,7 @@
 Vocabulary-agnostic: callers pass IRI lists (data-model classes, relation /
 label properties) and the builders emit SPARQL text ready for
 ``QleverClient.select``. The only free-form input any template accepts is
-the search text in :func:`search_query`, which is regex-escaped — IRIs are
+the search text in :func:`search_query`, which is escaped as a string literal — IRIs are
 validated, never concatenated raw.
 """
 
@@ -77,14 +77,13 @@ def _sparql_string_escape(text: str) -> str:
     )
 
 
-def _regex_escape(text: str) -> str:
-    """Escape for use inside a SPARQL ``regex()`` pattern (XSD regex)."""
-    # re.escape over-escapes, which is harmless in XSD regex; it guarantees
-    # user text can never act as a pattern.
-    return re.escape(_sparql_string_escape(text))
-
-
 # -- templates ----------------------------------------------------------------
+
+
+def _case_variants(text: str) -> list[str]:
+    """As typed, first-letter-capitalised, all-lowercase (deduplicated)."""
+    variants = [text, text[:1].upper() + text[1:], text.lower()]
+    return list(dict.fromkeys(variants))
 
 
 def search_query(
@@ -93,30 +92,41 @@ def search_query(
     label_iris: list[str],
     limit: int = DEFAULT_SEARCH_LIMIT,
 ) -> str:
-    """Prefix search over label properties — the B5 autocomplete source.
+    """Prefix search over label properties - the B5 autocomplete source.
 
-    ``text`` is matched case-insensitively as a *prefix* of the label
-    (``regex(label, "^" + text, "i")``); all pattern metacharacters in the
-    user text are escaped, so it is treated as data, not a pattern.
-    ``?lbl`` is projected so the endpoint can fold a node's several matched
-    rows (multiple label properties / values / rdf:types) deterministically
-    (label-property priority, primary-type rule).
+    QLever answers ``STRSTARTS`` on the raw literal with a vocabulary range
+    scan, but not ``regex(str(?label), ..., "i")`` (15-30 s live). So case
+    insensitivity is approximated by a UNION of up to three capitalisations
+    of the text (as typed, first letter upper-cased, all lower-case), each a
+    ``STRSTARTS`` prefix filter. The type join happens *after* the inner
+    ``LIMIT`` (``limit * 3`` rows, to survive per-node duplicates). The user
+    text is only ever emitted as an escaped string literal. ``?lbl`` is
+    projected so the endpoint can fold a node's several rows (label-property
+    priority, primary-type rule).
 
-    QLever dialect note (verified live against the dev endpoint): the
-    VALUES block is whitespace-separated (see :func:`iri_list`).
+    QLever dialect note: the VALUES block is whitespace-separated (see
+    :func:`iri_list`).
     """
     limit = clamp_limit(limit)
-    if not text.strip():
+    text = text.strip()
+    if not text:
         raise ValueError("search text must be non-empty")
-    pattern = _regex_escape(text.strip())
+    branches = " UNION ".join(
+        f'{{ ?node ?lbl ?label . FILTER(STRSTARTS(?label, "{_sparql_string_escape(v)}")) }}'
+        for v in _case_variants(text)
+    )
     return f"""SELECT ?node ?nodeType ?label ?lbl WHERE {{
-  VALUES ?lbl {{ {iri_list(label_iris)} }}
+  {{
+    SELECT DISTINCT ?node ?label ?lbl WHERE {{
+      VALUES ?lbl {{ {iri_list(label_iris)} }}
+      {branches}
+      FILTER(isLiteral(?label))
+    }}
+    LIMIT {limit * 3}
+  }}
   ?node a ?nodeType .
-  ?node ?lbl ?label .
-  FILTER(regex(str(?label), "^{pattern}", "i"))
 }}
-ORDER BY ?label
-LIMIT {limit}"""
+ORDER BY ?label"""
 
 
 # -- bulk BFS building blocks (flat queries over VALUES chunks) ----------------

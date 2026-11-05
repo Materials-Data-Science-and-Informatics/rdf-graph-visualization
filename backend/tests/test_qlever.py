@@ -300,13 +300,27 @@ LABELS = [
 
 
 def test_search_escapes_user_text_as_data():
-    text = "O'Smith . + Co"
-    q = templates.search_query(text=text, label_iris=LABELS, limit=20)
-    expected = templates._regex_escape(text.strip())
-    assert f'regex(str(?label), "^{expected}", "i")' in q
-    assert r"\." in expected  # dot escaped, user text can't act as a pattern
-    assert r"\+" in expected
-    assert "LIMIT 20" in q
+    q = templates.search_query(text='O"Sm\\ith', label_iris=LABELS, limit=20)
+    assert 'STRSTARTS(?label, "O\\"Sm\\\\ith")' in q
+    assert 'O"Sm' not in q
+    assert "regex" not in q
+    assert "LIMIT 60" in q
+
+
+def test_search_case_variants_deduped():
+    q = templates.search_query(text="abc", label_iris=LABELS)
+    assert q.count("STRSTARTS") == 2  # abc, Abc
+    assert q.count("UNION") == 1
+    q = templates.search_query(text="Abc", label_iris=LABELS)
+    assert q.count("STRSTARTS") == 2  # Abc, abc
+    q = templates.search_query(text="ABC", label_iris=LABELS)
+    assert q.count("STRSTARTS") == 2  # ABC, abc
+
+
+def test_search_type_join_outside_subselect():
+    q = templates.search_query(text="x", label_iris=LABELS)
+    assert q.index("LIMIT 60") < q.index("?node a ?nodeType")
+    assert "ORDER BY ?label" in q
 
 
 def test_sparql_string_literal_escape():

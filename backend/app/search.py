@@ -3,10 +3,10 @@
 """GET /api/search — prefix search over entity labels (card B5).
 
 The autocomplete source: one *bounded* QLever call (``templates.search_query``,
-``LIMIT 20``) runs a case-insensitive *prefix* match over the pinned label
+``LIMIT 20``) runs a case-variant *prefix* (STRSTARTS) match over the pinned label
 properties of the data model (``prefName``/``name``/``identifier`` — the same
 display-label chain, derived by ``app.presets``).
-``q`` is regex-escaped in the template, so user text is data, never a pattern.
+``q`` is emitted only as an escaped string literal in the template.
 
 Folding into the frozen ``SearchResponse`` (order-independent — the engine's
 row order can never change the output):

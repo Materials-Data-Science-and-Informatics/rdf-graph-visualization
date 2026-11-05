@@ -3,9 +3,9 @@
 """Endpoint tests for GET /api/search (card B5).
 
 All QLever traffic is replayed through ``httpx.MockTransport`` — no
-network. Coverage: the query shape (case-insensitive prefix regex, the
-pinned label IRIs, ``LIMIT 20``, ``ORDER BY ?label``, the ``?lbl``
-projection; metacharacters in ``q`` escaped as data, not pattern), the
+network. Coverage: the query shape (STRSTARTS prefix over case variants, the
+pinned label IRIs, ``inner LIMIT 60``, ``ORDER BY ?label``, the ``?lbl``
+projection; metacharacters in ``q`` escaped as a string literal), the
 order-independent fold (primary-type rule for multiply-typed nodes,
 label-property priority with alphabetical tie-break, malformed rows
 skipped, ``(label, id)`` ordering, 20-hit cap), input validation
@@ -113,8 +113,9 @@ def test_sends_the_prefix_search_query(mock_qlever, client):
         label_iris=presets.build_config().label_properties,
         limit=templates.DEFAULT_SEARCH_LIMIT,
     )
-    assert 'regex(str(?label), "^hel", "i")' in q
-    assert "LIMIT 20" in q
+    assert 'STRSTARTS(?label, "hel")' in q
+    assert "regex" not in q
+    assert "LIMIT 60" in q
     assert "ORDER BY ?label" in q
 
 
@@ -127,19 +128,20 @@ def test_query_uses_the_pinned_label_properties(mock_qlever, client):
         assert f"<https://schema.org/{prop}>" in q
 
 
-def test_metacharacters_are_escaped_data_not_pattern(mock_qlever, client):
+def test_text_is_escaped_literal_with_case_variants(mock_qlever, client):
     mock_qlever["responses"] = [sparql_response()]
-    client.get("/api/search", params={"q": "a.b*c"})
+    client.get("/api/search", params={"q": 'Ab"c'})
     q = sent_query(mock_qlever["requests"][0])
-    assert '"^a\\.b\\*c"' in q  # ^ anchor, backslash-escaped . and *
-    assert "a.b*c" not in q  # the raw metacharacters never reach the pattern
+    assert 'STRSTARTS(?label, "Ab\\"c")' in q
+    assert 'STRSTARTS(?label, "ab\\"c")' in q
+    assert q.count("STRSTARTS") == 2  # as typed == capitalised, deduped
 
 
 def test_query_text_is_trimmed_but_echoed_verbatim(mock_qlever, client):
     mock_qlever["responses"] = [sparql_response()]
     resp = client.get("/api/search", params={"q": "  hel  "})
     assert resp.status_code == 200
-    assert 'regex(str(?label), "^hel", "i")' in sent_query(mock_qlever["requests"][0])
+    assert 'STRSTARTS(?label, "hel")' in sent_query(mock_qlever["requests"][0])
     assert resp.json()["query"] == "  hel  "
 
 

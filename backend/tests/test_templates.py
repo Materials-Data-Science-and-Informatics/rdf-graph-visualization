@@ -25,4 +25,4 @@ def test_search_query_rejects_non_int_limit(limit: object) -> None:
 
 def test_search_query_floors_limit_at_one() -> None:
     query = templates.search_query(text="abc", label_iris=["https://x/l"], limit=0)
-    assert "LIMIT 1" in query
+    assert "LIMIT 3" in query
