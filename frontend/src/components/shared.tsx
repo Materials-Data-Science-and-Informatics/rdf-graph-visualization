@@ -6,7 +6,6 @@ export interface LegendRow {
   name: string;
   color: string;
   count: number;
-  visible: boolean;
 }
 
 export function Row({ label, value }: { label: string; value: ReactNode }) {

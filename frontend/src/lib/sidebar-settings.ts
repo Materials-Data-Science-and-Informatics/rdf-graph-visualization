@@ -74,7 +74,6 @@ export const CURVED_KEY = "hkg-curved-edges";
 export const ARROWS_KEY = "hkg-arrows";
 export const DIM_KEY = "hkg-dim";
 export const EDGE_OPACITY_KEY = "hkg-edge-opacity";
-export const HIDDEN_GROUPS_KEY = "hkg-hidden-groups";
 export const ROOT_KEY = "hkg-root";
 export const EDGE_OPACITY_MIN = 0.1;
 export const EDGE_OPACITY_MAX = 2;
@@ -98,34 +97,3 @@ export const loadEdgeOpacity = (): number =>
 /** Remembered root IRI (any http(s) IRI, e.g. after a right-click re-root). */
 export const loadRoot = (fallback: string): string =>
   loadPref(ROOT_KEY, (r) => (/^https?:\/\/\S+$/.test(r) ? r : undefined), fallback);
-
-/** Hidden legend groups are stored by name (indices follow the config order and may change). */
-export function loadHiddenGroups(names: readonly string[], unclassified: string): Set<number> {
-  const stored = loadPref<unknown>(
-    HIDDEN_GROUPS_KEY,
-    (r) => {
-      try {
-        return JSON.parse(r) as unknown;
-      } catch {
-        return undefined;
-      }
-    },
-    []
-  );
-  const out = new Set<number>();
-  if (!Array.isArray(stored)) return out;
-  for (const n of stored) {
-    if (n === unclassified) out.add(-1);
-    else if (typeof n === "string" && names.includes(n)) out.add(names.indexOf(n));
-  }
-  return out;
-}
-
-export function saveHiddenGroups(
-  hidden: ReadonlySet<number>,
-  names: readonly string[],
-  unclassified: string
-): void {
-  const list = [...hidden].map((i) => (i === -1 ? unclassified : names[i])).filter(Boolean);
-  savePref(HIDDEN_GROUPS_KEY, JSON.stringify(list));
-}

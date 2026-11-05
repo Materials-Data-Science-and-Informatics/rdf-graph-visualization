@@ -49,9 +49,13 @@ export interface GpuSeed {
   colors: Float32Array;
   edges: Uint32Array;
   edgeStore: Uint32Array;
+  edgeColors: Float32Array;
   nodeCount: number;
   edgeCount: number;
 }
+
+/** Store predicate index -> linear rgb of its relation colour, or null (theme grey). */
+export type RelColorFn = (predicate: number) => readonly [number, number, number] | null;
 
 type Vec4Buf = THREE.StorageBufferNode<"vec4">;
 type UintBuf = THREE.StorageBufferNode<"uint">;
@@ -132,6 +136,8 @@ export class GpuGraph {
   // CPU mirrors that are only ever written partially (never hold live positions).
   readonly colorCpu: Float32Array;
   readonly edgeCpu: Uint32Array;
+  /** Per GPU edge: relation colour rgb, w = 1 when the relation has a colour. */
+  readonly edgeColorCpu: Float32Array;
   /** GPU edge-list index -> GraphStore edge index (for predicate lookup on pick). */
   readonly edgeStoreCpu: Uint32Array;
   private readonly initCpu: Float32Array;
@@ -145,6 +151,7 @@ export class GpuGraph {
   private readonly offsets: UintBuf;
   private readonly neigh: UintBuf;
   private readonly edgeIdx: UintBuf;
+  private readonly edgeCol: Vec4Buf;
 
   private readonly uCount = uniform(0, "uint");
   private readonly uCountF = uniform(0);
@@ -207,6 +214,7 @@ export class GpuGraph {
     this.colorCpu = new Float32Array(nodeCap * 4);
     this.edgeCpu = new Uint32Array(edgeCap * 2);
     this.edgeStoreCpu = new Uint32Array(edgeCap);
+    this.edgeColorCpu = new Float32Array(edgeCap * 4);
     this.initCpu = new Float32Array(nodeCap * 4);
     this.offsetsCpu = new Uint32Array(nodeCap + 1);
     this.neighCpu = new Uint32Array(edgeCap * 2);
@@ -216,6 +224,7 @@ export class GpuGraph {
       this.colorCpu.set(seed.colors.subarray(0, seed.nodeCount * 4));
       this.edgeCpu.set(seed.edges.subarray(0, seed.edgeCount * 2));
       this.edgeStoreCpu.set(seed.edgeStore.subarray(0, seed.edgeCount));
+      this.edgeColorCpu.set(seed.edgeColors.subarray(0, seed.edgeCount * 4));
       this.nodeCount = seed.nodeCount;
       this.edgeCount = seed.edgeCount;
     }
@@ -228,6 +237,7 @@ export class GpuGraph {
     this.offsets = uintBuf(this.offsetsCpu).toReadOnly();
     this.neigh = uintBuf(this.neighCpu).toReadOnly();
     this.edgeIdx = uintBuf(this.edgeCpu).toReadOnly();
+    this.edgeCol = vec4Buf(this.edgeColorCpu);
 
     this.stepKernel = this.buildStep();
     this.initKernel = this.buildInit();
@@ -384,10 +394,10 @@ export class GpuGraph {
 
   /**
    * World-space vertex positions of the edge strips / arrowheads (see constructor comment)
-   * plus the edge colour (source class colour, else target's, else theme grey).
+   * plus the edge colour (relation colour, else theme grey).
    */
   private edgeShaders(forPick: boolean) {
-    const { pos, colors, edgeIdx, uRad, uCurv } = this;
+    const { pos, colors, edgeIdx, edgeCol, uRad, uCurv } = this;
     const i = instanceIndex;
     const ia = edgeIdx.element(i.mul(2));
     const ib = edgeIdx.element(i.mul(2).add(1));
@@ -447,13 +457,9 @@ export class GpuGraph {
       a,
       tipP.sub(adir.mul(arrowLen.mul(float(1).sub(t)))).add(aside.mul(s.mul(arrowLen).mul(arrowW)))
     );
-    // colour: source class colour, else target's, else theme grey (alpha > 0.9 = has a group)
-    const color = ca.w
-      .greaterThan(TYPED_THRESHOLD)
-      .select(
-        ca.xyz,
-        cb.w.greaterThan(TYPED_THRESHOLD).select(cb.xyz, this.uEdgeColor as unknown as typeof a)
-      );
+    // colour: the relation's colour (w = 1), else theme grey
+    const ec = edgeCol.element(i);
+    const color = ec.w.greaterThan(0.5).select(ec.xyz, this.uEdgeColor as unknown as typeof a);
     return { shaftPos, arrowPos, color };
   }
 
@@ -667,7 +673,7 @@ export class GpuGraph {
    * Append store edges [from, to) whose endpoints are both inside the active window
    * (index < nodeCount) to the edge index buffer (partial upload) and the draw count.
    */
-  appendEdges(store: GraphStore, from: number, to: number): void {
+  appendEdges(store: GraphStore, from: number, to: number, relColor: RelColorFn): void {
     if (to <= from) return;
     const start = this.edgeCount;
     this.mapStoreEdges(store, from, to, start);
@@ -680,7 +686,18 @@ export class GpuGraph {
       this.edgeCount
     );
     markRanges(attrOf(this.edgeIdx), [{ start: start * 2, end: this.edgeCount * 2 }], 1);
+    this.fillEdgeColors(store, start, this.edgeCount, relColor);
+    markRanges(attrOf(this.edgeCol), [{ start, end: this.edgeCount }], 4);
     this.syncCounts();
+  }
+
+  /** Relation colours of GPU edges [from, to) (from their store predicate). */
+  private fillEdgeColors(store: GraphStore, from: number, to: number, relColor: RelColorFn): void {
+    for (let i = from; i < to; i++) {
+      const rgb = relColor(store.edgePredicate[this.edgeStoreCpu[i]]);
+      if (rgb) this.edgeColorCpu.set([rgb[0], rgb[1], rgb[2], 1], i * 4);
+      else this.edgeColorCpu[i * 4 + 3] = 0;
+    }
   }
 
   /** Record the store index of every edge in [from, to) that appendWindowEdges will keep (same filter). */
@@ -694,7 +711,7 @@ export class GpuGraph {
   }
 
   /** Window changed: rebuild the whole windowed edge list (full upload). */
-  rescanEdges(store: GraphStore): void {
+  rescanEdges(store: GraphStore, relColor: RelColorFn): void {
     this.mapStoreEdges(store, 0, store.edgeCount, 0);
     this.edgeCount = appendWindowEdges(
       store.edges,
@@ -704,9 +721,12 @@ export class GpuGraph {
       this.edgeCpu,
       0
     );
-    const attr = attrOf(this.edgeIdx);
-    attr.clearUpdateRanges(); // a full upload must not be narrowed by stale partial ranges
-    attr.needsUpdate = true;
+    this.fillEdgeColors(store, 0, this.edgeCount, relColor);
+    for (const buf of [this.edgeIdx, this.edgeCol]) {
+      const attr = attrOf(buf);
+      attr.clearUpdateRanges(); // a full upload must not be narrowed by stale partial ranges
+      attr.needsUpdate = true;
+    }
     this.syncCounts();
   }
 
@@ -852,6 +872,7 @@ export class GpuGraph {
       this.offsets,
       this.neigh,
       this.edgeIdx,
+      this.edgeCol,
     ])
       attrOf(n).dispatchEvent({ type: "dispose" });
   }

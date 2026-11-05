@@ -9,9 +9,7 @@ import {
   loadDepth,
   saveDepth,
   ROOT_KEY,
-  loadHiddenGroups,
   loadRoot,
-  saveHiddenGroups,
   savePref,
 } from "./sidebar-settings";
 
@@ -44,7 +42,7 @@ describe("groupCounts", () => {
   });
 });
 
-describe("remembered root and hidden groups", () => {
+describe("remembered root", () => {
   beforeEach(() => localStorage.clear());
   it("keeps a valid root IRI and rejects junk", () => {
     expect(loadRoot("https://ror.org/0281dp749")).toBe("https://ror.org/0281dp749");
@@ -52,10 +50,5 @@ describe("remembered root and hidden groups", () => {
     expect(loadRoot("x")).toBe("https://ror.org/02nv7yv05");
     savePref(ROOT_KEY, "javascript:alert(1)");
     expect(loadRoot("fallback")).toBe("fallback");
-  });
-  it("stores hidden groups by name, surviving a reordered config", () => {
-    saveHiddenGroups(new Set([1, -1]), ["Person", "Dataset"], "Unclassified");
-    expect([...loadHiddenGroups(["Dataset", "Person"], "Unclassified")].sort()).toEqual([-1, 0]);
-    expect(loadHiddenGroups(["Person"], "Unclassified")).toEqual(new Set([-1]));
   });
 });

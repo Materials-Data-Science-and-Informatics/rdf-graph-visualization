@@ -37,7 +37,7 @@ export interface SidebarProps {
   fps: number;
   settling: boolean;
   legend: LegendRow[];
-  onGroupVisible: (index: number, visible: boolean) => void;
+  relationLegend: LegendRow[];
   dim: 2 | 3;
   onDim: (d: 2 | 3) => void;
   edgeOpacity: number;
@@ -154,6 +154,32 @@ function CommitNumber({
         onKeyDown={(e) => e.key === "Enter" && commit()}
       />
     </label>
+  );
+}
+
+/** Compact legend block: only rows with a non-zero count. */
+function LegendList({ title, rows }: { title: string; rows: LegendRow[] }) {
+  return (
+    <div className="space-y-1">
+      <h3 className="text-xs font-medium">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="text-muted-foreground text-xs">none shown</p>
+      ) : (
+        <ul className="space-y-0.5">
+          {rows.map((r) => (
+            <li key={r.name} className="flex items-center gap-2 text-sm">
+              <Swatch color={r.color} />
+              <span className="flex-1 truncate" title={r.name}>
+                {r.name}
+              </span>
+              <span className="text-muted-foreground text-xs tabular-nums">
+                {r.count.toLocaleString()}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -304,33 +330,6 @@ function Sidebar(p: SidebarProps) {
           )}
         </Section>
 
-        <Section title="Legend & filter">
-          <ul className="space-y-1">
-            {p.legend.map((g, i) => (
-              <li key={g.name}>
-                <label className="flex items-center gap-2 text-sm">
-                  <input
-                    type="checkbox"
-                    className="accent-primary size-4"
-                    checked={g.visible}
-                    aria-label={`Show ${g.name}`}
-                    onChange={(e) =>
-                      p.onGroupVisible(i === p.legend.length - 1 ? -1 : i, e.target.checked)
-                    }
-                  />
-                  <Swatch color={g.color} />
-                  <span className={cn("flex-1 truncate", !g.visible && "text-muted-foreground")}>
-                    {g.name}
-                  </span>
-                  <span className="text-muted-foreground text-xs tabular-nums">
-                    {g.count.toLocaleString()}
-                  </span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        </Section>
-
         <Section title="Settings">
           <div className="flex items-center justify-between gap-2 text-sm">
             <span id="dim-label">Dimensions</span>
@@ -370,10 +369,15 @@ function Sidebar(p: SidebarProps) {
           </Button>
         </Section>
 
-        <p className="text-muted-foreground px-4 py-3 text-xs">
+        <p className="text-muted-foreground border-b px-4 py-3 text-xs">
           Left-click: details &middot; Right-click: make root &middot; Drag: rotate &middot; Scroll:
           zoom
         </p>
+
+        <Section title="Legend">
+          <LegendList title="Nodes" rows={p.legend.filter((r) => r.count > 0)} />
+          <LegendList title="Relations" rows={p.relationLegend} />
+        </Section>
       </aside>
     </>
   );

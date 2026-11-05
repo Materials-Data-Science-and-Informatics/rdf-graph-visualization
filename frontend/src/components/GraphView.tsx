@@ -7,6 +7,7 @@ import { NODE_LIMIT_DEFAULT, NODE_LIMIT_MAX, NODE_LIMIT_MIN } from "@/engine/lay
 import { WEBGPU_NOTICE, WebGpuUnavailableError } from "@/engine/webgpu";
 import { DEFAULT_ROOT_IRI } from "@/lib/config";
 import { useGraphStream } from "@/lib/use-graph-stream";
+import { shortName } from "@/lib/graph-store";
 import {
   FANOUT_KEY,
   clampDepth,
@@ -25,14 +26,13 @@ import {
   loadDepth,
   loadDim,
   loadEdgeOpacity,
-  loadHiddenGroups,
   loadRoot,
   saveBool,
   saveDepth,
-  saveHiddenGroups,
   savePref,
 } from "@/lib/sidebar-settings";
 import type { PickHit } from "@/engine/picking";
+import { relationCounts, relationPalette } from "@/lib/relation-colors";
 import Sidebar from "./Sidebar";
 import NodeDetails, { type SelectedView } from "./NodeDetails";
 import GraphTooltip from "./GraphTooltip";
@@ -58,9 +58,11 @@ const loadNodeLimit = (): number => {
 /** Canvas host: the GPU engine mounts into the `canvas-host` div and pulls deltas from the stream's store. */
 export default function GraphView({
   groups,
+  relations,
   control,
 }: {
   groups: GraphGroupConfig[];
+  relations: string[];
   control: React.MutableRefObject<GraphControl | null>;
 }) {
   const { store, status, start } = useGraphStream(groups);
@@ -88,11 +90,10 @@ export default function GraphView({
   const [rootInfo, setRootInfo] = useState<NodeInfo | null>(null);
   const [shown, setShown] = useState(0);
   const [counts, setCounts] = useState<number[]>([]);
-  const groupNames = useMemo(() => groups.map((g) => g.name), [groups]);
-  const [hiddenGroups, setHiddenGroups] = useState<ReadonlySet<number>>(() =>
-    loadHiddenGroups(groupNames, UNCLASSIFIED)
-  );
-  const hiddenRef = useRef(hiddenGroups);
+  const [relCounts, setRelCounts] = useState<Map<string, number>>(new Map());
+  const palette = useMemo(() => relationPalette(relations), [relations]);
+  const paletteRef = useRef(palette);
+  paletteRef.current = palette;
   const [dim, setDimState] = useState<2 | 3>(loadDim);
   const [edgeOpacity, setEdgeOpacity] = useState(loadEdgeOpacity);
   const [arrows, setArrows] = useState(loadArrows);
@@ -278,17 +279,6 @@ export default function GraphView({
   }, []);
   useLayoutEffect(placeTip, [hover, placeTip]);
 
-  const groupNamesRef = useRef(groupNames);
-  groupNamesRef.current = groupNames;
-  const onGroupVisible = useCallback((index: number, visible: boolean) => {
-    const next = new Set(hiddenRef.current);
-    if (visible) next.delete(index);
-    else next.add(index);
-    hiddenRef.current = next;
-    setHiddenGroups(next);
-    saveHiddenGroups(next, groupNamesRef.current, UNCLASSIFIED);
-    engineRef.current?.setGroupVisible(index, visible);
-  }, []);
   const onDim = useCallback((d: 2 | 3) => {
     setDimState(d);
     savePref(DIM_KEY, String(d));
@@ -357,7 +347,7 @@ export default function GraphView({
         e.setEdgeOpacityScale(st.edgeOpacity);
         e.setArrowsVisible(st.arrows);
         e.setCurved(st.curved);
-        hiddenRef.current.forEach((g) => e.setGroupVisible(g, false));
+        e.setRelationColors(paletteRef.current);
         e.attach(store);
         setEngineError(null);
       })
@@ -386,6 +376,21 @@ export default function GraphView({
       setCounts((prev) =>
         prev.length === next.length && prev.every((v, i) => v === next[i]) ? prev : next
       );
+      const perPred = relationCounts(
+        store.edges,
+        store.edgePredicate,
+        store.edgeCount,
+        nodeLimitRef.current,
+        store.predicates.length
+      );
+      const rel = new Map<string, number>();
+      perPred.forEach((n, p) => {
+        const iri = store.predicates[p];
+        if (n > 0) rel.set(iri, (rel.get(iri) ?? 0) + n);
+      });
+      setRelCounts((prev) =>
+        prev.size === rel.size && [...rel].every(([k, v]) => prev.get(k) === v) ? prev : rel
+      );
     }, 500);
     return () => {
       cancelled = true;
@@ -407,16 +412,26 @@ export default function GraphView({
         name: g.name,
         color: g.color,
         count: counts[i] ?? 0,
-        visible: !hiddenGroups.has(i),
       })),
       {
         name: UNCLASSIFIED,
         color: NO_GROUP_COLOR,
         count: counts[groups.length] ?? 0,
-        visible: !hiddenGroups.has(-1),
       },
     ],
-    [groups, counts, hiddenGroups]
+    [groups, counts]
+  );
+  /** Shown relations, most frequent first. */
+  const relationLegend = useMemo(
+    () =>
+      [...relCounts]
+        .map(([iri, count]) => ({
+          name: shortName(iri),
+          color: palette.get(iri) ?? NO_GROUP_COLOR,
+          count,
+        }))
+        .sort((a, b) => b.count - a.count),
+    [relCounts, palette]
   );
   const rootColor = groups.find((g) => g.name === rootInfo?.group)?.color ?? NO_GROUP_COLOR;
 
@@ -440,7 +455,7 @@ export default function GraphView({
         fps={fps}
         settling={settling}
         legend={legend}
-        onGroupVisible={onGroupVisible}
+        relationLegend={relationLegend}
         dim={dim}
         onDim={onDim}
         edgeOpacity={edgeOpacity}

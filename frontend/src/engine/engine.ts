@@ -217,6 +217,7 @@ export class Engine {
     this.store = store;
     this.generation = -1;
     this.groupRgb = store.groupColors.map((c) => this.rgbOf(c));
+    this.relRgb = [];
   }
 
   setHandlers(h: EngineHandlers): void {
@@ -380,6 +381,26 @@ export class Engine {
     const c = new THREE.Color(css); // sRGB hex -> linear working space, as in the prototype
     return [c.r, c.g, c.b];
   }
+
+  /** Relation IRI -> CSS colour (config order palette); set by the UI. */
+  private relationCss = new Map<string, string>();
+  /** Store predicate index -> rgb cache (null = no colour); reset per generation. */
+  private relRgb: (Rgb | null)[] = [];
+
+  setRelationColors(colors: ReadonlyMap<string, string>): void {
+    this.relationCss = new Map(colors);
+    this.relRgb = [];
+  }
+
+  private relColor = (predicate: number): Rgb | null => {
+    let c = this.relRgb[predicate];
+    if (c === undefined) {
+      const css = this.relationCss.get(this.store?.predicates[predicate] ?? "");
+      c = css ? this.rgbOf(css) : null;
+      this.relRgb[predicate] = c;
+    }
+    return c;
+  };
 
   private colorOf = (group: number): Rgb =>
     group >= 0 && group < this.groupRgb.length ? this.groupRgb[group] : this.noGroupRgb;
@@ -713,7 +734,7 @@ export class Engine {
       if (target < prevNodes) gpu.truncate(target);
       else if (target > prevNodes)
         gpu.addNodes(store, prevNodes, target, 0, store.edgeCount, this.colorOf, carry); // anchors from all edges
-      gpu.rescanEdges(store);
+      gpu.rescanEdges(store, this.relColor);
       this.edgesScanned = store.edgeCount;
       heat = this.cfg.alphaLimitChange;
       gpu.setSettled(Math.min(prevNodes, target));
@@ -730,7 +751,7 @@ export class Engine {
         );
       }
       if (store.edgeCount > this.edgesScanned) {
-        gpu.appendEdges(store, this.edgesScanned, store.edgeCount);
+        gpu.appendEdges(store, this.edgesScanned, store.edgeCount, this.relColor);
         this.edgesScanned = store.edgeCount;
       }
       if (gpu.nodeCount > prevNodes || gpu.edgeCount > prevEdges) {
@@ -774,6 +795,7 @@ export class Engine {
   private resetGeneration(store: GraphStore): void {
     this.onGenerationReset?.(this.gpu?.nodeCount ?? 0);
     this.generation = store.generation;
+    this.relRgb = []; // predicate indices restart with the store
     this.selected = null;
     this.clearHover();
     this.focusTarget = null;
@@ -836,6 +858,7 @@ export class Engine {
         colors: old.colorCpu,
         edges: old.edgeCpu,
         edgeStore: old.edgeStoreCpu,
+        edgeColors: old.edgeColorCpu,
         nodeCount: old.nodeCount,
         edgeCount: old.edgeCount,
       });
